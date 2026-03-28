@@ -74,6 +74,10 @@ app.get('/api/plans', async (c) => {
   return c.json({ success: true, data: plans.results });
 });
 
+// Admin Dashboard (separate HTML page)
+app.get('/admin', (c) => c.html(getAdminHTML()));
+app.get('/admin/*', (c) => c.html(getAdminHTML()));
+
 // 404 for unknown API routes
 app.notFound((c) => {
   if (c.req.path.startsWith('/api/')) {
@@ -1126,6 +1130,526 @@ function getAppHTML(): string {
 <!-- Scripts -->
 <script src="https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js"></script>
 <script src="/static/app.js"></script>
+</body>
+</html>`;
+}
+
+// ============================================================
+// ADMIN DASHBOARD HTML
+// ============================================================
+function getAdminHTML(): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <title>DEPLOY Admin</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.0/css/all.min.css" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            navy: { 950:'#050810', 900:'#0a0e1a', 800:'#0d1224', 700:'#111829', 600:'#162035', 500:'#1e2d4a' },
+            cyan:  { 400:'#22d3ee', 500:'#06b6d4' },
+            amber: { 400:'#fbbf24', 500:'#f59e0b' }
+          },
+          fontFamily: { sans:['Inter','system-ui','sans-serif'], mono:['JetBrains Mono','monospace'] }
+        }
+      }
+    }
+  </script>
+  <style>
+    * { -webkit-tap-highlight-color: transparent; }
+    body { background:#0a0e1a; color:#e2e8f0; font-family:'Inter',sans-serif; min-height:100vh; }
+    ::-webkit-scrollbar { width:4px; height:4px; }
+    ::-webkit-scrollbar-track { background:#0d1224; }
+    ::-webkit-scrollbar-thumb { background:#22d3ee33; border-radius:2px; }
+    .glass { background:rgba(13,18,36,0.8); backdrop-filter:blur(12px); border:1px solid rgba(34,211,238,0.1); }
+    .glass-hover:hover { background:rgba(13,18,36,0.95); border-color:rgba(34,211,238,0.25); }
+    .gradient-text { background:linear-gradient(135deg,#22d3ee,#06b6d4,#fbbf24); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
+    .btn-primary { background:linear-gradient(135deg,#06b6d4,#0891b2); color:white; transition:all 0.2s; }
+    .btn-primary:hover { background:linear-gradient(135deg,#22d3ee,#06b6d4); box-shadow:0 0 20px rgba(34,211,238,0.3); }
+    .btn-ghost { background:transparent; border:1px solid rgba(34,211,238,0.2); color:#94a3b8; transition:all 0.2s; }
+    .btn-ghost:hover { border-color:rgba(34,211,238,0.5); color:#22d3ee; background:rgba(34,211,238,0.05); }
+    .btn-danger { background:rgba(239,68,68,0.15); border:1px solid rgba(239,68,68,0.3); color:#f87171; transition:all 0.2s; }
+    .btn-danger:hover { background:rgba(239,68,68,0.25); }
+    .deploy-input { background:rgba(13,18,36,0.8); border:1px solid rgba(34,211,238,0.15); color:#e2e8f0; transition:all 0.2s; }
+    .deploy-input:focus { outline:none; border-color:rgba(34,211,238,0.5); box-shadow:0 0 0 3px rgba(34,211,238,0.1); }
+    .deploy-input::placeholder { color:#475569; }
+    .chip-active { background:rgba(34,197,94,0.15); color:#4ade80; border:1px solid rgba(34,197,94,0.3); }
+    .chip-suspended { background:rgba(239,68,68,0.15); color:#f87171; border:1px solid rgba(239,68,68,0.3); }
+    .chip-admin { background:rgba(168,85,247,0.15); color:#c084fc; border:1px solid rgba(168,85,247,0.3); }
+    .chip-pending { background:rgba(251,191,36,0.15); color:#fbbf24; border:1px solid rgba(251,191,36,0.3); }
+    .chip-running { background:rgba(34,211,238,0.15); color:#22d3ee; border:1px solid rgba(34,211,238,0.3); }
+    .chip-completed { background:rgba(34,197,94,0.15); color:#4ade80; border:1px solid rgba(34,197,94,0.3); }
+    .chip-failed { background:rgba(239,68,68,0.15); color:#f87171; border:1px solid rgba(239,68,68,0.3); }
+    .modal-overlay { background:rgba(5,8,16,0.9); backdrop-filter:blur(8px); }
+    @keyframes fadeInUp { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
+    @keyframes shimmer { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
+    .animate-fade-up { animation:fadeInUp 0.35s ease forwards; }
+    .shimmer { background:linear-gradient(90deg,#0d1224 25%,#162035 50%,#0d1224 75%); background-size:200% 100%; animation:shimmer 1.5s infinite; }
+    #toast-container { position:fixed; top:20px; right:20px; z-index:9999; pointer-events:none; }
+    .toast { background:rgba(13,18,36,0.95); border:1px solid rgba(34,211,238,0.2); backdrop-filter:blur(12px); animation:fadeInUp 0.3s ease; pointer-events:auto; padding:12px 16px; border-radius:12px; display:flex; align-items:center; gap:10px; min-width:220px; margin-bottom:8px; }
+    .toast.success { border-color:rgba(34,197,94,0.4); }
+    .toast.error { border-color:rgba(239,68,68,0.4); }
+    .sidebar-link { transition:all 0.2s; border-radius:0.75rem; border-left:3px solid transparent; }
+    .sidebar-link:hover { background:rgba(34,211,238,0.06); color:#22d3ee; }
+    .sidebar-link.active { background:rgba(34,211,238,0.1); color:#22d3ee; border-left-color:#22d3ee; }
+    .table-row:hover { background:rgba(34,211,238,0.04); }
+    #admin-login-screen { display:flex; }
+    #admin-app-screen { display:none; }
+  </style>
+</head>
+<body>
+<div id="toast-container"></div>
+
+<!-- ADMIN LOGIN -->
+<div id="admin-login-screen" class="min-h-screen items-center justify-center p-4">
+  <div class="w-full max-w-sm">
+    <div class="text-center mb-10">
+      <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl mb-4"
+           style="background:linear-gradient(135deg,#7c3aed,#6d28d9,#4f46e5)">
+        <i class="fas fa-shield-halved text-white text-2xl"></i>
+      </div>
+      <h1 class="text-3xl font-black gradient-text tracking-tight">DEPLOY</h1>
+      <p class="text-slate-500 text-sm mt-1">Admin Command Centre</p>
+    </div>
+    <div class="glass rounded-2xl p-6 space-y-4">
+      <div>
+        <label class="text-xs font-medium text-slate-400 uppercase tracking-wider mb-1.5 block">Admin Email</label>
+        <input id="admin-login-email" type="email" placeholder="admin@deployapp.io" autocomplete="username"
+          class="deploy-input w-full px-4 py-3 rounded-xl text-sm" value="admin@deployapp.io">
+      </div>
+      <div>
+        <label class="text-xs font-medium text-slate-400 uppercase tracking-wider mb-1.5 block">Password</label>
+        <div class="relative">
+          <input id="admin-login-password" type="password" placeholder="••••••••" autocomplete="current-password"
+            class="deploy-input w-full px-4 py-3 rounded-xl text-sm pr-11">
+          <button onclick="document.getElementById('admin-login-password').type = document.getElementById('admin-login-password').type === 'password' ? 'text' : 'password'"
+            class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300">
+            <i class="fas fa-eye text-sm"></i>
+          </button>
+        </div>
+      </div>
+      <button onclick="adminLogin()" class="btn-primary w-full py-3.5 rounded-xl text-sm font-semibold">
+        <i class="fas fa-lock-open mr-2"></i>Access Admin Panel
+      </button>
+      <p class="text-center text-xs text-slate-600">Restricted access. All actions are logged.</p>
+    </div>
+    <div class="mt-4 text-center">
+      <a href="/" class="text-xs text-slate-600 hover:text-slate-400">← Back to App</a>
+    </div>
+  </div>
+</div>
+
+<!-- ADMIN APP -->
+<div id="admin-app-screen" class="min-h-screen" style="display:none">
+  <div class="flex min-h-screen">
+  <!-- Sidebar -->
+  <aside class="w-64 flex-shrink-0 glass border-r border-cyan-500/10 flex flex-col" style="min-height:100vh; position:fixed; left:0; top:0; bottom:0; z-index:20; overflow-y:auto;">
+    <div class="p-6 border-b border-slate-800">
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-xl flex items-center justify-center" style="background:linear-gradient(135deg,#7c3aed,#4f46e5)">
+          <i class="fas fa-shield-halved text-white text-sm"></i>
+        </div>
+        <div>
+          <p class="font-black text-white text-sm">DEPLOY</p>
+          <p class="text-xs text-purple-400 font-medium">Admin Console</p>
+        </div>
+      </div>
+    </div>
+    <div class="px-4 py-3 border-b border-slate-800">
+      <div class="flex items-center gap-2">
+        <div class="w-7 h-7 rounded-lg flex items-center justify-center bg-purple-500/20">
+          <i class="fas fa-user-shield text-purple-400 text-xs"></i>
+        </div>
+        <div>
+          <p id="sidebar-admin-name" class="text-xs font-semibold text-white">Admin</p>
+          <p id="sidebar-admin-email" class="text-xs text-slate-500 truncate" style="max-width:140px">—</p>
+        </div>
+      </div>
+    </div>
+    <nav class="flex-1 p-4 space-y-1">
+      <p class="text-xs font-semibold text-slate-600 uppercase tracking-wider px-3 mb-2">Overview</p>
+      <button onclick="showPanel('dashboard')" id="nav-dashboard" class="sidebar-link active w-full flex items-center gap-3 px-3 py-2.5 text-sm text-slate-300">
+        <i class="fas fa-chart-line w-4 text-center text-cyan-400"></i> Dashboard
+      </button>
+      <p class="text-xs font-semibold text-slate-600 uppercase tracking-wider px-3 mt-4 mb-2">Users</p>
+      <button onclick="showPanel('users')" id="nav-users" class="sidebar-link w-full flex items-center gap-3 px-3 py-2.5 text-sm text-slate-300">
+        <i class="fas fa-users w-4 text-center"></i> All Users
+      </button>
+      <button onclick="showPanel('logins')" id="nav-logins" class="sidebar-link w-full flex items-center gap-3 px-3 py-2.5 text-sm text-slate-300">
+        <i class="fas fa-right-to-bracket w-4 text-center"></i> Login History
+      </button>
+      <p class="text-xs font-semibold text-slate-600 uppercase tracking-wider px-3 mt-4 mb-2">Finance</p>
+      <button onclick="showPanel('revenue')" id="nav-revenue" class="sidebar-link w-full flex items-center gap-3 px-3 py-2.5 text-sm text-slate-300">
+        <i class="fas fa-dollar-sign w-4 text-center"></i> Revenue
+      </button>
+      <button onclick="showPanel('coins')" id="nav-coins" class="sidebar-link w-full flex items-center gap-3 px-3 py-2.5 text-sm text-slate-300">
+        <i class="fas fa-coins w-4 text-center"></i> Coin Ledger
+      </button>
+      <p class="text-xs font-semibold text-slate-600 uppercase tracking-wider px-3 mt-4 mb-2">Platform</p>
+      <button onclick="showPanel('builds')" id="nav-builds" class="sidebar-link w-full flex items-center gap-3 px-3 py-2.5 text-sm text-slate-300">
+        <i class="fas fa-hammer w-4 text-center"></i> Build Jobs
+      </button>
+      <button onclick="showPanel('audit')" id="nav-audit" class="sidebar-link w-full flex items-center gap-3 px-3 py-2.5 text-sm text-slate-300">
+        <i class="fas fa-scroll w-4 text-center"></i> Audit Log
+      </button>
+      <button onclick="showPanel('flags')" id="nav-flags" class="sidebar-link w-full flex items-center gap-3 px-3 py-2.5 text-sm text-slate-300">
+        <i class="fas fa-flag w-4 text-center"></i> Feature Flags
+      </button>
+      <p class="text-xs font-semibold text-slate-600 uppercase tracking-wider px-3 mt-4 mb-2">Setup</p>
+      <button onclick="showPanel('stripe')" id="nav-stripe" class="sidebar-link w-full flex items-center gap-3 px-3 py-2.5 text-sm text-slate-300">
+        <i class="fab fa-stripe-s w-4 text-center"></i> Stripe Setup
+      </button>
+      <button onclick="showPanel('apikeys')" id="nav-apikeys" class="sidebar-link w-full flex items-center gap-3 px-3 py-2.5 text-sm text-slate-300">
+        <i class="fas fa-key w-4 text-center"></i> API Keys Guide
+      </button>
+    </nav>
+    <div class="p-4 border-t border-slate-800">
+      <button onclick="adminLogout()" class="btn-ghost w-full py-2.5 rounded-xl text-sm font-medium flex items-center justify-center gap-2">
+        <i class="fas fa-right-from-bracket text-xs"></i> Sign Out
+      </button>
+    </div>
+  </aside>
+  
+  <!-- Main Content -->
+  <div class="flex-1" style="margin-left:256px">
+    <header class="sticky top-0 z-10 glass border-b border-slate-800 px-8 py-4 flex items-center justify-between">
+      <div>
+        <h1 id="panel-title" class="text-lg font-bold text-white">Dashboard</h1>
+        <p id="panel-subtitle" class="text-xs text-slate-500">Platform overview</p>
+      </div>
+      <div class="flex items-center gap-3">
+        <button onclick="refreshCurrentPanel()" class="btn-ghost px-3 py-2 rounded-lg text-xs font-medium">
+          <i class="fas fa-rotate-right mr-1.5"></i>Refresh
+        </button>
+        <a href="/" target="_blank" class="btn-ghost px-3 py-2 rounded-lg text-xs font-medium">
+          <i class="fas fa-arrow-up-right-from-square mr-1.5"></i>Open App
+        </a>
+      </div>
+    </header>
+    
+    <div class="p-8">
+
+      <!-- DASHBOARD PANEL -->
+      <div id="panel-dashboard" class="space-y-6 animate-fade-up">
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4" id="stat-grid">
+          <div class="shimmer h-28 rounded-2xl"></div><div class="shimmer h-28 rounded-2xl"></div>
+          <div class="shimmer h-28 rounded-2xl"></div><div class="shimmer h-28 rounded-2xl"></div>
+        </div>
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4" id="stat-grid-2">
+          <div class="shimmer h-28 rounded-2xl"></div><div class="shimmer h-28 rounded-2xl"></div>
+          <div class="shimmer h-28 rounded-2xl"></div><div class="shimmer h-28 rounded-2xl"></div>
+        </div>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div class="glass rounded-2xl p-5">
+            <h3 class="text-sm font-bold text-white mb-4 flex items-center gap-2"><i class="fas fa-users text-cyan-400"></i> Recent Users</h3>
+            <div id="dash-recent-users" class="space-y-2"><div class="shimmer h-10 rounded-xl"></div><div class="shimmer h-10 rounded-xl"></div><div class="shimmer h-10 rounded-xl"></div></div>
+          </div>
+          <div class="glass rounded-2xl p-5">
+            <h3 class="text-sm font-bold text-white mb-4 flex items-center gap-2"><i class="fas fa-hammer text-amber-400"></i> Recent Builds</h3>
+            <div id="dash-recent-builds" class="space-y-2"><div class="shimmer h-10 rounded-xl"></div><div class="shimmer h-10 rounded-xl"></div><div class="shimmer h-10 rounded-xl"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- USERS PANEL -->
+      <div id="panel-users" class="hidden space-y-5">
+        <div class="flex flex-wrap gap-3">
+          <input id="user-search" type="text" placeholder="Search by email or name…" class="deploy-input flex-1 px-4 py-2.5 rounded-xl text-sm" style="min-width:200px" oninput="debounceSearch()">
+          <select id="user-status-filter" class="deploy-input px-4 py-2.5 rounded-xl text-sm" onchange="usersPage=1;loadUsers()">
+            <option value="">All Status</option><option value="active">Active</option><option value="suspended">Suspended</option>
+          </select>
+          <select id="user-plan-filter" class="deploy-input px-4 py-2.5 rounded-xl text-sm" onchange="usersPage=1;loadUsers()">
+            <option value="">All Plans</option><option value="free">Free</option><option value="member">Member</option><option value="pro">Pro</option><option value="team">Team</option>
+          </select>
+        </div>
+        <div class="glass rounded-2xl overflow-hidden">
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead><tr class="border-b border-slate-800 text-xs text-slate-500 uppercase tracking-wider">
+                <th class="text-left px-5 py-3">User</th><th class="text-left px-3 py-3">Plan</th>
+                <th class="text-left px-3 py-3">Status</th><th class="text-right px-3 py-3">Coins</th>
+                <th class="text-right px-3 py-3">Projects</th><th class="text-right px-3 py-3">Last Login</th>
+                <th class="text-right px-5 py-3">Actions</th>
+              </tr></thead>
+              <tbody id="users-table-body"><tr><td colspan="7" class="text-center py-12 text-slate-500">Loading…</td></tr></tbody>
+            </table>
+          </div>
+          <div class="px-5 py-3 border-t border-slate-800 flex items-center justify-between">
+            <p id="users-count" class="text-xs text-slate-500">—</p>
+            <div class="flex gap-2">
+              <button id="users-prev" onclick="usersPage--;loadUsers()" class="btn-ghost px-3 py-1.5 rounded-lg text-xs" disabled>← Prev</button>
+              <button id="users-next" onclick="usersPage++;loadUsers()" class="btn-ghost px-3 py-1.5 rounded-lg text-xs" disabled>Next →</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- LOGIN HISTORY PANEL -->
+      <div id="panel-logins" class="hidden space-y-5">
+        <div class="glass rounded-2xl overflow-hidden">
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead><tr class="border-b border-slate-800 text-xs text-slate-500 uppercase tracking-wider">
+                <th class="text-left px-5 py-3">User</th><th class="text-left px-3 py-3">Role</th>
+                <th class="text-left px-3 py-3">IP Address</th><th class="text-left px-3 py-3">Device</th>
+                <th class="text-right px-5 py-3">Time</th>
+              </tr></thead>
+              <tbody id="logins-table-body"><tr><td colspan="5" class="text-center py-12 text-slate-500">Loading…</td></tr></tbody>
+            </table>
+          </div>
+          <div class="px-5 py-3 border-t border-slate-800 flex items-center justify-between">
+            <p id="logins-count" class="text-xs text-slate-500">—</p>
+            <div class="flex gap-2">
+              <button id="logins-prev" onclick="loginsPage--;loadLogins()" class="btn-ghost px-3 py-1.5 rounded-lg text-xs" disabled>← Prev</button>
+              <button id="logins-next" onclick="loginsPage++;loadLogins()" class="btn-ghost px-3 py-1.5 rounded-lg text-xs" disabled>Next →</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- REVENUE PANEL -->
+      <div id="panel-revenue" class="hidden space-y-5">
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4" id="revenue-stats">
+          <div class="shimmer h-24 rounded-2xl"></div><div class="shimmer h-24 rounded-2xl"></div><div class="shimmer h-24 rounded-2xl"></div>
+        </div>
+        <div class="glass rounded-2xl p-5">
+          <h3 class="text-sm font-bold text-white mb-2">💳 How You Receive Payments</h3>
+          <p class="text-xs text-slate-400 mb-3">Stripe collects from users and deposits to your bank account automatically.</p>
+          <div class="space-y-1.5 text-xs text-slate-400 mb-4">
+            <div class="flex gap-2"><span class="text-cyan-400 font-bold">1.</span><span>User pays via Stripe → funds held in your Stripe balance</span></div>
+            <div class="flex gap-2"><span class="text-cyan-400 font-bold">2.</span><span>Stripe deducts 2.9% + $0.30 processing fee per transaction</span></div>
+            <div class="flex gap-2"><span class="text-cyan-400 font-bold">3.</span><span>Net amount automatically deposited to your linked bank account</span></div>
+            <div class="flex gap-2"><span class="text-cyan-400 font-bold">4.</span><span>Payouts: T+2 business days (US) — configurable in Stripe Dashboard</span></div>
+          </div>
+          <a href="https://dashboard.stripe.com" target="_blank" class="btn-primary inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold">
+            <i class="fab fa-stripe-s"></i> Open Stripe Dashboard
+          </a>
+        </div>
+        <div class="glass rounded-2xl overflow-hidden">
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead><tr class="border-b border-slate-800 text-xs text-slate-500 uppercase tracking-wider">
+                <th class="text-left px-5 py-3">User</th><th class="text-left px-3 py-3">Type</th>
+                <th class="text-left px-3 py-3">Status</th><th class="text-right px-3 py-3">Coins</th>
+                <th class="text-right px-3 py-3">Amount</th><th class="text-right px-5 py-3">Date</th>
+              </tr></thead>
+              <tbody id="revenue-table-body"><tr><td colspan="6" class="text-center py-12 text-slate-500">Loading…</td></tr></tbody>
+            </table>
+          </div>
+          <div class="px-5 py-3 border-t border-slate-800 flex items-center justify-between">
+            <p id="revenue-count" class="text-xs text-slate-500">—</p>
+            <div class="flex gap-2">
+              <button id="revenue-prev" onclick="revenuePage--;loadRevenue()" class="btn-ghost px-3 py-1.5 rounded-lg text-xs" disabled>← Prev</button>
+              <button id="revenue-next" onclick="revenuePage++;loadRevenue()" class="btn-ghost px-3 py-1.5 rounded-lg text-xs" disabled>Next →</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- COINS PANEL -->
+      <div id="panel-coins" class="hidden space-y-5">
+        <div class="flex gap-3">
+          <select id="coin-type-filter" class="deploy-input px-4 py-2.5 rounded-xl text-sm" onchange="coinsPage=1;loadCoins()">
+            <option value="">All Types</option><option value="credit">Credit</option><option value="debit">Debit</option>
+            <option value="hold">Hold</option><option value="release">Release</option><option value="admin_adjust">Admin Adjust</option>
+          </select>
+        </div>
+        <div class="glass rounded-2xl overflow-hidden">
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead><tr class="border-b border-slate-800 text-xs text-slate-500 uppercase tracking-wider">
+                <th class="text-left px-5 py-3">User</th><th class="text-left px-3 py-3">Type</th>
+                <th class="text-right px-3 py-3">Amount</th><th class="text-right px-3 py-3">Balance After</th>
+                <th class="text-left px-3 py-3">Description</th><th class="text-right px-5 py-3">Date</th>
+              </tr></thead>
+              <tbody id="coins-table-body"><tr><td colspan="6" class="text-center py-12 text-slate-500">Loading…</td></tr></tbody>
+            </table>
+          </div>
+          <div class="px-5 py-3 border-t border-slate-800 flex items-center justify-between">
+            <p id="coins-count" class="text-xs text-slate-500">—</p>
+            <div class="flex gap-2">
+              <button id="coins-prev" onclick="coinsPage--;loadCoins()" class="btn-ghost px-3 py-1.5 rounded-lg text-xs" disabled>← Prev</button>
+              <button id="coins-next" onclick="coinsPage++;loadCoins()" class="btn-ghost px-3 py-1.5 rounded-lg text-xs" disabled>Next →</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- BUILDS PANEL -->
+      <div id="panel-builds" class="hidden space-y-5">
+        <div class="flex gap-3">
+          <select id="build-status-filter" class="deploy-input px-4 py-2.5 rounded-xl text-sm" onchange="buildsPage=1;loadBuilds()">
+            <option value="">All Status</option><option value="running">Running</option>
+            <option value="completed">Completed</option><option value="failed">Failed</option><option value="pending">Pending</option>
+          </select>
+        </div>
+        <div class="glass rounded-2xl overflow-hidden">
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead><tr class="border-b border-slate-800 text-xs text-slate-500 uppercase tracking-wider">
+                <th class="text-left px-5 py-3">User</th><th class="text-left px-3 py-3">Project</th>
+                <th class="text-left px-3 py-3">Model</th><th class="text-left px-3 py-3">Status</th>
+                <th class="text-right px-3 py-3">Coins</th><th class="text-right px-5 py-3">Date</th>
+              </tr></thead>
+              <tbody id="builds-table-body"><tr><td colspan="6" class="text-center py-12 text-slate-500">Loading…</td></tr></tbody>
+            </table>
+          </div>
+          <div class="px-5 py-3 border-t border-slate-800 flex items-center justify-between">
+            <p id="builds-count" class="text-xs text-slate-500">—</p>
+            <div class="flex gap-2">
+              <button id="builds-prev" onclick="buildsPage--;loadBuilds()" class="btn-ghost px-3 py-1.5 rounded-lg text-xs" disabled>← Prev</button>
+              <button id="builds-next" onclick="buildsPage++;loadBuilds()" class="btn-ghost px-3 py-1.5 rounded-lg text-xs" disabled>Next →</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- AUDIT LOG PANEL -->
+      <div id="panel-audit" class="hidden space-y-5">
+        <div class="flex gap-3">
+          <input id="audit-action-filter" type="text" placeholder="Filter by action…" class="deploy-input flex-1 px-4 py-2.5 rounded-xl text-sm" oninput="debounceAudit()">
+        </div>
+        <div class="glass rounded-2xl overflow-hidden">
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead><tr class="border-b border-slate-800 text-xs text-slate-500 uppercase tracking-wider">
+                <th class="text-left px-5 py-3">Action</th><th class="text-left px-3 py-3">User</th>
+                <th class="text-left px-3 py-3">Entity</th><th class="text-left px-3 py-3">IP</th>
+                <th class="text-right px-5 py-3">Date</th>
+              </tr></thead>
+              <tbody id="audit-table-body"><tr><td colspan="5" class="text-center py-12 text-slate-500">Loading…</td></tr></tbody>
+            </table>
+          </div>
+          <div class="px-5 py-3 border-t border-slate-800 flex items-center justify-between">
+            <p id="audit-count" class="text-xs text-slate-500">—</p>
+            <div class="flex gap-2">
+              <button id="audit-prev" onclick="auditPage--;loadAudit()" class="btn-ghost px-3 py-1.5 rounded-lg text-xs" disabled>← Prev</button>
+              <button id="audit-next" onclick="auditPage++;loadAudit()" class="btn-ghost px-3 py-1.5 rounded-lg text-xs" disabled>Next →</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- FEATURE FLAGS PANEL -->
+      <div id="panel-flags" class="hidden space-y-5">
+        <div class="glass rounded-2xl p-5">
+          <p class="text-xs text-slate-500 mb-4">Toggle platform features globally. Changes take effect immediately.</p>
+          <div id="flags-list" class="space-y-3">
+            <div class="shimmer h-14 rounded-xl"></div><div class="shimmer h-14 rounded-xl"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- STRIPE SETUP PANEL -->
+      <div id="panel-stripe" class="hidden space-y-5">
+        <div class="glass rounded-2xl p-6 space-y-4">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl flex items-center justify-center" style="background:linear-gradient(135deg,#635bff,#4f46e5)">
+              <i class="fab fa-stripe-s text-white text-lg"></i>
+            </div>
+            <div><h3 class="text-base font-bold text-white">Stripe Payment Setup</h3><p class="text-xs text-slate-400">Connect your bank account to receive payments</p></div>
+          </div>
+          <div class="space-y-3">
+            <div class="glass rounded-xl p-4" style="border-left:4px solid #22d3ee">
+              <p class="text-sm font-semibold text-white mb-1">Step 1: Create a Stripe Account</p>
+              <p class="text-xs text-slate-400 mb-2">Go to stripe.com and create a business account. Verify your identity and add your business details.</p>
+              <a href="https://stripe.com/register" target="_blank" class="btn-primary inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold"><i class="fas fa-external-link-alt"></i> Create Stripe Account</a>
+            </div>
+            <div class="glass rounded-xl p-4" style="border-left:4px solid #a855f7">
+              <p class="text-sm font-semibold text-white mb-1">Step 2: Connect Your Bank Account</p>
+              <p class="text-xs text-slate-400 mb-2">In Stripe Dashboard → Settings → Bank accounts → Add a bank account. Stripe verifies with micro-deposits (1–2 business days).</p>
+              <a href="https://dashboard.stripe.com/settings/payouts" target="_blank" class="btn-ghost inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold"><i class="fas fa-university"></i> Stripe Payout Settings</a>
+            </div>
+            <div class="glass rounded-xl p-4" style="border-left:4px solid #fbbf24">
+              <p class="text-sm font-semibold text-white mb-1">Step 3: Get Your API Keys</p>
+              <p class="text-xs text-slate-400 mb-3">Stripe Dashboard → Developers → API keys. Copy Secret Key, Publishable Key, and Webhook Secret.</p>
+              <div class="space-y-2">
+                <div class="bg-navy-800 rounded-lg px-3 py-2 font-mono text-xs text-cyan-400" style="background:#0d1224">STRIPE_SECRET_KEY=sk_live_...</div>
+                <div class="bg-navy-800 rounded-lg px-3 py-2 font-mono text-xs text-cyan-400" style="background:#0d1224">STRIPE_PUBLISHABLE_KEY=pk_live_...</div>
+                <div class="bg-navy-800 rounded-lg px-3 py-2 font-mono text-xs text-cyan-400" style="background:#0d1224">STRIPE_WEBHOOK_SECRET=whsec_...</div>
+              </div>
+            </div>
+            <div class="glass rounded-xl p-4" style="border-left:4px solid #4ade80">
+              <p class="text-sm font-semibold text-white mb-1">Step 4: Set Keys as Cloudflare Secrets</p>
+              <p class="text-xs text-slate-400 mb-3">Run these from your terminal to securely store keys in Cloudflare Pages:</p>
+              <div class="font-mono text-xs text-slate-300 rounded-xl p-3 space-y-1" style="background:#0d1224">
+                <div>npx wrangler pages secret put STRIPE_SECRET_KEY</div>
+                <div>npx wrangler pages secret put STRIPE_WEBHOOK_SECRET</div>
+                <div>npx wrangler pages secret put JWT_SECRET</div>
+                <div>npx wrangler pages secret put OPENAI_API_KEY</div>
+                <div>npx wrangler pages secret put ANTHROPIC_API_KEY</div>
+              </div>
+            </div>
+            <div class="glass rounded-xl p-4" style="border-left:4px solid #475569">
+              <p class="text-sm font-semibold text-white mb-2">Stripe Fee Structure</p>
+              <div class="space-y-1 text-xs text-slate-400">
+                <div class="flex justify-between"><span>Card transactions</span><span class="text-white font-semibold">2.9% + $0.30</span></div>
+                <div class="flex justify-between"><span>International cards</span><span class="text-white font-semibold">+1.5%</span></div>
+                <div class="flex justify-between"><span>Payout timing (US)</span><span class="text-white font-semibold">T+2 business days</span></div>
+                <div class="flex justify-between"><span>Minimum payout</span><span class="text-white font-semibold">$1.00</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- API KEYS GUIDE PANEL -->
+      <div id="panel-apikeys" class="hidden space-y-5">
+        <div class="glass rounded-2xl p-6">
+          <h3 class="text-base font-bold text-white mb-1">Full API Key Requirements</h3>
+          <p class="text-xs text-slate-400 mb-5">Every key needed to make DEPLOY fully operational.</p>
+          <div class="space-y-3" id="apikeys-list"></div>
+        </div>
+      </div>
+
+    </div>
+  </div><!-- /flex-1 -->
+  </div><!-- /flex -->
+</div><!-- /admin-app-screen -->
+
+<!-- USER DETAIL MODAL -->
+<div id="modal-user" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4">
+  <div class="modal-overlay absolute inset-0" onclick="closeAdminModal('modal-user')"></div>
+  <div class="relative w-full max-w-md glass rounded-2xl p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+    <div class="flex items-center justify-between">
+      <h3 class="text-base font-bold text-white">User Details</h3>
+      <button onclick="closeAdminModal('modal-user')" class="text-slate-500 hover:text-white"><i class="fas fa-xmark"></i></button>
+    </div>
+    <div id="modal-user-content"></div>
+  </div>
+</div>
+
+<!-- COIN ADJUST MODAL -->
+<div id="modal-coin-adjust" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4">
+  <div class="modal-overlay absolute inset-0" onclick="closeAdminModal('modal-coin-adjust')"></div>
+  <div class="relative w-full max-w-sm glass rounded-2xl p-6 space-y-4">
+    <h3 class="text-base font-bold text-white">Adjust Coins</h3>
+    <p id="coin-adjust-user-label" class="text-xs text-slate-400">User: —</p>
+    <div>
+      <label class="text-xs font-medium text-slate-400 mb-1.5 block">Amount (+ to credit, - to debit)</label>
+      <input id="coin-adjust-amount" type="number" placeholder="e.g. 100 or -50" class="deploy-input w-full px-4 py-3 rounded-xl text-sm">
+    </div>
+    <div>
+      <label class="text-xs font-medium text-slate-400 mb-1.5 block">Reason</label>
+      <input id="coin-adjust-reason" type="text" placeholder="e.g. Refund for failed build" class="deploy-input w-full px-4 py-3 rounded-xl text-sm">
+    </div>
+    <div class="flex gap-3">
+      <button onclick="closeAdminModal('modal-coin-adjust')" class="btn-ghost flex-1 py-3 rounded-xl text-sm font-semibold">Cancel</button>
+      <button onclick="submitCoinAdjust()" class="btn-primary flex-1 py-3 rounded-xl text-sm font-semibold">Apply</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js"></script>
+<script src="/static/admin.js"></script>
 </body>
 </html>`;
 }
