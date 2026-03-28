@@ -1,0 +1,33 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "deploy-app",
+  "pages_build_output_dir": "./dist",
+  "compatibility_date": "2024-09-23",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // D1 Database - Production
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "deploy-production",
+      "database_id": "placeholder-replace-with-real-id"
+    }
+  ],
+
+  // KV Storage
+  "kv_namespaces": [
+    {
+      "binding": "DEPLOY_KV",
+      "id": "placeholder-kv-id",
+      "preview_id": "placeholder-kv-preview-id"
+    }
+  ],
+
+  // R2 Storage
+  "r2_buckets": [
+    {
+      "binding": "DEPLOY_R2",
+      "bucket_name": "deploy-assets"
+    }
+  ]
+}
