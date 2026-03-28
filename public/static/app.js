@@ -480,11 +480,19 @@ const PROMPT_SECTIONS_CONFIG = [
     ]
   },
   {
-    key: 'features', label: 'Features', icon: 'fa-list-check',
+    key: 'features', label: 'Core Features', icon: 'fa-list-check',
     fields: [
-      { key: 'core_features', label: 'Core Features (MVP)', type: 'textarea', placeholder: 'List the essential features for version 1. One feature per line.', rows: 4 },
-      { key: 'ui_ux_notes', label: 'UI/UX Direction', type: 'textarea', placeholder: 'Describe the look, feel, and user experience you want.' },
-      { key: 'roles_permissions', label: 'User Roles', type: 'textarea', placeholder: 'What types of users are there? (e.g., Admin, Member, Guest)' }
+      { key: 'core_features', label: 'Core Features (MVP)', type: 'feature-list', placeholder: 'Describe a feature…', rows: 2, hint: 'Add as many or as few as you like. AI will handle anything you leave out.' },
+      { key: 'roles_permissions', label: 'User Roles & Permissions', type: 'textarea', placeholder: 'What types of users are there? (e.g., Admin, Member, Guest)' }
+    ]
+  },
+  {
+    key: 'visual', label: 'Visual & Frontend', icon: 'fa-palette',
+    fields: [
+      { key: 'color_scheme', label: 'Color Scheme', type: 'color-scheme', hint: 'Pick a primary palette direction. AI will handle the rest.' },
+      { key: 'visual_style', label: 'Visual Style', type: 'select', options: ['Minimal & Clean','Dark & Futuristic','Light & Airy','Bold & Vibrant','Corporate & Professional','Playful & Friendly','Luxury & Premium'] },
+      { key: 'visual_features', label: 'Frontend Features', type: 'feature-list', placeholder: 'e.g. dark mode, animated transitions, drag-and-drop cards…', rows: 2, hint: 'Optional — list any specific UI/UX features you want. AI will handle the rest.' },
+      { key: 'ui_ux_notes', label: 'Additional UI/UX Notes', type: 'textarea', placeholder: 'Any other look, feel, or experience details — layout, navigation style, tone, etc.' }
     ]
   },
   {
@@ -508,6 +516,12 @@ const PROMPT_SECTIONS_CONFIG = [
     fields: [
       { key: 'deployment_preferences', label: 'Deployment Preferences', type: 'textarea', placeholder: 'Any specific hosting, region, or infrastructure requirements?' },
       { key: 'platform_notes', label: 'Platform Notes', type: 'textarea', placeholder: 'Web only? Mobile too? Any platform constraints?' }
+    ]
+  },
+  {
+    key: 'comments', label: 'Additional Comments', icon: 'fa-comment-dots',
+    fields: [
+      { key: 'additional_comments', label: 'Additional Ideas & Concepts', type: 'rich-comments', placeholder: 'Anything else on your mind? Concepts, inspirations, special requirements, things you love about other apps, anything the AI should know…', rows: 5, hint: 'This is your free space. Write as much or as little as you want. AI reads everything here.' }
     ]
   }
 ];
@@ -558,10 +572,8 @@ function renderPromptSections() {
   const container = document.getElementById('prompt-sections');
   
   container.innerHTML = PROMPT_SECTIONS_CONFIG.map((section, idx) => {
-    const completedFields = section.fields.filter(f => {
-      const val = STATE.promptData[f.key];
-      return val && val.trim().length > 5;
-    }).length;
+    const isOptional = ['visual', 'comments'].includes(section.key);
+    const completedFields = section.fields.filter(f => fieldHasValue(f)).length;
     const isComplete = completedFields === section.fields.length;
     const isPartial = completedFields > 0 && !isComplete;
     
@@ -569,17 +581,25 @@ function renderPromptSections() {
       <div class="glass rounded-xl overflow-hidden" id="section-${section.key}">
         <button onclick="toggleSection('${section.key}')" 
           class="w-full flex items-center gap-3 p-4 text-left">
-          <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${isComplete ? 'bg-emerald-500/20' : isPartial ? 'bg-amber-500/20' : 'bg-slate-700/50'}">
-            ${isComplete 
+          <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${isComplete ? 'bg-emerald-500/20' : isPartial ? (isOptional ? 'bg-purple-500/20' : 'bg-amber-500/20') : 'bg-slate-700/50'}">
+            ${isComplete
               ? '<i class="fas fa-check text-emerald-400 text-xs"></i>'
-              : `<i class="fas ${section.icon} text-slate-400 text-xs"></i>`}
+              : `<i class="fas ${section.icon} ${isOptional ? 'text-purple-400' : 'text-slate-400'} text-xs"></i>`}
           </div>
           <div class="flex-1 min-w-0">
-            <p class="text-sm font-semibold text-white">${section.label}</p>
-            <p class="text-xs text-slate-500">${completedFields}/${section.fields.length} fields</p>
+            <div class="flex items-center gap-2">
+              <p class="text-sm font-semibold text-white">${section.label}</p>
+              ${isOptional ? '<span class="text-xs text-purple-400/70 bg-purple-400/10 px-1.5 py-0.5 rounded-full">optional</span>' : ''}
+            </div>
+            <p class="text-xs ${isOptional ? 'text-purple-400/60' : 'text-slate-500'}">
+              ${isOptional
+                ? (completedFields > 0 ? `${completedFields} field${completedFields > 1 ? 's' : ''} filled · AI handles the rest` : 'AI handles all — add details to guide it')
+                : `${completedFields}/${section.fields.length} filled`}
+            </p>
           </div>
           <div class="flex items-center gap-2">
-            ${isPartial ? '<span class="w-2 h-2 rounded-full bg-amber-400"></span>' : ''}
+            ${isPartial && !isOptional ? '<span class="w-2 h-2 rounded-full bg-amber-400"></span>' : ''}
+            ${isPartial && isOptional  ? '<span class="w-2 h-2 rounded-full bg-purple-400"></span>' : ''}
             <i class="fas fa-chevron-down text-slate-600 text-xs section-chevron-${section.key} transition-transform"></i>
           </div>
         </button>
@@ -587,14 +607,15 @@ function renderPromptSections() {
         <div class="section-body-${section.key} hidden px-4 pb-4 space-y-4">
           ${section.fields.map(field => renderField(field, section.key)).join('')}
           
-          <!-- AI Assist for section -->
+          <!-- AI Assist for section (only on non-optional sections) -->
+          ${!isOptional ? `
           <div class="pt-2 border-t border-slate-800">
             <button onclick="aiAssistSection('${section.key}')"
               class="text-xs text-slate-500 hover:text-cyan-400 flex items-center gap-1.5 transition-colors">
               <i class="fas fa-wand-magic-sparkles"></i>
               <span>AI Assist this section (2 coins each)</span>
             </button>
-          </div>
+          </div>` : ''}
         </div>
       </div>
     `;
@@ -605,35 +626,134 @@ function renderPromptSections() {
 
 function renderField(field, sectionKey) {
   const value = STATE.promptData[field.key] || '';
-  
+
+  // ── Color Scheme Picker ──────────────────────────────────────
+  if (field.type === 'color-scheme') {
+    const palettes = [
+      { id:'cyber',    label:'Cyber',     colors:['#06b6d4','#0891b2','#fbbf24'] },
+      { id:'midnight', label:'Midnight',  colors:['#6366f1','#4f46e5','#818cf8'] },
+      { id:'emerald',  label:'Nature',    colors:['#10b981','#059669','#34d399'] },
+      { id:'rose',     label:'Rose',      colors:['#f43f5e','#e11d48','#fb7185'] },
+      { id:'amber',    label:'Amber',     colors:['#f59e0b','#d97706','#fbbf24'] },
+      { id:'violet',   label:'Violet',    colors:['#8b5cf6','#7c3aed','#a78bfa'] },
+      { id:'slate',    label:'Mono',      colors:['#64748b','#475569','#94a3b8'] },
+      { id:'custom',   label:'Custom',    colors:[] },
+    ];
+    const selectedId = value.startsWith('custom:') ? 'custom' : (value || 'cyber');
+    const customHex  = value.startsWith('custom:') ? value.replace('custom:','') : '#06b6d4';
+    return `
+      <div>
+        <label class="text-xs font-medium text-slate-400 uppercase tracking-wider mb-2 block">${field.label}</label>
+        ${field.hint ? `<p class="text-xs text-slate-600 mb-3">${field.hint}</p>` : ''}
+        <div class="grid grid-cols-4 gap-2" id="palette-grid-${field.key}">
+          ${palettes.map(p => `
+            <button type="button"
+              onclick="selectPalette('${sectionKey}','${field.key}','${p.id}')"
+              class="palette-btn relative p-2.5 rounded-xl border transition-all ${(selectedId===p.id) ? 'border-cyan-400 bg-cyan-400/10' : 'border-slate-700 hover:border-slate-500'}"
+              data-palette="${p.id}">
+              <div class="flex gap-0.5 justify-center mb-1.5">
+                ${p.id === 'custom'
+                  ? `<div class="w-5 h-5 rounded-full border border-slate-600 flex items-center justify-center">
+                       <i class="fas fa-plus text-slate-500" style="font-size:8px"></i>
+                     </div>`
+                  : p.colors.map(c => `<div class="w-3.5 h-3.5 rounded-full" style="background:${c}"></div>`).join('')
+                }
+              </div>
+              <p class="text-xs text-center ${selectedId===p.id ? 'text-cyan-400' : 'text-slate-500'}">${p.label}</p>
+            </button>
+          `).join('')}
+        </div>
+        <div id="custom-color-row-${field.key}" class="${selectedId==='custom' ? 'mt-3 flex items-center gap-3' : 'hidden mt-3 flex items-center gap-3'}">
+          <input type="color" id="custom-color-${field.key}" value="${customHex}"
+            onchange="onCustomColor('${sectionKey}','${field.key}',this.value)"
+            class="w-10 h-10 rounded-xl border border-slate-700 bg-transparent cursor-pointer">
+          <div>
+            <p class="text-xs text-slate-400 font-medium">Custom primary color</p>
+            <p class="text-xs text-slate-600">AI will build a complete palette around this</p>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  // ── Feature List (dynamic add/remove) ───────────────────────
+  if (field.type === 'feature-list') {
+    let items = [];
+    try { items = JSON.parse(value); } catch { items = value ? [value] : []; }
+    const listId = `flist-${field.key}`;
+    return `
+      <div>
+        <label class="text-xs font-medium text-slate-400 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+          <span>${field.label}</span>
+          <button onclick="aiAssistField('${sectionKey}','${field.key}')" class="text-cyan-400/50 hover:text-cyan-400 transition-colors">
+            <i class="fas fa-wand-magic-sparkles text-xs"></i>
+          </button>
+        </label>
+        ${field.hint ? `<p class="text-xs text-slate-600 mb-2">${field.hint}</p>` : ''}
+        <div id="${listId}" class="space-y-2 mb-2">
+          ${items.length === 0
+            ? `<p class="text-xs text-slate-600 italic py-1">No features added yet — AI will create a great set for you.</p>`
+            : items.map((item, i) => featureListItem(field.key, sectionKey, item, i)).join('')
+          }
+        </div>
+        <button type="button" onclick="addFeatureItem('${field.key}','${sectionKey}')"
+          class="flex items-center gap-2 text-xs text-cyan-400 hover:text-cyan-300 transition-colors py-1">
+          <i class="fas fa-plus-circle"></i> Add feature
+        </button>
+      </div>`;
+  }
+
+  // ── Rich Comments (large, inviting textarea) ─────────────────
+  if (field.type === 'rich-comments') {
+    return `
+      <div>
+        <label class="text-xs font-medium text-slate-400 uppercase tracking-wider mb-1.5 block">${field.label}</label>
+        ${field.hint ? `<p class="text-xs text-slate-500 mb-3 leading-relaxed">${field.hint}</p>` : ''}
+        <div class="relative">
+          <textarea oninput="onFieldInput('${sectionKey}','${field.key}',this.value)"
+            placeholder="${field.placeholder || ''}"
+            rows="${field.rows || 5}"
+            class="deploy-input w-full px-4 py-3 rounded-xl text-sm resize-none"
+            style="min-height:120px"
+            id="field-${field.key}">${escHtml(value)}</textarea>
+          <div class="absolute bottom-2 right-2 flex items-center gap-1.5">
+            ${value.length > 0 ? `<span class="text-xs text-slate-600">${value.length} chars</span>` : ''}
+            ${value.length > 10 ? '<i class="fas fa-check-circle text-emerald-400/60 text-xs"></i>' : ''}
+          </div>
+        </div>
+        <p class="text-xs text-slate-700 mt-1.5">This section is optional but the more context you give, the better your build will be.</p>
+      </div>`;
+  }
+
+  // ── Select ───────────────────────────────────────────────────
   if (field.type === 'select') {
     return `
       <div>
         <label class="text-xs font-medium text-slate-400 uppercase tracking-wider mb-1.5 flex items-center justify-between">
           <span>${field.label}</span>
-          <button onclick="aiAssistField('${sectionKey}', '${field.key}')" class="text-cyan-400/50 hover:text-cyan-400 transition-colors">
+          <button onclick="aiAssistField('${sectionKey}','${field.key}')" class="text-cyan-400/50 hover:text-cyan-400 transition-colors">
             <i class="fas fa-wand-magic-sparkles text-xs"></i>
           </button>
         </label>
-        <select onchange="saveField('${sectionKey}', '${field.key}', this.value)"
-          class="deploy-input w-full px-4 py-3 rounded-xl text-sm">
+        <select onchange="saveField('${sectionKey}','${field.key}',this.value)"
+          class="deploy-input w-full px-4 py-3 rounded-xl text-sm" id="field-${field.key}">
           <option value="">Select...</option>
           ${(field.options || []).map(o => `<option value="${o}" ${value === o ? 'selected' : ''}>${o}</option>`).join('')}
         </select>
       </div>`;
   }
-  
+
+  // ── Textarea ─────────────────────────────────────────────────
   if (field.type === 'textarea') {
     return `
       <div>
         <label class="text-xs font-medium text-slate-400 uppercase tracking-wider mb-1.5 flex items-center justify-between">
           <span>${field.label}</span>
-          <button onclick="aiAssistField('${sectionKey}', '${field.key}')" class="text-cyan-400/50 hover:text-cyan-400 transition-colors">
+          <button onclick="aiAssistField('${sectionKey}','${field.key}')" class="text-cyan-400/50 hover:text-cyan-400 transition-colors">
             <i class="fas fa-wand-magic-sparkles text-xs"></i>
           </button>
         </label>
         <div class="relative">
-          <textarea oninput="onFieldInput('${sectionKey}', '${field.key}', this.value)"
+          <textarea oninput="onFieldInput('${sectionKey}','${field.key}',this.value)"
             placeholder="${field.placeholder || ''}"
             rows="${field.rows || 3}"
             class="deploy-input w-full px-4 py-3 rounded-xl text-sm resize-none"
@@ -644,16 +764,17 @@ function renderField(field, sectionKey) {
         </div>
       </div>`;
   }
-  
+
+  // ── Text ─────────────────────────────────────────────────────
   return `
     <div>
       <label class="text-xs font-medium text-slate-400 uppercase tracking-wider mb-1.5 flex items-center justify-between">
         <span>${field.label}</span>
-        <button onclick="aiAssistField('${sectionKey}', '${field.key}')" class="text-cyan-400/50 hover:text-cyan-400 transition-colors">
+        <button onclick="aiAssistField('${sectionKey}','${field.key}')" class="text-cyan-400/50 hover:text-cyan-400 transition-colors">
           <i class="fas fa-wand-magic-sparkles text-xs"></i>
         </button>
       </label>
-      <input type="text" oninput="onFieldInput('${sectionKey}', '${field.key}', this.value)"
+      <input type="text" oninput="onFieldInput('${sectionKey}','${field.key}',this.value)"
         value="${escHtml(value)}"
         placeholder="${field.placeholder || ''}"
         class="deploy-input w-full px-4 py-3 rounded-xl text-sm"
@@ -661,19 +782,147 @@ function renderField(field, sectionKey) {
     </div>`;
 }
 
+// ── Feature List helpers ─────────────────────────────────────
+function featureListItem(fieldKey, sectionKey, text, idx) {
+  return `
+    <div class="flex items-start gap-2 feature-item" id="fitem-${fieldKey}-${idx}">
+      <div class="flex-shrink-0 w-5 h-5 mt-2.5 rounded-full flex items-center justify-center"
+           style="background:rgba(34,211,238,0.1); border:1px solid rgba(34,211,238,0.2)">
+        <i class="fas fa-check text-cyan-400" style="font-size:8px"></i>
+      </div>
+      <textarea
+        rows="1"
+        class="deploy-input flex-1 px-3 py-2 rounded-xl text-sm resize-none"
+        style="min-height:36px; overflow:hidden"
+        placeholder="Describe this feature…"
+        oninput="onFeatureItemInput('${fieldKey}','${sectionKey}',this)"
+        onfocus="this.style.height='auto'; this.style.height=this.scrollHeight+'px'"
+        id="fitem-input-${fieldKey}-${idx}"
+        data-idx="${idx}">${escHtml(text)}</textarea>
+      <button type="button"
+        onclick="removeFeatureItem('${fieldKey}','${sectionKey}',${idx})"
+        class="flex-shrink-0 mt-2.5 text-slate-700 hover:text-red-400 transition-colors">
+        <i class="fas fa-xmark text-xs"></i>
+      </button>
+    </div>`;
+}
+
+function addFeatureItem(fieldKey, sectionKey) {
+  let items = [];
+  try { items = JSON.parse(STATE.promptData[fieldKey] || '[]'); } catch { items = []; }
+  items.push('');
+  STATE.promptData[fieldKey] = JSON.stringify(items);
+  // Re-render just the list
+  const listEl = document.getElementById(`flist-${fieldKey}`);
+  if (listEl) {
+    listEl.innerHTML = items.map((item, i) => featureListItem(fieldKey, sectionKey, item, i)).join('');
+    // Auto-focus the new item
+    const lastInput = document.getElementById(`fitem-input-${fieldKey}-${items.length - 1}`);
+    if (lastInput) { lastInput.focus(); lastInput.style.height = 'auto'; lastInput.style.height = lastInput.scrollHeight + 'px'; }
+  }
+  scheduleFeatureSave(fieldKey, sectionKey);
+}
+
+function removeFeatureItem(fieldKey, sectionKey, idx) {
+  let items = [];
+  try { items = JSON.parse(STATE.promptData[fieldKey] || '[]'); } catch { items = []; }
+  items.splice(idx, 1);
+  STATE.promptData[fieldKey] = JSON.stringify(items);
+  const listEl = document.getElementById(`flist-${fieldKey}`);
+  if (listEl) {
+    listEl.innerHTML = items.length === 0
+      ? `<p class="text-xs text-slate-600 italic py-1">No features added yet — AI will create a great set for you.</p>`
+      : items.map((item, i) => featureListItem(fieldKey, sectionKey, item, i)).join('');
+  }
+  scheduleFeatureSave(fieldKey, sectionKey);
+  // Rebuild progress dots
+  renderSectionDots();
+}
+
+function onFeatureItemInput(fieldKey, sectionKey, el) {
+  el.style.height = 'auto';
+  el.style.height = el.scrollHeight + 'px';
+  const idx = parseInt(el.dataset.idx);
+  let items = [];
+  try { items = JSON.parse(STATE.promptData[fieldKey] || '[]'); } catch { items = []; }
+  items[idx] = el.value;
+  STATE.promptData[fieldKey] = JSON.stringify(items);
+  scheduleFeatureSave(fieldKey, sectionKey);
+}
+
+const featureSaveTimers = {};
+function scheduleFeatureSave(fieldKey, sectionKey) {
+  clearTimeout(featureSaveTimers[fieldKey]);
+  featureSaveTimers[fieldKey] = setTimeout(() => {
+    saveField(sectionKey, fieldKey, STATE.promptData[fieldKey], true);
+    renderSectionDots();
+  }, 900);
+}
+
+// ── Color Scheme helpers ─────────────────────────────────────
+function selectPalette(sectionKey, fieldKey, paletteId) {
+  if (paletteId === 'custom') {
+    // Show color picker row, don't save yet
+    const row = document.getElementById(`custom-color-row-${fieldKey}`);
+    if (row) row.classList.remove('hidden');
+    // Still mark this palette visually
+    document.querySelectorAll(`#palette-grid-${fieldKey} .palette-btn`).forEach(btn => {
+      const active = btn.dataset.palette === paletteId;
+      btn.classList.toggle('border-cyan-400', active);
+      btn.classList.toggle('bg-cyan-400/10', active);
+      btn.classList.toggle('border-slate-700', !active);
+    });
+    return;
+  }
+  const row = document.getElementById(`custom-color-row-${fieldKey}`);
+  if (row) row.classList.add('hidden');
+  // Update button states
+  document.querySelectorAll(`#palette-grid-${fieldKey} .palette-btn`).forEach(btn => {
+    const active = btn.dataset.palette === paletteId;
+    btn.classList.toggle('border-cyan-400', active);
+    btn.classList.toggle('bg-cyan-400/10', active);
+    btn.classList.toggle('border-slate-700', !active);
+    btn.querySelector('p').classList.toggle('text-cyan-400', active);
+    btn.querySelector('p').classList.toggle('text-slate-500', !active);
+  });
+  STATE.promptData[fieldKey] = paletteId;
+  saveField(sectionKey, fieldKey, paletteId, true);
+  renderSectionDots();
+}
+
+function onCustomColor(sectionKey, fieldKey, hex) {
+  const val = `custom:${hex}`;
+  STATE.promptData[fieldKey] = val;
+  saveField(sectionKey, fieldKey, val, true);
+  renderSectionDots();
+}
+
+function fieldHasValue(field) {
+  const v = STATE.promptData[field.key];
+  if (!v) return false;
+  if (field.type === 'feature-list') {
+    try { const arr = JSON.parse(v); return arr.some(x => x && x.trim().length > 0); } catch { return v.length > 0; }
+  }
+  if (field.type === 'color-scheme') return v && v.length > 0;
+  if (field.type === 'rich-comments') return v && v.trim().length > 5;
+  // Optional visual fields — count any non-empty value
+  if (['visual_features','ui_ux_notes'].includes(field.key)) return v && v.trim().length > 0;
+  return v && v.trim().length > 5;
+}
+
 function renderSectionDots() {
   const container = document.getElementById('section-dots');
   container.innerHTML = PROMPT_SECTIONS_CONFIG.map(s => {
-    const completed = s.fields.filter(f => {
-      const v = STATE.promptData[f.key];
-      return v && v.trim().length > 5;
-    }).length;
-    const pct = completed / s.fields.length;
+    // Optional sections (visual extras, comments) — don't count as blocking
+    const isOptional = ['visual', 'comments'].includes(s.key);
+    const completed = s.fields.filter(f => fieldHasValue(f)).length;
+    const total = s.fields.filter(f => !['visual_features','ui_ux_notes','additional_comments'].includes(f.key)).length || s.fields.length;
+    const pct = isOptional ? (completed / s.fields.length) : (completed / total);
     let color = 'bg-slate-700';
-    if (pct === 1) color = 'bg-emerald-400';
-    else if (pct > 0) color = 'bg-amber-400';
-    
-    return `<div class="w-2 h-2 rounded-full ${color}" title="${s.label}: ${completed}/${s.fields.length}"></div>`;
+    if (pct >= 1) color = 'bg-emerald-400';
+    else if (pct > 0) color = isOptional ? 'bg-purple-400' : 'bg-amber-400';
+    const tip = isOptional ? `${s.label} (optional): ${completed}/${s.fields.length}` : `${s.label}: ${completed}/${total}`;
+    return `<div class="w-2 h-2 rounded-full ${color}" title="${tip}"></div>`;
   }).join('');
 }
 
@@ -771,10 +1020,11 @@ async function aiAssistSection(sectionKey) {
   if (!section) return;
   
   for (const field of section.fields) {
-    const val = STATE.promptData[field.key];
-    if (!val || val.trim().length < 5) {
+    // Skip color-scheme and rich-comments — those require human input
+    if (['color-scheme', 'rich-comments'].includes(field.type)) continue;
+    if (!fieldHasValue(field)) {
       await aiAssistField(sectionKey, field.key);
-      await new Promise(r => setTimeout(r, 500));
+      await new Promise(r => setTimeout(r, 600));
     }
   }
 }
