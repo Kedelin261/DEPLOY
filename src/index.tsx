@@ -308,6 +308,27 @@ function getAppHTML(): string {
       transition: width 0.5s ease;
     }
 
+    /* Thinking indicator */
+    #thinking-line {
+      transition: opacity 0.3s ease;
+    }
+    #thinking-line .thinking-text {
+      animation: thinking-pulse 1.8s ease-in-out infinite;
+    }
+    @keyframes thinking-pulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.45; }
+    }
+    /* Spinning ⟳ character */
+    #thinking-line .thinking-text::first-letter {
+      display: inline-block;
+      animation: spin-thinking 1.2s linear infinite;
+    }
+    @keyframes spin-thinking {
+      from { transform: rotate(0deg); }
+      to   { transform: rotate(360deg); }
+    }
+
     /* Build preview terminal */
     #preview-terminal {
       font-family: 'Menlo', 'Monaco', 'Courier New', monospace;

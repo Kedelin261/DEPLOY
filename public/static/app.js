@@ -1793,19 +1793,36 @@ const BUILD_PREVIEW = {
   totalSteps: 8,
 };
 
-const BUILD_LOG_LINES = [
-  '▶ Parsing app blueprint...',
-  '▶ Analyzing feature requirements...',
-  '▶ Mapping user stories to architecture...',
-  '▶ Designing data models and relationships...',
-  '▶ Planning API surface area...',
-  '▶ Generating UI/UX flow diagrams...',
-  '▶ Selecting optimal tech stack...',
-  '▶ Creating deployment configuration...',
-  '▶ Generating security & auth layer...',
-  '▶ Finalizing business logic specification...',
-  '▶ Writing API contracts...',
-  '▶ Assembling complete build package...',
+// Build log phases — each phase has lines that print before the AI goes "deep"
+const BUILD_LOG_PHASES = [
+  // Phase 1 — fast startup (0–4s)
+  { lines: [
+    '▶ Connecting to AI orchestration layer...',
+    '▶ Parsing app blueprint and prompt fields...',
+    '▶ Loading model weights — claude-3.5...',
+    '▶ Validating project structure...',
+  ], delay: 600 },
+  // Phase 2 — requirements (4–10s)
+  { lines: [
+    '▶ Analyzing core feature requirements...',
+    '▶ Mapping user stories to architecture patterns...',
+    '▶ Identifying data entities and relationships...',
+    '▶ Resolving role and permission model...',
+  ], delay: 1200 },
+  // Phase 3 — AI heavy lifting — this is where "Thinking..." kicks in
+  { lines: [
+    '▶ Generating system architecture...',
+    '▶ Designing API surface area and contracts...',
+    '▶ Writing database schema and migrations...',
+    '▶ Speccing UI/UX screens and flows...',
+  ], delay: 2200 },
+  // Phase 4 — final assembly
+  { lines: [
+    '▶ Generating security and auth layer...',
+    '▶ Creating deployment configuration...',
+    '▶ Finalizing business logic specification...',
+    '▶ Assembling complete build package...',
+  ], delay: 2800 },
 ];
 
 function openBuildPreview(jobId, projectId, projectName) {
@@ -1887,85 +1904,159 @@ function updateBuildPreviewProgress(step, totalSteps, statusText) {
 }
 
 let _buildLogInterval = null;
+let _thinkingInterval = null;
+let _thinkingEl = null;
+
+// Starts/updates the animated "Thinking..." line at the cursor
+function startThinkingIndicator() {
+  stopThinkingIndicator(); // clear any previous
+
+  const container = document.getElementById('preview-log-lines');
+  if (!container) return;
+
+  _thinkingEl = document.createElement('div');
+  _thinkingEl.id = 'thinking-line';
+  _thinkingEl.className = 'text-amber-400 leading-relaxed flex items-center gap-2';
+  _thinkingEl.innerHTML = '<span class="thinking-text">⟳ Thinking...</span>';
+  container.appendChild(_thinkingEl);
+
+  const terminal = document.getElementById('preview-terminal');
+  if (terminal) terminal.scrollTop = terminal.scrollHeight;
+
+  // Cycle through thinking messages to show the AI is active
+  const thinkingMsgs = [
+    '⟳ Thinking...',
+    '⟳ Processing architecture patterns...',
+    '⟳ Reasoning through data models...',
+    '⟳ Thinking...',
+    '⟳ Evaluating API design options...',
+    '⟳ Thinking...',
+    '⟳ Cross-referencing best practices...',
+    '⟳ Thinking...',
+    '⟳ Generating specification output...',
+    '⟳ Thinking...',
+    '⟳ Validating schema relationships...',
+    '⟳ Thinking...',
+  ];
+  let msgIdx = 0;
+  _thinkingInterval = setInterval(() => {
+    if (_thinkingEl) {
+      msgIdx = (msgIdx + 1) % thinkingMsgs.length;
+      const span = _thinkingEl.querySelector('.thinking-text');
+      if (span) span.textContent = thinkingMsgs[msgIdx];
+      if (terminal) terminal.scrollTop = terminal.scrollHeight;
+    }
+  }, 2400);
+}
+
+function stopThinkingIndicator() {
+  if (_thinkingInterval) { clearInterval(_thinkingInterval); _thinkingInterval = null; }
+  if (_thinkingEl) { _thinkingEl.remove(); _thinkingEl = null; }
+  const existing = document.getElementById('thinking-line');
+  if (existing) existing.remove();
+}
 
 function startBuildStream(jobId, projectId) {
-  // Close any previous connection
-  if (BUILD_PREVIEW.eventSource) {
-    BUILD_PREVIEW.eventSource.close();
-  }
+  if (BUILD_PREVIEW.eventSource) BUILD_PREVIEW.eventSource.close();
+  if (_buildLogInterval) clearInterval(_buildLogInterval);
+  stopThinkingIndicator();
 
-  // Simulate log lines appearing during build
-  let logIdx = 0;
-  _buildLogInterval = setInterval(() => {
-    if (logIdx < BUILD_LOG_LINES.length) {
-      addPreviewLogLine(BUILD_LOG_LINES[logIdx], 'default');
-      logIdx++;
-    }
-  }, 900);
-
-  // Poll job status every 2s via REST (SSE not supported in all wrangler setups)
-  let pollCount = 0;
+  let phaseIdx = 0;
+  let lineIdx = 0;
   let buildDone = false;
+  let pollCount = 0;
+  let allPhasesComplete = false;
 
+  // Step through log phases with variable timing
+  const printNextLine = () => {
+    if (buildDone) return;
+    const phase = BUILD_LOG_PHASES[phaseIdx];
+    if (!phase) {
+      // All scripted lines done — show "Thinking..." until build completes
+      allPhasesComplete = true;
+      startThinkingIndicator();
+      updateBuildPreviewProgress(6, 8, 'AI is generating your specification…');
+      return;
+    }
+    if (lineIdx < phase.lines.length) {
+      addPreviewLogLine(phase.lines[lineIdx], 'default');
+      lineIdx++;
+      // Progress bar moves with phases
+      const totalLines = BUILD_LOG_PHASES.reduce((s, p) => s + p.lines.length, 0);
+      const linesDone = BUILD_LOG_PHASES.slice(0, phaseIdx).reduce((s, p) => s + p.lines.length, 0) + lineIdx;
+      const step = Math.max(1, Math.min(6, Math.round((linesDone / totalLines) * 6)));
+      const stepLabels = ['Initializing…','Parsing requirements…','Mapping architecture…','Designing data layer…','Generating spec…','AI processing…','Finalizing…','Complete!'];
+      updateBuildPreviewProgress(step, 8, stepLabels[step - 1] || 'Processing…');
+      _buildLogInterval = setTimeout(printNextLine, phase.delay + Math.random() * 400);
+    } else {
+      // Move to next phase
+      phaseIdx++;
+      lineIdx = 0;
+      // Brief pause between phases
+      if (phaseIdx < BUILD_LOG_PHASES.length) {
+        addPreviewLogLine('', 'dim'); // spacer
+        _buildLogInterval = setTimeout(printNextLine, 500);
+      } else {
+        allPhasesComplete = true;
+        startThinkingIndicator();
+        updateBuildPreviewProgress(6, 8, 'AI is generating your specification…');
+      }
+    }
+  };
+
+  // Start log printing
+  _buildLogInterval = setTimeout(printNextLine, 300);
+
+  // Poll job status
   const pollStatus = async () => {
     if (buildDone) return;
     try {
       const { data } = await API.get(`/projects/${projectId}/jobs`);
       const jobs = data?.data || [];
-      const job = jobs.find(j => j.id === jobId) || jobs[0];
+      const job = (jobId && jobId !== 'pending')
+        ? (jobs.find(j => j.id === jobId) || jobs[0])
+        : jobs[0];
 
       if (job) {
-        const statusMessages = {
-          queued: 'Waiting in queue…',
-          processing: BUILD_LOG_LINES[Math.min(pollCount, BUILD_LOG_LINES.length - 1)],
-          completed: 'Build complete! Packaging results…',
-          failed: 'Build encountered an error',
-        };
-
-        const stepMap = { queued: 1, processing: Math.min(2 + pollCount, 7), completed: 8, failed: 0 };
-        const step = stepMap[job.status] || 1;
-        
-        if (job.status !== 'failed') {
-          updateBuildPreviewProgress(step, 8, statusMessages[job.status] || 'Processing…');
-        }
-
         if (job.status === 'completed') {
           buildDone = true;
-          clearInterval(_buildLogInterval);
-          
+          if (_buildLogInterval) { clearTimeout(_buildLogInterval); _buildLogInterval = null; }
+          stopThinkingIndicator();
+
           addPreviewLogLine('', 'dim');
-          addPreviewLogLine('✓ Build specification generated', 'success');
-          addPreviewLogLine('✓ Architecture plan finalized', 'success');
+          addPreviewLogLine('✓ AI specification generated successfully', 'success');
+          addPreviewLogLine('✓ Architecture and data models finalized', 'success');
           addPreviewLogLine('✓ API contracts written', 'success');
-          addPreviewLogLine('✓ Ready for testing & revisions', 'success');
+          addPreviewLogLine('✓ Build package ready', 'success');
 
           updateBuildPreviewProgress(8, 8, 'Build complete!');
 
           const elapsed = Math.round((Date.now() - BUILD_PREVIEW.startTime) / 1000);
           const timeEl = document.getElementById('preview-build-time');
           if (timeEl) timeEl.textContent = `${elapsed}s`;
-
           const scoreEl = document.getElementById('preview-readiness-score');
-          if (scoreEl) scoreEl.textContent = 'Readiness: 78% — Ready to launch';
+          if (scoreEl) scoreEl.textContent = 'Readiness: 78% — Ready for testing';
 
           document.getElementById('preview-complete-section').classList.remove('hidden');
           document.getElementById('preview-building-section').classList.add('hidden');
-          document.getElementById('preview-cursor').style.display = 'none';
+          const cursor = document.getElementById('preview-cursor');
+          if (cursor) cursor.style.display = 'none';
 
-          // Update project list
           await loadProjects();
           return;
         }
 
         if (job.status === 'failed') {
           buildDone = true;
-          clearInterval(_buildLogInterval);
-          addPreviewLogLine('✗ Build failed: ' + (job.error_message || 'AI provider error'), 'error');
-          addPreviewLogLine('ℹ Coins have been returned to your wallet', 'info');
+          if (_buildLogInterval) { clearTimeout(_buildLogInterval); _buildLogInterval = null; }
+          stopThinkingIndicator();
+
+          addPreviewLogLine('', 'dim');
+          addPreviewLogLine('✗ Build failed — coins returned to wallet', 'error');
           updateBuildPreviewProgress(0, 8, 'Build failed');
           document.getElementById('preview-status-text').style.color = '#f87171';
           document.getElementById('preview-building-section').innerHTML =
-            '<button onclick="closeBuildPreview()" class="w-full py-3 rounded-xl text-sm font-semibold bg-slate-800 text-slate-300">Close</button>';
+            '<button onclick="closeBuildPreview()" class="w-full py-3 rounded-xl text-sm font-semibold bg-slate-800 text-slate-300 hover:bg-slate-700 transition-colors">Close</button>';
 
           if (STATE.user) {
             const { data: me } = await API.get('/auth/me').catch(() => ({ data: null }));
@@ -1973,20 +2064,22 @@ function startBuildStream(jobId, projectId) {
           }
           return;
         }
+
+        // Still processing — keep "Thinking..." visible and update status text
+        if (allPhasesComplete && job.status === 'processing') {
+          updateBuildPreviewProgress(6, 8, 'AI is working — almost there…');
+        }
       }
 
       pollCount++;
-      if (pollCount < 60 && !buildDone) {
-        setTimeout(pollStatus, 2000);
-      }
-    } catch (err) {
+      if (pollCount < 90 && !buildDone) setTimeout(pollStatus, 2000);
+    } catch {
       pollCount++;
-      if (pollCount < 60) setTimeout(pollStatus, 2000);
+      if (pollCount < 90 && !buildDone) setTimeout(pollStatus, 2000);
     }
   };
 
-  // Start polling after 1s
-  setTimeout(pollStatus, 1000);
+  setTimeout(pollStatus, 1500);
 }
 
 function onBuildPreviewComplete() {
@@ -2037,24 +2130,25 @@ async function submitBuildRequest() {
         document.getElementById('header-coins').textContent = STATE.user.coin_balance.toLocaleString();
       }
 
-      // Build is already DONE (synchronous) — trigger the complete state
+      // Build is already DONE (synchronous) — stop all animations and show complete state
+      if (_buildLogInterval) { clearTimeout(_buildLogInterval); _buildLogInterval = null; }
+      stopThinkingIndicator();
+
       const elapsed = Math.round((Date.now() - BUILD_PREVIEW.startTime) / 1000);
       const timeEl = document.getElementById('preview-build-time');
       if (timeEl) timeEl.textContent = `${elapsed}s`;
-      
-      // Update the terminal with success lines
-      clearInterval(_buildLogInterval);
+
       addPreviewLogLine('', 'dim');
       addPreviewLogLine('✓ AI specification generated successfully', 'success');
-      addPreviewLogLine('✓ Architecture plan finalized', 'success');
+      addPreviewLogLine('✓ Architecture and data models finalized', 'success');
       addPreviewLogLine('✓ API contracts written', 'success');
-      addPreviewLogLine('✓ Build package complete', 'success');
-      
+      addPreviewLogLine('✓ Build package ready', 'success');
+
       updateBuildPreviewProgress(8, 8, 'Build complete!');
-      
+
       const scoreEl = document.getElementById('preview-readiness-score');
       if (scoreEl) scoreEl.textContent = 'Readiness: 78% — Ready for testing';
-      
+
       document.getElementById('preview-complete-section').classList.remove('hidden');
       document.getElementById('preview-building-section').classList.add('hidden');
       const cursor = document.getElementById('preview-cursor');
