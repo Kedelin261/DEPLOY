@@ -250,15 +250,35 @@ projects.post('/:id/build', authMiddleware(), async (c) => {
     `UPDATE projects SET status = 'building', updated_at = CURRENT_TIMESTAMP WHERE id = ?`
   ).bind(projectId).run();
 
-  // In a real system this would go into Cloudflare Queues
-  // For MVP: process immediately
-  void this_processBuildJob(c.env, jobId, user.id, projectId, session.id, selectedModelId, type, holdId, session.fields_json);
+  // Process build synchronously within the request lifecycle.
+  // Cloudflare Workers kills void background tasks after the response is sent,
+  // so we MUST await the AI call before returning to the client.
+  // The frontend polls /jobs for status updates while showing the preview.
+  try {
+    await this_processBuildJob(c.env, jobId, user.id, projectId, session.id, selectedModelId, type, holdId, session.fields_json);
+  } catch (bgErr) {
+    console.error('Build processor error:', bgErr);
+    // Already handled inside this_processBuildJob — just log here
+  }
+
+  // Re-read final job status to return accurate info
+  const finalJob = await c.env.DB.prepare(
+    'SELECT status, error_message FROM build_jobs WHERE id = ?'
+  ).bind(jobId).first<{ status: string; error_message: string }>();
+
+  if (finalJob?.status === 'failed') {
+    return c.json({
+      success: false,
+      error: finalJob.error_message || 'Build failed. Coins returned.',
+      data: { job_id: jobId }
+    }, 500);
+  }
 
   return c.json({
     success: true,
-    data: { job_id: jobId, coins_held: coinCost, status: 'queued' },
-    message: `Build job queued! ${coinCost} coins reserved.`
-  }, 202);
+    data: { job_id: jobId, coins_held: coinCost, status: finalJob?.status || 'completed' },
+    message: `Build complete! ${coinCost} coins used.`
+  }, 200);
 });
 
 // Background build processor
@@ -699,17 +719,34 @@ projects.post('/:id/revise', authMiddleware(), async (c) => {
     'SELECT product_summary FROM generated_specs WHERE project_id = ? ORDER BY created_at DESC LIMIT 1'
   ).bind(projectId).first<{ product_summary: string }>();
 
-  void this_processBuildJob(
-    c.env, jobId, user.id, projectId,
-    session?.id || 'none', selectedModelId, 'revision', holdId,
-    JSON.stringify({ revision_notes, build_summary: latestSpec?.product_summary || '' })
-  );
+  // Process revision synchronously (same reason as build — background tasks get killed)
+  try {
+    await this_processBuildJob(
+      c.env, jobId, user.id, projectId,
+      session?.id || 'none', selectedModelId, 'revision', holdId,
+      JSON.stringify({ revision_notes, build_summary: latestSpec?.product_summary || '' })
+    );
+  } catch (err) {
+    console.error('Revision processor error:', err);
+  }
+
+  const finalJob = await c.env.DB.prepare(
+    'SELECT status, error_message FROM build_jobs WHERE id = ?'
+  ).bind(jobId).first<{ status: string; error_message: string }>();
+
+  if (finalJob?.status === 'failed') {
+    return c.json({
+      success: false,
+      error: finalJob.error_message || 'Revision failed. Coins returned.',
+      data: { job_id: jobId }
+    }, 500);
+  }
 
   return c.json({
     success: true,
-    data: { job_id: jobId, coins_held: coinCost },
-    message: `Revision queued! ${coinCost} coins reserved.`
-  }, 202);
+    data: { job_id: jobId, coins_held: coinCost, status: 'completed' },
+    message: `Revision applied! ${coinCost} coins used.`
+  }, 200);
 });
 
 export default projects;

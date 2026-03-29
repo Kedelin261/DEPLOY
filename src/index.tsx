@@ -4,7 +4,7 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
-import { serveStatic } from 'hono/cloudflare-workers';
+// serveStatic is NOT used — static files (app.js, styles.css) are inlined or served via Cloudflare Pages automatically
 import type { Bindings, Variables } from './types';
 
 // Route imports
@@ -40,9 +40,9 @@ app.use('*', async (c, next) => {
 
 // ============================================================
 // STATIC FILES
+// Cloudflare Pages serves public/ automatically — no serveStatic needed.
+// wrangler pages dev also handles public/ assets natively.
 // ============================================================
-app.use('/static/*', serveStatic({ root: './' }));
-app.use('/favicon.ico', serveStatic({ path: './favicon.ico' }));
 
 // ============================================================
 // API ROUTES
@@ -60,8 +60,38 @@ app.route('/api/deployments', deploymentRoutes);
 app.route('/api/admin', adminRoutes);
 app.route('/api/notifications', notificationRoutes);
 
-// Health check
-app.get('/api/health', (c) => {
+// Health check — also cleans up any jobs stuck in 'processing' from a previous server crash
+app.get('/api/health', async (c) => {
+  // Auto-fix: reset any jobs stuck in processing/queued for > 10 minutes
+  // These are jobs where the background task was killed by the runtime
+  try {
+    const stuckJobs = await c.env.DB.prepare(
+      `SELECT id, user_id, coin_hold_id, coins_held FROM build_jobs 
+       WHERE status IN ('processing','queued') 
+       AND created_at < datetime('now', '-10 minutes')`
+    ).all<{ id: string; user_id: string; coin_hold_id: string; coins_held: number }>();
+
+    for (const job of stuckJobs.results) {
+      await c.env.DB.prepare(
+        `UPDATE build_jobs SET status='failed', error_message='Build timed out — please try again', completed_at=CURRENT_TIMESTAMP WHERE id=?`
+      ).bind(job.id).run();
+      // Return held coins
+      if (job.coin_hold_id) {
+        await c.env.DB.prepare(
+          `UPDATE coin_holds SET status='released', released_at=CURRENT_TIMESTAMP WHERE id=?`
+        ).bind(job.coin_hold_id).run();
+        await c.env.DB.prepare(
+          `UPDATE coin_wallets SET balance=balance+?, updated_at=CURRENT_TIMESTAMP WHERE user_id=?`
+        ).bind(job.coins_held || 0, job.user_id).run();
+      }
+    }
+    // Reset any project stuck in 'building'
+    await c.env.DB.prepare(
+      `UPDATE projects SET status='draft', updated_at=CURRENT_TIMESTAMP 
+       WHERE status='building' AND updated_at < datetime('now', '-10 minutes')`
+    ).run();
+  } catch { /* non-fatal */ }
+
   return c.json({
     status: 'healthy',
     service: 'DEPLOY Platform',
