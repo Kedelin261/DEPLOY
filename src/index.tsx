@@ -277,6 +277,25 @@ function getAppHTML(): string {
       background: linear-gradient(90deg, #06b6d4, #22d3ee, #fbbf24);
       transition: width 0.5s ease;
     }
+
+    /* Build preview terminal */
+    #preview-terminal {
+      font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+      line-height: 1.6;
+      scrollbar-width: thin;
+      scrollbar-color: #374151 transparent;
+    }
+    #preview-terminal::-webkit-scrollbar { width: 4px; }
+    #preview-terminal::-webkit-scrollbar-thumb { background: #374151; border-radius: 4px; }
+    .typing-line {
+      overflow: hidden;
+      white-space: nowrap;
+      animation: typeIn 0.4s steps(40) forwards;
+    }
+    @keyframes typeIn {
+      from { max-width: 0; opacity: 0; }
+      to { max-width: 100%; opacity: 1; }
+    }
     
     /* Input styles */
     .deploy-input {
@@ -1386,6 +1405,97 @@ function getAppHTML(): string {
       <button onclick="saveTask()" class="btn-primary flex-1 py-3 rounded-xl text-sm font-semibold">
         <i class="fas fa-plus mr-1"></i> Add Task
       </button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     BUILD PREVIEW MODAL (Genspark-style real-time streaming)
+     ============================================================ -->
+<div id="modal-build-preview" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4">
+  <div class="modal-overlay absolute inset-0"></div>
+  <div class="relative w-full max-w-2xl bg-slate-900 rounded-3xl flex flex-col overflow-hidden border border-slate-700/60" style="max-height:90vh">
+    <!-- Header -->
+    <div class="flex-shrink-0 px-6 pt-5 pb-4 border-b border-slate-800">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-2xl flex items-center justify-center" style="background:linear-gradient(135deg,#6366f1,#4f46e5)">
+            <i class="fas fa-brain text-white text-sm"></i>
+          </div>
+          <div>
+            <h3 class="text-base font-bold text-white">AI is Building Your App</h3>
+            <p class="text-xs text-slate-400" id="preview-project-name">Initializing…</p>
+          </div>
+        </div>
+        <!-- Live indicator -->
+        <div class="flex items-center gap-2 px-3 py-1.5 bg-red-500/10 border border-red-500/30 rounded-full">
+          <div class="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+          <span class="text-xs font-semibold text-red-400">LIVE</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Progress bar -->
+    <div class="flex-shrink-0 px-6 py-4 border-b border-slate-800/60">
+      <div class="flex items-center justify-between mb-2">
+        <p class="text-sm font-semibold text-white" id="preview-status-text">Initializing AI engine…</p>
+        <span class="text-xs text-slate-400" id="preview-step-counter">1 / 8</span>
+      </div>
+      <div class="h-2 bg-slate-800 rounded-full overflow-hidden">
+        <div id="preview-progress-bar" class="h-full rounded-full transition-all duration-500"
+          style="width:5%;background:linear-gradient(90deg,#6366f1,#06b6d4)"></div>
+      </div>
+      <!-- Step dots -->
+      <div class="flex gap-1.5 mt-3 justify-center">
+        <div class="h-1 w-8 rounded-full bg-indigo-500" id="pstep-1"></div>
+        <div class="h-1 w-8 rounded-full bg-slate-700" id="pstep-2"></div>
+        <div class="h-1 w-8 rounded-full bg-slate-700" id="pstep-3"></div>
+        <div class="h-1 w-8 rounded-full bg-slate-700" id="pstep-4"></div>
+        <div class="h-1 w-8 rounded-full bg-slate-700" id="pstep-5"></div>
+        <div class="h-1 w-8 rounded-full bg-slate-700" id="pstep-6"></div>
+        <div class="h-1 w-8 rounded-full bg-slate-700" id="pstep-7"></div>
+        <div class="h-1 w-8 rounded-full bg-slate-700" id="pstep-8"></div>
+      </div>
+    </div>
+
+    <!-- Live output terminal -->
+    <div class="flex-1 overflow-y-auto px-6 py-4 font-mono text-xs" id="preview-terminal"
+      style="background:#0d1117;min-height:280px;max-height:380px">
+      <div class="text-emerald-400 mb-2">$ deploy build --mode=ai --model=claude-3.5</div>
+      <div id="preview-log-lines" class="space-y-0.5">
+        <div class="text-slate-400 typing-line">Connecting to AI orchestration layer...</div>
+      </div>
+      <div id="preview-cursor" class="inline-block w-2 h-3.5 bg-emerald-400 animate-pulse ml-0.5"></div>
+    </div>
+
+    <!-- Bottom section -->
+    <div class="flex-shrink-0 px-6 py-4 border-t border-slate-800">
+      <div id="preview-complete-section" class="hidden">
+        <div class="flex items-center gap-3 p-4 rounded-2xl border border-emerald-500/30 mb-4" style="background:rgba(16,185,129,0.08)">
+          <div class="w-10 h-10 rounded-xl flex items-center justify-center bg-emerald-500">
+            <i class="fas fa-check text-white text-sm"></i>
+          </div>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm font-bold text-white">Build Complete!</p>
+            <p class="text-xs text-emerald-400" id="preview-readiness-score">Readiness: calculating...</p>
+          </div>
+          <div class="text-right">
+            <p class="text-xs text-slate-500">Build time</p>
+            <p class="text-sm font-bold text-white" id="preview-build-time">--s</p>
+          </div>
+        </div>
+        <button onclick="onBuildPreviewComplete()"
+          class="w-full py-3.5 rounded-2xl text-sm font-bold text-white flex items-center justify-center gap-2"
+          style="background:linear-gradient(135deg,#10b981,#059669)">
+          <i class="fas fa-flask"></i> Open Testing &amp; Revisions
+        </button>
+      </div>
+      <div id="preview-building-section">
+        <div class="flex items-center gap-3 text-xs text-slate-500">
+          <i class="fas fa-info-circle text-slate-600"></i>
+          <span>Your coins are reserved until the build completes. If it fails, they're fully returned.</span>
+        </div>
+      </div>
     </div>
   </div>
 </div>

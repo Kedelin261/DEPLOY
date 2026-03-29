@@ -275,13 +275,21 @@ async function this_processBuildJob(
     let fields: Record<string, string> = {};
     try { fields = JSON.parse(fieldsJson || '{}'); } catch { /* ignore */ }
 
+    const context = type === 'revision'
+      ? {
+          revision_notes: fields.revision_notes || 'General improvements',
+          build_summary: fields.build_summary || 'App specification',
+          prompt_data: fields
+        }
+      : { prompt_data: fields };
+
     const result = await aiService.processIntent({
       intent: type === 'revision' ? 'generate_revision' : 'generate_spec',
       userId,
       projectId,
       sessionId,
       modelId,
-      context: { prompt_data: fields }
+      context
     });
 
     if (result.success && result.output) {
@@ -378,6 +386,330 @@ projects.get('/:id/jobs', authMiddleware(), async (c) => {
   ).bind(projectId).all();
 
   return c.json({ success: true, data: jobs.results });
+});
+
+// GET /api/projects/:id/build-stream - SSE stream for real-time build progress
+projects.get('/:id/build-stream', authMiddleware(), async (c) => {
+  const user = c.get('user')!;
+  const projectId = c.req.param('id');
+  const jobId = c.req.query('job_id');
+
+  const project = await c.env.DB.prepare('SELECT id, name, status FROM projects WHERE id = ? AND user_id = ?').bind(projectId, user.id).first<{ id: string; name: string; status: string }>();
+  if (!project) return c.json({ success: false, error: 'Project not found' }, 404);
+
+  // Return SSE stream
+  const encoder = new TextEncoder();
+  
+  const stream = new ReadableStream({
+    async start(controller) {
+      const send = (event: string, data: Record<string, unknown>) => {
+        const msg = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+        controller.enqueue(encoder.encode(msg));
+      };
+
+      // Poll for job status updates
+      const maxPolls = 60; // 60 seconds max
+      let polls = 0;
+      
+      send('connected', { project_id: projectId, job_id: jobId });
+
+      const poll = async () => {
+        try {
+          let query = `SELECT bj.*, am.display_name as model_name 
+                       FROM build_jobs bj 
+                       LEFT JOIN ai_models am ON am.id = bj.model_id
+                       WHERE bj.project_id = ?`;
+          const params: (string | null)[] = [projectId];
+          
+          if (jobId) {
+            query += ' AND bj.id = ?';
+            params.push(jobId);
+          }
+          query += ' ORDER BY bj.created_at DESC LIMIT 1';
+          
+          const job = await c.env.DB.prepare(query).bind(...params).first<{
+            id: string; status: string; type: string; model_name: string;
+            error_message: string; result_summary: string;
+            started_at: string; completed_at: string;
+          }>();
+
+          if (job) {
+            send('progress', {
+              job_id: job.id,
+              status: job.status,
+              type: job.type,
+              model: job.model_name,
+              message: getStatusMessage(job.status, job.type, polls),
+              step: getProgressStep(job.status, polls),
+              total_steps: 8
+            });
+
+            if (job.status === 'completed') {
+              // Get the output
+              const output = await c.env.DB.prepare(
+                'SELECT * FROM generated_outputs WHERE job_id = ? AND is_current = 1 LIMIT 1'
+              ).bind(job.id).first<{ id: string; r2_key: string }>();
+              
+              // Get spec if available
+              const spec = await c.env.DB.prepare(
+                'SELECT product_summary, readiness_score FROM generated_specs WHERE job_id = ? LIMIT 1'
+              ).bind(job.id).first<{ product_summary: string; readiness_score: number }>();
+
+              send('complete', {
+                job_id: job.id,
+                output_id: output?.id,
+                product_summary: spec?.product_summary || job.result_summary,
+                readiness_score: spec?.readiness_score || 75,
+                message: 'Build complete! Your app spec is ready.'
+              });
+              controller.close();
+              return;
+            }
+
+            if (job.status === 'failed') {
+              send('error', {
+                job_id: job.id,
+                message: job.error_message || 'Build failed. Coins returned.'
+              });
+              controller.close();
+              return;
+            }
+          } else {
+            send('progress', {
+              status: 'queued',
+              message: 'Waiting for build to start...',
+              step: 1,
+              total_steps: 8
+            });
+          }
+
+          polls++;
+          if (polls < maxPolls) {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            await poll();
+          } else {
+            send('timeout', { message: 'Build is taking longer than expected. Check back shortly.' });
+            controller.close();
+          }
+        } catch (err) {
+          console.error('SSE poll error:', err);
+          send('error', { message: 'Stream error. Please refresh.' });
+          controller.close();
+        }
+      };
+
+      await poll();
+    }
+  });
+
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    }
+  });
+});
+
+function getStatusMessage(status: string, type: string, poll: number): string {
+  if (status === 'queued') return 'Initializing AI engine...';
+  if (status === 'processing') {
+    const steps = [
+      'Analyzing your app requirements...',
+      'Mapping feature architecture...',
+      'Designing data models and schemas...',
+      'Planning API contracts and endpoints...',
+      'Generating UI/UX specifications...',
+      'Creating deployment configuration...',
+      'Finalizing security & performance plans...',
+      'Assembling complete build specification...',
+      'Running quality checks...',
+      'Almost done! Packaging your build...',
+    ];
+    return steps[Math.min(poll, steps.length - 1)];
+  }
+  return 'Processing...';
+}
+
+function getProgressStep(status: string, poll: number): number {
+  if (status === 'queued') return 1;
+  if (status === 'processing') return Math.min(2 + Math.floor(poll * 0.5), 7);
+  if (status === 'completed') return 8;
+  return 1;
+}
+
+// POST /api/projects/:id/summarize - Generate build summary
+projects.post('/:id/summarize', authMiddleware(), async (c) => {
+  const user = c.get('user')!;
+  const projectId = c.req.param('id');
+
+  const project = await c.env.DB.prepare(
+    'SELECT * FROM projects WHERE id = ? AND user_id = ?'
+  ).bind(projectId, user.id).first<{ id: string; name: string; category: string; active_model_id: string }>();
+  if (!project) return c.json({ success: false, error: 'Project not found' }, 404);
+
+  // Check coins (5 coins for summary)
+  const wallet = await c.env.DB.prepare('SELECT balance FROM coin_wallets WHERE user_id = ?').bind(user.id).first<{ balance: number }>();
+  if (!wallet || wallet.balance < 5) {
+    return c.json({ success: false, error: 'Insufficient coins. Summary costs 5 coins.' }, 402);
+  }
+
+  // Get latest build output
+  const latestSpec = await c.env.DB.prepare(
+    `SELECT gs.product_summary, bj.result_summary 
+     FROM generated_specs gs
+     JOIN build_jobs bj ON bj.id = gs.job_id
+     WHERE gs.project_id = ? 
+     ORDER BY gs.created_at DESC LIMIT 1`
+  ).bind(projectId).first<{ product_summary: string; result_summary: string }>();
+
+  const modelId = project.active_model_id || 'model_gpt4o_mini';
+  const aiService = new AIService(c.env, c.env.DB);
+  
+  const result = await aiService.processIntent({
+    intent: 'summarize_build',
+    userId: user.id,
+    projectId,
+    modelId,
+    context: {
+      app_name: project.name,
+      category: project.category,
+      build_output: latestSpec?.product_summary || latestSpec?.result_summary || 'App specification generated successfully',
+    }
+  });
+
+  if (!result.success) {
+    return c.json({ success: false, error: result.error || 'Failed to generate summary' }, 500);
+  }
+
+  // Debit coins
+  const coinService = new CoinService(c.env.DB);
+  await coinService.debit(user.id, 5, 'spend', 'Build summary generation', projectId, 'project');
+
+  return c.json({ success: true, data: { summary: result.output, coins_spent: 5 } });
+});
+
+// POST /api/projects/:id/chat - AI chat about the build
+projects.post('/:id/chat', authMiddleware(), async (c) => {
+  const user = c.get('user')!;
+  const projectId = c.req.param('id');
+  const { message, history } = await c.req.json();
+
+  if (!message) return c.json({ success: false, error: 'Message is required' }, 400);
+
+  const project = await c.env.DB.prepare(
+    'SELECT * FROM projects WHERE id = ? AND user_id = ?'
+  ).bind(projectId, user.id).first<{ id: string; name: string; category: string; active_model_id: string }>();
+  if (!project) return c.json({ success: false, error: 'Project not found' }, 404);
+
+  // Check coins (2 coins per message)
+  const wallet = await c.env.DB.prepare('SELECT balance FROM coin_wallets WHERE user_id = ?').bind(user.id).first<{ balance: number }>();
+  if (!wallet || wallet.balance < 2) {
+    return c.json({ success: false, error: 'Insufficient coins. Chat costs 2 coins per message.' }, 402);
+  }
+
+  const latestSpec = await c.env.DB.prepare(
+    'SELECT product_summary FROM generated_specs WHERE project_id = ? ORDER BY created_at DESC LIMIT 1'
+  ).bind(projectId).first<{ product_summary: string }>();
+
+  const modelId = project.active_model_id || 'model_gpt4o_mini';
+  const aiService = new AIService(c.env, c.env.DB);
+
+  const result = await aiService.processIntent({
+    intent: 'chat',
+    userId: user.id,
+    projectId,
+    modelId,
+    context: {
+      app_name: project.name,
+      category: project.category,
+      build_summary: latestSpec?.product_summary || 'App specification generated',
+      message,
+      history: history ? JSON.stringify(history).substring(0, 2000) : '[]'
+    }
+  });
+
+  if (!result.success) {
+    return c.json({ success: false, error: result.error || 'Chat error' }, 500);
+  }
+
+  // Debit coins
+  const coinService = new CoinService(c.env.DB);
+  await coinService.debit(user.id, 2, 'spend', 'AI chat message', projectId, 'project');
+
+  return c.json({ success: true, data: { reply: result.output, coins_spent: 2 } });
+});
+
+// POST /api/projects/:id/revise - Submit a revision
+projects.post('/:id/revise', authMiddleware(), async (c) => {
+  const user = c.get('user')!;
+  const projectId = c.req.param('id');
+  const { revision_notes, model_id } = await c.req.json();
+
+  if (!revision_notes) return c.json({ success: false, error: 'Revision notes are required' }, 400);
+
+  const project = await c.env.DB.prepare(
+    'SELECT * FROM projects WHERE id = ? AND user_id = ?'
+  ).bind(projectId, user.id).first<{ id: string; name: string; active_model_id: string }>();
+  if (!project) return c.json({ success: false, error: 'Project not found' }, 404);
+
+  const selectedModelId = model_id || project.active_model_id || 'model_gpt4o_mini';
+
+  // Get model cost
+  const modelInfo = await c.env.DB.prepare(
+    'SELECT * FROM ai_models WHERE id = ? AND is_active = 1'
+  ).bind(selectedModelId).first<{ base_coin_cost: number; coin_cost_multiplier: number }>();
+
+  const coinCost = modelInfo ? Math.ceil(modelInfo.base_coin_cost * modelInfo.coin_cost_multiplier) : 10;
+
+  // Check coins
+  const wallet = await c.env.DB.prepare('SELECT balance FROM coin_wallets WHERE user_id = ?').bind(user.id).first<{ balance: number }>();
+  if (!wallet || wallet.balance < coinCost) {
+    return c.json({
+      success: false,
+      error: `Insufficient coins. Revision costs ${coinCost} coins. You have ${wallet?.balance || 0}.`,
+      data: { required_coins: coinCost, current_balance: wallet?.balance || 0 }
+    }, 402);
+  }
+
+  // Get session
+  const session = await c.env.DB.prepare(
+    `SELECT id FROM prompt_sessions WHERE project_id = ? ORDER BY updated_at DESC LIMIT 1`
+  ).bind(projectId).first<{ id: string }>();
+
+  const jobId = generateId('job');
+  const coinService = new CoinService(c.env.DB);
+  const holdId = await coinService.holdCoins(user.id, coinCost, jobId, 'revision');
+
+  await c.env.DB.prepare(
+    `INSERT INTO build_jobs (id, user_id, project_id, session_id, model_id, type, status, coins_held, coin_hold_id, prompt_snapshot)
+     VALUES (?, ?, ?, ?, ?, 'revision', 'queued', ?, ?, ?)`
+  ).bind(
+    jobId, user.id, projectId, session?.id || null, selectedModelId,
+    coinCost, holdId, JSON.stringify({ revision_notes })
+  ).run();
+
+  await c.env.DB.prepare(
+    `UPDATE projects SET status = 'building', updated_at = CURRENT_TIMESTAMP WHERE id = ?`
+  ).bind(projectId).run();
+
+  // Get latest spec for context
+  const latestSpec = await c.env.DB.prepare(
+    'SELECT product_summary FROM generated_specs WHERE project_id = ? ORDER BY created_at DESC LIMIT 1'
+  ).bind(projectId).first<{ product_summary: string }>();
+
+  void this_processBuildJob(
+    c.env, jobId, user.id, projectId,
+    session?.id || 'none', selectedModelId, 'revision', holdId,
+    JSON.stringify({ revision_notes, build_summary: latestSpec?.product_summary || '' })
+  );
+
+  return c.json({
+    success: true,
+    data: { job_id: jobId, coins_held: coinCost },
+    message: `Revision queued! ${coinCost} coins reserved.`
+  }, 202);
 });
 
 export default projects;
