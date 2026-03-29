@@ -469,62 +469,275 @@ function openProject(id) {
 // ============================================================
 // PROMPT BUILDER
 // ============================================================
+// ============================================================
+// TECH STACK CATALOG
+// ============================================================
+const TECH_STACK_CATALOG = {
+  database: [
+    { id: 'cloudflare_d1',   label: 'Cloudflare D1',   icon: 'fa-cloud',          tags: ['serverless','edge','sqlite'],      desc: 'SQLite at the edge — zero-config, global',         ai_compat: ['cursor','github_copilot','codeium','supermaven'], deploy_compat: ['cloudflare'], storage_compat: ['cloudflare_r2','cloudflare_kv'] },
+    { id: 'supabase',         label: 'Supabase',         icon: 'fa-database',       tags: ['postgres','realtime','auth'],       desc: 'Postgres + auth + realtime in one',                ai_compat: ['cursor','github_copilot','codeium','aider','continue'], deploy_compat: ['vercel','railway','fly','aws'], storage_compat: ['supabase_storage','aws_s3'] },
+    { id: 'planetscale',      label: 'PlanetScale',      icon: 'fa-database',       tags: ['mysql','serverless','branching'],   desc: 'Serverless MySQL with schema branching',           ai_compat: ['cursor','github_copilot','codeium'], deploy_compat: ['vercel','railway','aws'], storage_compat: ['aws_s3','cloudflare_r2'] },
+    { id: 'neon',             label: 'Neon',             icon: 'fa-bolt',           tags: ['postgres','serverless','branching'],'desc': 'Serverless Postgres with instant branching',     ai_compat: ['cursor','github_copilot','codeium','aider'], deploy_compat: ['vercel','railway','fly'], storage_compat: ['aws_s3','cloudflare_r2'] },
+    { id: 'turso',            label: 'Turso (libSQL)',   icon: 'fa-circle-nodes',   tags: ['sqlite','edge','distributed'],      desc: 'Edge SQLite — closest DB to every user',          ai_compat: ['cursor','codeium','continue'], deploy_compat: ['cloudflare','fly','railway'], storage_compat: ['cloudflare_r2','aws_s3'] },
+    { id: 'mongodb_atlas',    label: 'MongoDB Atlas',    icon: 'fa-leaf',           tags: ['nosql','document','atlas'],         desc: 'Document DB with global clusters',                 ai_compat: ['cursor','github_copilot','codeium'], deploy_compat: ['vercel','aws','railway'], storage_compat: ['aws_s3','gridfs'] },
+    { id: 'firebase',         label: 'Firebase / Firestore', icon: 'fa-fire',      tags: ['nosql','realtime','google'],        desc: 'Google real-time NoSQL + auth',                    ai_compat: ['github_copilot','codeium','cursor'], deploy_compat: ['firebase_hosting','vercel'], storage_compat: ['firebase_storage'] },
+    { id: 'redis',            label: 'Upstash Redis',    icon: 'fa-bolt',           tags: ['redis','cache','serverless'],       desc: 'Serverless Redis — caching & queues',              ai_compat: ['cursor','github_copilot'], deploy_compat: ['vercel','cloudflare','railway'], storage_compat: ['aws_s3','cloudflare_r2'] },
+    { id: 'sqlite_local',     label: 'SQLite (local)',   icon: 'fa-hard-drive',     tags: ['sqlite','file','self-hosted'],      desc: 'File-based DB — simple self-hosted apps',          ai_compat: ['cursor','aider','continue','codeium'], deploy_compat: ['vps','railway','fly'], storage_compat: ['local_fs'] },
+    { id: 'dynamodb',         label: 'DynamoDB',         icon: 'fa-aws',            tags: ['aws','nosql','serverless'],         desc: 'AWS managed NoSQL at massive scale',               ai_compat: ['cursor','github_copilot','codeium'], deploy_compat: ['aws'], storage_compat: ['aws_s3'] },
+    { id: 'cockroachdb',      label: 'CockroachDB',      icon: 'fa-spider',         tags: ['postgres','distributed','global'],  desc: 'Distributed SQL — survives zone failures',         ai_compat: ['cursor','github_copilot'], deploy_compat: ['vercel','aws','railway'], storage_compat: ['aws_s3','cloudflare_r2'] },
+    { id: 'xata',             label: 'Xata',             icon: 'fa-table',          tags: ['postgres','search','serverless'],   desc: 'Serverless DB with built-in search',               ai_compat: ['cursor','codeium'], deploy_compat: ['vercel','cloudflare'], storage_compat: ['aws_s3'] },
+  ],
+  storage: [
+    { id: 'cloudflare_r2',    label: 'Cloudflare R2',   icon: 'fa-cloud',          tags: ['s3-compat','zero-egress','edge'],   desc: 'S3-compatible — zero egress cost',                 ai_compat: ['cursor','github_copilot','codeium','supermaven'] },
+    { id: 'cloudflare_kv',    label: 'Cloudflare KV',   icon: 'fa-key',            tags: ['edge','kv','cache'],                desc: 'Globally distributed key-value store',             ai_compat: ['cursor','github_copilot','codeium'] },
+    { id: 'aws_s3',           label: 'AWS S3',           icon: 'fa-aws',            tags: ['object','standard','cdn'],          desc: 'Industry standard object storage',                 ai_compat: ['cursor','github_copilot','codeium','aider'] },
+    { id: 'supabase_storage', label: 'Supabase Storage', icon: 'fa-database',       tags: ['s3-compat','postgres','auth'],      desc: 'S3-compatible storage with Supabase auth',         ai_compat: ['cursor','github_copilot','codeium'] },
+    { id: 'uploadthing',      label: 'UploadThing',      icon: 'fa-upload',         tags: ['files','simple','nextjs'],          desc: 'File uploads built for modern stacks',             ai_compat: ['cursor','github_copilot','codeium'] },
+    { id: 'firebase_storage', label: 'Firebase Storage', icon: 'fa-fire',           tags: ['google','realtime','cdn'],          desc: 'Google CDN-backed file storage',                   ai_compat: ['github_copilot','codeium'] },
+    { id: 'backblaze_b2',     label: 'Backblaze B2',     icon: 'fa-hard-drive',     tags: ['s3-compat','cheap','cdn'],          desc: 'Budget S3-compatible with Cloudflare CDN',         ai_compat: ['cursor','github_copilot'] },
+    { id: 'local_fs',         label: 'Local Filesystem', icon: 'fa-folder',         tags: ['self-hosted','simple','vps'],       desc: 'Direct disk — self-hosted servers only',           ai_compat: ['cursor','aider','continue','codeium'] },
+  ],
+  deployment: [
+    { id: 'cloudflare',       label: 'Cloudflare Pages/Workers', icon: 'fa-cloud', tags: ['edge','global','free-tier'],        desc: 'Edge-first — 275 cities, zero cold starts',        ai_compat: ['cursor','github_copilot','codeium','supermaven'] },
+    { id: 'vercel',           label: 'Vercel',           icon: 'fa-triangle',       tags: ['nextjs','serverless','preview'],    desc: 'Best-in-class DX — Next.js home',                  ai_compat: ['cursor','github_copilot','codeium','v0','supermaven'] },
+    { id: 'railway',          label: 'Railway',          icon: 'fa-train-subway',   tags: ['container','easy','postgres'],      desc: 'Container deploys in seconds',                     ai_compat: ['cursor','github_copilot','codeium','aider'] },
+    { id: 'fly',              label: 'Fly.io',           icon: 'fa-plane',          tags: ['docker','edge','global'],           desc: 'Docker apps near users, globally',                 ai_compat: ['cursor','aider','continue','codeium'] },
+    { id: 'aws',              label: 'AWS (Lambda/ECS)', icon: 'fa-aws',            tags: ['enterprise','scalable','complex'],  desc: 'Maximum scale — full AWS ecosystem',               ai_compat: ['cursor','github_copilot','codeium','aider'] },
+    { id: 'render',           label: 'Render',           icon: 'fa-server',         tags: ['container','postgres','simple'],    desc: 'Heroku alternative with managed DBs',              ai_compat: ['cursor','github_copilot','codeium'] },
+    { id: 'vps',              label: 'VPS (DigitalOcean/Hetzner)', icon: 'fa-server', tags: ['self-hosted','cheap','control'], desc: 'Full server control — Linux + Docker',             ai_compat: ['cursor','aider','continue','codeium'] },
+    { id: 'firebase_hosting', label: 'Firebase Hosting', icon: 'fa-fire',           tags: ['google','cdn','free-tier'],        desc: 'Google global CDN with instant deploys',           ai_compat: ['github_copilot','codeium'] },
+    { id: 'netlify',          label: 'Netlify',          icon: 'fa-globe',          tags: ['static','functions','edge'],        desc: 'Static sites + edge functions',                    ai_compat: ['cursor','github_copilot','codeium'] },
+  ],
+};
+
+// AI Dev Tool profiles — scored by compatibility with picked stack
+const AI_DEV_TOOLS = [
+  {
+    id: 'cursor',
+    name: 'Cursor',
+    icon: '⬡',
+    iconClass: 'fa-terminal',
+    tagline: 'AI-first IDE',
+    desc: 'Full codebase awareness. Chat, edit, and generate across entire projects. Best-in-class for complex full-stack apps.',
+    strengths: ['Full repo context','Inline chat + edit','Multi-file edits','Rules & memory files','Agent mode'],
+    url: 'https://cursor.com',
+    badge: 'Most Popular',
+    badgeColor: 'cyan',
+    score_weight: { cloudflare: 3, vercel: 3, railway: 2, supabase: 3, neon: 3, turso: 2, any: 1 },
+  },
+  {
+    id: 'github_copilot',
+    name: 'GitHub Copilot',
+    icon: '◎',
+    iconClass: 'fa-github',
+    tagline: 'Code completion + chat',
+    desc: 'Native GitHub integration. Works inside VS Code, JetBrains, Vim. Excels at boilerplate and completion in any language.',
+    strengths: ['VS Code native','GitHub PR reviews','Multi-language','CLI support','Enterprise SSO'],
+    url: 'https://github.com/features/copilot',
+    badge: 'Best for Teams',
+    badgeColor: 'purple',
+    score_weight: { aws: 3, vercel: 2, supabase: 2, mongodb_atlas: 2, any: 1 },
+  },
+  {
+    id: 'v0',
+    name: 'v0 by Vercel',
+    icon: '◇',
+    iconClass: 'fa-wand-magic-sparkles',
+    tagline: 'UI generation',
+    desc: 'Generate production-ready React + Tailwind UI from text prompts. Exports to Next.js. Zero setup.',
+    strengths: ['shadcn/ui components','Next.js export','Tailwind-native','Rapid prototyping','One-shot UI'],
+    url: 'https://v0.dev',
+    badge: 'Best for UI',
+    badgeColor: 'violet',
+    score_weight: { vercel: 5, nextjs: 4, any: 0 },
+  },
+  {
+    id: 'codeium',
+    name: 'Windsurf (Codeium)',
+    icon: '◈',
+    iconClass: 'fa-wind',
+    tagline: 'Agentic AI IDE',
+    desc: 'Cascade agent plans and executes multi-step tasks autonomously. Deep codebase awareness with Flows.',
+    strengths: ['Cascade agent','Flows system','Free tier available','Multi-file planning','Terminal access'],
+    url: 'https://codeium.com/windsurf',
+    badge: 'Best Free Option',
+    badgeColor: 'emerald',
+    score_weight: { cloudflare: 2, railway: 2, any: 1 },
+  },
+  {
+    id: 'aider',
+    name: 'Aider',
+    icon: '◫',
+    iconClass: 'fa-code-branch',
+    tagline: 'Git-native AI coding',
+    desc: 'Terminal-based AI that commits changes directly to git. Best for developers who live in the CLI.',
+    strengths: ['Git-native commits','CLI-first','Any model (GPT/Claude)','Architect mode','Repo mapping'],
+    url: 'https://aider.chat',
+    badge: 'Best CLI',
+    badgeColor: 'amber',
+    score_weight: { vps: 4, fly: 3, sqlite_local: 3, local_fs: 3, any: 1 },
+  },
+  {
+    id: 'continue',
+    name: 'Continue.dev',
+    icon: '▷',
+    iconClass: 'fa-play',
+    tagline: 'Open-source AI IDE plugin',
+    desc: 'Open-source Copilot alternative. Bring your own model (Ollama, OpenAI, Anthropic). Fully self-hostable.',
+    strengths: ['Open source','BYO model','Self-hosted LLMs','VS Code + JetBrains','Custom context'],
+    url: 'https://continue.dev',
+    badge: 'Open Source',
+    badgeColor: 'slate',
+    score_weight: { vps: 3, sqlite_local: 2, local_fs: 2, any: 1 },
+  },
+  {
+    id: 'supermaven',
+    name: 'Supermaven',
+    icon: '◆',
+    iconClass: 'fa-bolt',
+    tagline: 'Fastest code completion',
+    desc: '1M token context window. Predicts entire code blocks instantly. Lowest latency AI completion available.',
+    strengths: ['1M token context','Ultra-low latency','VS Code + JetBrains','Full file awareness','Blazing fast'],
+    url: 'https://supermaven.com',
+    badge: 'Fastest',
+    badgeColor: 'rose',
+    score_weight: { cloudflare: 2, vercel: 2, any: 1 },
+  },
+];
+
+// Compute AI tool scores based on selected stack
+function computeAIToolScores(picks) {
+  const db = picks.db || '';
+  const storage = picks.storage || '';
+  const deploy = picks.deploy || '';
+  const allPicks = [db, storage, deploy];
+
+  return AI_DEV_TOOLS.map(tool => {
+    let score = tool.score_weight['any'] || 0;
+    allPicks.forEach(p => {
+      if (p && tool.score_weight[p] !== undefined) score += tool.score_weight[p];
+    });
+    // Bonus: tool explicitly listed in catalog compat
+    const dbEntry = TECH_STACK_CATALOG.database.find(x => x.id === db);
+    const stEntry = TECH_STACK_CATALOG.storage.find(x => x.id === storage);
+    const dpEntry = TECH_STACK_CATALOG.deployment.find(x => x.id === deploy);
+    if (dbEntry?.ai_compat?.includes(tool.id)) score += 2;
+    if (stEntry?.ai_compat?.includes(tool.id)) score += 2;
+    if (dpEntry?.ai_compat?.includes(tool.id)) score += 2;
+    return { ...tool, score };
+  }).sort((a, b) => b.score - a.score);
+}
+
+// ============================================================
+// PROMPT SECTIONS CONFIG
+// Guided: essential fields only — friendly, conversational
+// Advanced: all fields including technical stack pickers
+// ============================================================
 const PROMPT_SECTIONS_CONFIG = [
   {
     key: 'app_info', label: 'App Info', icon: 'fa-circle-info',
+    guidedOnly: false,   // shown in both modes
+    guidedStep: 1,
     fields: [
-      { key: 'app_name', label: 'App Name', type: 'text', placeholder: 'e.g. TaskFlow Pro', required: true },
-      { key: 'category', label: 'Category', type: 'select', options: ['SaaS Platform','Mobile App','E-Commerce','Dashboard','API/Backend','Marketplace','Other'] },
-      { key: 'audience', label: 'Target Audience', type: 'textarea', placeholder: 'Who is this app for? Describe their role, pain points, technical level.' },
-      { key: 'problem_statement', label: 'Problem Statement', type: 'textarea', placeholder: 'What specific problem does this app solve? Be as clear as possible.' }
+      { key: 'app_name',         label: 'App Name',          type: 'text',     placeholder: 'e.g. TaskFlow Pro', required: true, guidedHint: 'What do you want to call your app?' },
+      { key: 'category',         label: 'Category',          type: 'select',   options: ['SaaS Platform','Mobile App','E-Commerce','Dashboard','API/Backend','Marketplace','Other'], guidedHint: 'What type of product is this?' },
+      { key: 'audience',         label: 'Target Audience',   type: 'textarea', placeholder: 'Who is this app for? Describe their role, pain points, technical level.', guidedHint: 'Describe your users in plain English.' },
+      { key: 'problem_statement',label: 'Problem Statement', type: 'textarea', placeholder: 'What specific problem does this app solve? Be as clear as possible.', guidedHint: 'What frustration does this fix?' },
     ]
   },
   {
     key: 'features', label: 'Core Features', icon: 'fa-list-check',
+    guidedOnly: false,
+    guidedStep: 2,
     fields: [
-      { key: 'core_features', label: 'Core Features (MVP)', type: 'feature-list', placeholder: 'Describe a feature…', rows: 2, hint: 'Add as many or as few as you like. AI will handle anything you leave out.' },
-      { key: 'roles_permissions', label: 'User Roles & Permissions', type: 'textarea', placeholder: 'What types of users are there? (e.g., Admin, Member, Guest)' }
+      { key: 'core_features',    label: 'Core Features (MVP)', type: 'feature-list', placeholder: 'Describe a feature…', rows: 2, hint: 'Add as many or as few as you like. AI will handle anything you leave out.', guidedHint: 'List the must-have features. One per line.' },
+      { key: 'roles_permissions',label: 'User Roles & Permissions', type: 'textarea', placeholder: 'What types of users are there? (e.g., Admin, Member, Guest)', guidedHint: 'Who can do what in your app?' },
+      // Advanced-only fields
+      { key: 'auth_method',      label: 'Authentication Method', type: 'select', options: ['Email + Password','Magic Link (passwordless)','OAuth (Google/GitHub)','SMS / OTP','Multi-factor (MFA)','API Keys only','No auth needed'], advancedOnly: true },
+      { key: 'permission_model', label: 'Permission Model',  type: 'select', options: ['Simple (Admin / User)','RBAC (Role-Based Access Control)','ABAC (Attribute-Based)','Flat (single user type)','Custom'], advancedOnly: true },
     ]
   },
   {
     key: 'visual', label: 'Visual & Frontend', icon: 'fa-palette',
+    guidedOnly: false,
+    optional: true,
+    guidedStep: 3,
     fields: [
-      { key: 'color_scheme', label: 'Color Scheme', type: 'color-scheme', hint: 'Pick a primary palette direction. AI will handle the rest.' },
-      { key: 'visual_style', label: 'Visual Style', type: 'select', options: ['Minimal & Clean','Dark & Futuristic','Light & Airy','Bold & Vibrant','Corporate & Professional','Playful & Friendly','Luxury & Premium'] },
-      { key: 'visual_features', label: 'Frontend Features', type: 'feature-list', placeholder: 'e.g. dark mode, animated transitions, drag-and-drop cards…', rows: 2, hint: 'Optional — list any specific UI/UX features you want. AI will handle the rest.' },
-      { key: 'ui_ux_notes', label: 'Additional UI/UX Notes', type: 'textarea', placeholder: 'Any other look, feel, or experience details — layout, navigation style, tone, etc.' }
+      { key: 'color_scheme',     label: 'Color Scheme',      type: 'color-scheme', hint: 'Pick a primary palette direction. AI will handle the rest.' },
+      { key: 'visual_style',     label: 'Visual Style',      type: 'select', options: ['Minimal & Clean','Dark & Futuristic','Light & Airy','Bold & Vibrant','Corporate & Professional','Playful & Friendly','Luxury & Premium'] },
+      { key: 'visual_features',  label: 'Frontend Features', type: 'feature-list', placeholder: 'e.g. dark mode, animated transitions, drag-and-drop cards…', rows: 2, hint: 'Optional — list any specific UI/UX features. AI handles the rest.' },
+      { key: 'ui_ux_notes',      label: 'Additional UI/UX Notes', type: 'textarea', placeholder: 'Any other look, feel, or experience details — layout, navigation style, tone, etc.' },
+      // Advanced-only
+      { key: 'frontend_framework', label: 'Frontend Framework', type: 'select', options: ['Next.js (React)','React (Vite)','Vue 3 (Vite)','Nuxt 3','SvelteKit','Astro','HTMX + Alpine.js','Vanilla JS','React Native (Expo)','Flutter'], advancedOnly: true },
+      { key: 'ui_library',       label: 'UI Component Library', type: 'select', options: ['Tailwind CSS only','shadcn/ui + Tailwind','Radix UI + Tailwind','Mantine','Chakra UI','Ant Design','Material UI','DaisyUI','Headless UI','None — custom CSS'], advancedOnly: true },
+      { key: 'animation_lib',    label: 'Animation Library',  type: 'select', options: ['None','Framer Motion','GSAP','Motion One','Lottie','CSS animations only','Auto Animate'], advancedOnly: true },
     ]
   },
   {
     key: 'technical', label: 'Technical', icon: 'fa-code',
+    guidedOnly: false,
+    guidedStep: 4,
     fields: [
-      { key: 'workflows', label: 'Key Workflows', type: 'textarea', placeholder: 'Describe the main user journeys step by step.', rows: 4 },
-      { key: 'data_entities', label: 'Data Entities', type: 'textarea', placeholder: 'List the main data objects (e.g., Users, Projects, Orders).' },
-      { key: 'apis_tools', label: 'APIs & Integrations', type: 'textarea', placeholder: 'Any external services needed? (e.g., payments, email, maps)' }
+      { key: 'workflows',        label: 'Key Workflows',     type: 'textarea', placeholder: 'Describe the main user journeys step by step.', rows: 4, guidedHint: 'Walk through the main things users will do.' },
+      { key: 'data_entities',    label: 'Data Entities',     type: 'textarea', placeholder: 'List the main data objects (e.g., Users, Projects, Orders).' },
+      { key: 'apis_tools',       label: 'APIs & Integrations', type: 'textarea', placeholder: 'Any external services needed? (e.g., payments, email, maps)' },
+      // Advanced-only — the full technical stack pickers
+      { key: 'backend_framework',label: 'Backend Framework', type: 'select', options: ['Hono (Cloudflare Workers)','Next.js API Routes','Express.js','Fastify','tRPC','NestJS','Bun + Elysia','Django (Python)','FastAPI (Python)','Rails (Ruby)','None (frontend-only)'], advancedOnly: true },
+      { key: 'db_choice',        label: 'Database',          type: 'tech-picker', catalog: 'database', advancedOnly: true },
+      { key: 'storage_choice',   label: 'Storage',           type: 'tech-picker', catalog: 'storage',  advancedOnly: true },
+      { key: 'deploy_choice',    label: 'Deployment Platform', type: 'tech-picker', catalog: 'deployment', advancedOnly: true },
+      { key: 'realtime',         label: 'Real-time Requirements', type: 'select', options: ['None','WebSockets (live updates)','Server-Sent Events (SSE)','Polling (simple)','Push notifications only','Full collaborative (CRDT)'], advancedOnly: true },
+      { key: 'background_jobs',  label: 'Background Jobs',   type: 'select', options: ['None needed','Scheduled cron jobs','Queue-based workers','Email queue','Webhook processing','Heavy compute tasks'], advancedOnly: true },
+      { key: 'caching_strategy', label: 'Caching Strategy',  type: 'select', options: ['None','Edge caching (CDN)','Redis/KV cache','In-memory cache','Database query cache','Multi-layer cache'], advancedOnly: true },
+      { key: 'api_style',        label: 'API Architecture',  type: 'select', options: ['REST','GraphQL','tRPC','gRPC','REST + WebSocket','Hybrid (REST + GraphQL)'], advancedOnly: true },
+      { key: 'test_strategy',    label: 'Testing Strategy',  type: 'select', options: ['No tests (MVP)','Unit tests only','Unit + Integration','E2E with Playwright','E2E with Cypress','Full TDD','AI-generated tests'], advancedOnly: true },
+      { key: 'perf_targets',     label: 'Performance Targets', type: 'textarea', placeholder: 'e.g. < 200ms API response, 100k MAU, 99.9% uptime SLA, sub-50ms TTFB', advancedOnly: true },
+      { key: 'security_requirements', label: 'Security Requirements', type: 'multi-select-pills', options: ['SOC 2 compliance','GDPR / data privacy','HIPAA (health data)','PCI-DSS (payments)','Rate limiting','DDoS protection','End-to-end encryption','Audit logging','IP allowlisting','2FA / MFA required'], advancedOnly: true },
     ]
   },
   {
     key: 'business', label: 'Business', icon: 'fa-chart-line',
+    guidedOnly: false,
+    guidedStep: 5,
     fields: [
-      { key: 'business_model', label: 'Business Model', type: 'textarea', placeholder: 'How does this app make money? Subscriptions, one-time, freemium?' },
-      { key: 'mvp_guardrails', label: 'MVP Guardrails', type: 'textarea', placeholder: 'What is explicitly OUT of scope for version 1?' },
-      { key: 'future_versions', label: 'Future Versions', type: 'textarea', placeholder: 'What would you add in v2, v3?' }
+      { key: 'business_model',   label: 'Business Model',    type: 'textarea', placeholder: 'How does this app make money? Subscriptions, one-time, freemium?', guidedHint: 'How does this make money (or not)?' },
+      { key: 'mvp_guardrails',   label: 'MVP Guardrails',    type: 'textarea', placeholder: 'What is explicitly OUT of scope for version 1?' },
+      { key: 'future_versions',  label: 'Future Versions',   type: 'textarea', placeholder: 'What would you add in v2, v3?' },
+      // Advanced-only
+      { key: 'monetization',     label: 'Monetization Stack', type: 'multi-select-pills', options: ['Stripe subscriptions','One-time purchases','Usage-based billing','In-app purchases','Freemium','Advertising','API monetization','White-label licensing','None / internal tool'], advancedOnly: true },
+      { key: 'analytics_needs',  label: 'Analytics & Observability', type: 'multi-select-pills', options: ['Product analytics (Mixpanel/Amplitude)','Web analytics (Plausible/GA4)','Error tracking (Sentry)','APM (Datadog/New Relic)','Log management','Heatmaps (Hotjar)','A/B testing','Custom dashboards','None'], advancedOnly: true },
+      { key: 'compliance_needs', label: 'Compliance & Legals', type: 'multi-select-pills', options: ['Cookie consent banner','Privacy policy required','Terms of service','GDPR data deletion','COPPA (under-13 users)','Accessibility (WCAG 2.1)','Multi-currency','Multi-language / i18n','None'], advancedOnly: true },
     ]
   },
   {
-    key: 'deployment', label: 'Deployment', icon: 'fa-rocket',
+    key: 'deployment', label: 'Deployment & Infra', icon: 'fa-rocket',
+    guidedOnly: false,
+    guidedStep: 6,
     fields: [
       { key: 'deployment_preferences', label: 'Deployment Preferences', type: 'textarea', placeholder: 'Any specific hosting, region, or infrastructure requirements?' },
-      { key: 'platform_notes', label: 'Platform Notes', type: 'textarea', placeholder: 'Web only? Mobile too? Any platform constraints?' }
+      { key: 'platform_notes',   label: 'Platform Notes',    type: 'textarea', placeholder: 'Web only? Mobile too? Any platform constraints?' },
+      // Advanced-only
+      { key: 'ci_cd',            label: 'CI/CD Pipeline',    type: 'select', options: ['GitHub Actions','GitLab CI','Vercel built-in','Netlify CI','CircleCI','Bitbucket Pipelines','No CI/CD (manual)'], advancedOnly: true },
+      { key: 'env_matrix',       label: 'Environment Matrix', type: 'multi-select-pills', options: ['Local dev','Preview / staging','Production','Feature branch previews','Canary / blue-green','Multi-region prod','Dedicated EU region'], advancedOnly: true },
+      { key: 'observability',    label: 'Monitoring & Alerting', type: 'multi-select-pills', options: ['Uptime monitoring','Error alerts (PagerDuty/Opsgenie)','Performance budgets','Status page (Statuspage.io)','Cloudflare Analytics','Self-hosted (Grafana)','None'], advancedOnly: true },
+      { key: 'scalability_notes',label: 'Scale & Traffic Expectations', type: 'textarea', placeholder: 'e.g. Launch: ~1k users, 6 months: ~50k MAU, spiky traffic on weekends', advancedOnly: true },
     ]
   },
   {
     key: 'comments', label: 'Additional Comments', icon: 'fa-comment-dots',
+    guidedOnly: false,
+    optional: true,
+    guidedStep: 7,
     fields: [
       { key: 'additional_comments', label: 'Additional Ideas & Concepts', type: 'rich-comments', placeholder: 'Anything else on your mind? Concepts, inspirations, special requirements, things you love about other apps, anything the AI should know…', rows: 5, hint: 'This is your free space. Write as much or as little as you want. AI reads everything here.' }
     ]
   }
 ];
+
+// ============================================================
+// MODE STATE
+// ============================================================
+let PROMPT_MODE = 'guided';   // 'guided' | 'advanced'
 
 function loadPromptPage() {
   loadProjects();
@@ -569,63 +782,378 @@ async function selectPromptProject(projectId, projectName) {
 }
 
 function renderPromptSections() {
-  const container = document.getElementById('prompt-sections');
-  
-  container.innerHTML = PROMPT_SECTIONS_CONFIG.map((section, idx) => {
-    const isOptional = ['visual', 'comments'].includes(section.key);
-    const completedFields = section.fields.filter(f => fieldHasValue(f)).length;
-    const isComplete = completedFields === section.fields.length;
-    const isPartial = completedFields > 0 && !isComplete;
-    
-    return `
-      <div class="glass rounded-xl overflow-hidden" id="section-${section.key}">
-        <button onclick="toggleSection('${section.key}')" 
-          class="w-full flex items-center gap-3 p-4 text-left">
-          <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${isComplete ? 'bg-emerald-500/20' : isPartial ? (isOptional ? 'bg-purple-500/20' : 'bg-amber-500/20') : 'bg-slate-700/50'}">
-            ${isComplete
-              ? '<i class="fas fa-check text-emerald-400 text-xs"></i>'
-              : `<i class="fas ${section.icon} ${isOptional ? 'text-purple-400' : 'text-slate-400'} text-xs"></i>`}
-          </div>
-          <div class="flex-1 min-w-0">
-            <div class="flex items-center gap-2">
-              <p class="text-sm font-semibold text-white">${section.label}</p>
-              ${isOptional ? '<span class="text-xs text-purple-400/70 bg-purple-400/10 px-1.5 py-0.5 rounded-full">optional</span>' : ''}
-            </div>
-            <p class="text-xs ${isOptional ? 'text-purple-400/60' : 'text-slate-500'}">
-              ${isOptional
-                ? (completedFields > 0 ? `${completedFields} field${completedFields > 1 ? 's' : ''} filled · AI handles the rest` : 'AI handles all — add details to guide it')
-                : `${completedFields}/${section.fields.length} filled`}
-            </p>
-          </div>
-          <div class="flex items-center gap-2">
-            ${isPartial && !isOptional ? '<span class="w-2 h-2 rounded-full bg-amber-400"></span>' : ''}
-            ${isPartial && isOptional  ? '<span class="w-2 h-2 rounded-full bg-purple-400"></span>' : ''}
-            <i class="fas fa-chevron-down text-slate-600 text-xs section-chevron-${section.key} transition-transform"></i>
-          </div>
-        </button>
-        
-        <div class="section-body-${section.key} hidden px-4 pb-4 space-y-4">
-          ${section.fields.map(field => renderField(field, section.key)).join('')}
-          
-          <!-- AI Assist for section (only on non-optional sections) -->
-          ${!isOptional ? `
-          <div class="pt-2 border-t border-slate-800">
-            <button onclick="aiAssistSection('${section.key}')"
-              class="text-xs text-slate-500 hover:text-cyan-400 flex items-center gap-1.5 transition-colors">
-              <i class="fas fa-wand-magic-sparkles"></i>
-              <span>AI Assist this section (2 coins each)</span>
-            </button>
-          </div>` : ''}
-        </div>
-      </div>
-    `;
-  }).join('');
-  
+  if (PROMPT_MODE === 'guided') {
+    renderGuidedMode();
+  } else {
+    renderAdvancedMode();
+  }
   renderSectionDots();
+}
+
+// ── GUIDED MODE — all sections as accordions, guided fields only ──
+function renderGuidedMode() {
+  const container = document.getElementById('prompt-sections');
+  const totalSteps = PROMPT_SECTIONS_CONFIG.length;
+  const coreSections = PROMPT_SECTIONS_CONFIG.filter(s => !s.optional);
+  const optSections  = PROMPT_SECTIONS_CONFIG.filter(s => s.optional);
+
+  container.innerHTML = `
+    <!-- Guided mode banner -->
+    <div class="rounded-xl border border-slate-700/50 bg-slate-800/30 px-4 py-3 flex items-start gap-3">
+      <i class="fas fa-hand-holding-heart text-cyan-400 text-sm mt-0.5 flex-shrink-0"></i>
+      <div>
+        <p class="text-xs font-semibold text-white mb-0.5">Guided Mode</p>
+        <p class="text-xs text-slate-400 leading-relaxed">Fill any section in any order — click to open, jump around freely. AI fills anything you leave blank.</p>
+      </div>
+    </div>
+
+    ${coreSections.map(s => renderGuidedSection(s)).join('')}
+
+    <!-- Optional sections -->
+    <div class="rounded-xl border border-purple-500/15 overflow-hidden">
+      <div class="px-4 py-2 bg-purple-500/5 border-b border-purple-500/10">
+        <p class="text-xs font-semibold text-purple-400/80 uppercase tracking-wider">Optional — AI handles these if left blank</p>
+      </div>
+      ${optSections.map(s => renderGuidedSection(s)).join('')}
+    </div>
+
+    <!-- Switch hint -->
+    <p class="text-center text-xs text-slate-700">
+      Want full technical control?
+      <button onclick="setPromptMode('advanced')" class="text-cyan-500 hover:text-cyan-400 underline underline-offset-2">Switch to Advanced mode</button>
+    </p>
+  `;
+
+  // Auto-open the first incomplete section
+  const firstIncomplete = PROMPT_SECTIONS_CONFIG.find(s => {
+    const vf = s.fields.filter(f => !f.advancedOnly);
+    return vf.some(f => !fieldHasValue(f));
+  });
+  if (firstIncomplete) {
+    const body    = document.querySelector(`.section-body-${firstIncomplete.key}`);
+    const chevron = document.querySelector(`.section-chevron-${firstIncomplete.key}`);
+    if (body)    body.classList.remove('hidden');
+    if (chevron) chevron.style.transform = 'rotate(180deg)';
+  }
+}
+
+function renderGuidedSection(section) {
+  const isOptional = section.optional;
+  // Guided mode: hide advancedOnly fields
+  const visibleFields   = section.fields.filter(f => !f.advancedOnly);
+  const completedFields = visibleFields.filter(f => fieldHasValue(f)).length;
+  const isComplete      = completedFields === visibleFields.length;
+  const isPartial       = completedFields > 0 && !isComplete;
+
+  return `
+    <div class="glass rounded-xl overflow-hidden" id="section-${section.key}">
+      <button onclick="toggleSection('${section.key}')"
+        class="w-full flex items-center gap-3 p-4 text-left">
+        <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0
+          ${isComplete ? 'bg-emerald-500/20' : isPartial ? (isOptional ? 'bg-purple-500/20' : 'bg-amber-500/20') : 'bg-slate-700/50'}">
+          ${isComplete
+            ? '<i class="fas fa-check text-emerald-400 text-xs"></i>'
+            : `<i class="fas ${section.icon} ${isOptional ? 'text-purple-400' : 'text-slate-400'} text-xs"></i>`}
+        </div>
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2">
+            <p class="text-sm font-semibold text-white">${section.label}</p>
+            ${isOptional ? '<span class="text-xs text-purple-400/70 bg-purple-400/10 px-1.5 py-0.5 rounded-full">optional</span>' : ''}
+          </div>
+          <p class="text-xs ${isOptional ? 'text-purple-400/60' : 'text-slate-500'}">
+            ${isOptional
+              ? (completedFields > 0 ? `${completedFields} field${completedFields > 1 ? 's' : ''} filled · AI handles the rest` : 'AI handles all — add details to guide it')
+              : `${completedFields}/${visibleFields.length} filled`}
+          </p>
+        </div>
+        <div class="flex items-center gap-2">
+          ${isPartial && !isOptional ? '<span class="w-2 h-2 rounded-full bg-amber-400"></span>' : ''}
+          ${isPartial && isOptional  ? '<span class="w-2 h-2 rounded-full bg-purple-400"></span>' : ''}
+          <i class="fas fa-chevron-down text-slate-600 text-xs section-chevron-${section.key} transition-transform"></i>
+        </div>
+      </button>
+
+      <div class="section-body-${section.key} hidden px-4 pb-4 space-y-4">
+        ${visibleFields.map(f => renderField(f, section.key)).join('')}
+
+        ${!isOptional ? `
+        <div class="pt-2 border-t border-slate-800">
+          <button onclick="aiAssistSection('${section.key}')"
+            class="text-xs text-slate-500 hover:text-cyan-400 flex items-center gap-1.5 transition-colors">
+            <i class="fas fa-wand-magic-sparkles"></i>
+            <span>AI Assist this section (2 coins each)</span>
+          </button>
+        </div>` : ''}
+      </div>
+    </div>
+  `;
+}
+
+// ── ADVANCED MODE — all sections expanded, full tech pickers ──
+function renderAdvancedMode() {
+  const container = document.getElementById('prompt-sections');
+
+  // Separate sections: core + optional
+  const coreSections = PROMPT_SECTIONS_CONFIG.filter(s => !s.optional);
+  const optSections  = PROMPT_SECTIONS_CONFIG.filter(s => s.optional);
+
+  container.innerHTML = `
+    <!-- Advanced mode banner -->
+    <div class="rounded-xl border border-cyan-500/20 bg-cyan-500/5 px-4 py-3 flex items-start gap-3">
+      <i class="fas fa-terminal text-cyan-400 text-sm mt-0.5 flex-shrink-0"></i>
+      <div>
+        <p class="text-xs font-semibold text-cyan-400 mb-0.5">Advanced Mode</p>
+        <p class="text-xs text-slate-400 leading-relaxed">Full control — every field, every technical decision. AI will follow your specs exactly. Leave anything blank and AI fills it in.</p>
+      </div>
+    </div>
+
+    ${coreSections.map(s => renderAdvancedSection(s)).join('')}
+
+    <!-- Optional sections group -->
+    <div class="rounded-xl border border-purple-500/15 overflow-hidden">
+      <div class="px-4 py-2 bg-purple-500/5 border-b border-purple-500/10">
+        <p class="text-xs font-semibold text-purple-400/80 uppercase tracking-wider">Optional Enhancements</p>
+      </div>
+      ${optSections.map(s => renderAdvancedSection(s)).join('')}
+    </div>
+
+    <!-- AI Tool Recommender -->
+    ${renderAIToolRecommender()}
+
+    <!-- Switch hint -->
+    <p class="text-center text-xs text-slate-700">
+      Prefer a guided walkthrough? 
+      <button onclick="setPromptMode('guided')" class="text-cyan-500 hover:text-cyan-400 underline underline-offset-2">Switch to Guided mode</button>
+    </p>
+  `;
+}
+
+function renderAdvancedSection(section) {
+  const isOptional = section.optional;
+  const visibleFields = section.fields; // all fields including advancedOnly
+  const completedFields = visibleFields.filter(f => fieldHasValue(f)).length;
+  const isComplete = completedFields === visibleFields.length;
+  const isPartial = completedFields > 0 && !isComplete;
+  const advOnlyCount = section.fields.filter(f => f.advancedOnly).length;
+
+  return `
+    <div class="glass rounded-xl overflow-hidden" id="section-${section.key}">
+      <button onclick="toggleSection('${section.key}')"
+        class="w-full flex items-center gap-3 p-4 text-left">
+        <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0
+          ${isComplete ? 'bg-emerald-500/20' : isPartial ? (isOptional ? 'bg-purple-500/20' : 'bg-amber-500/20') : 'bg-slate-700/50'}">
+          ${isComplete
+            ? '<i class="fas fa-check text-emerald-400 text-xs"></i>'
+            : `<i class="fas ${section.icon} ${isOptional ? 'text-purple-400' : 'text-slate-400'} text-xs"></i>`}
+        </div>
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2 flex-wrap">
+            <p class="text-sm font-semibold text-white">${section.label}</p>
+            ${isOptional ? '<span class="text-xs text-purple-400/70 bg-purple-400/10 px-1.5 py-0.5 rounded-full">optional</span>' : ''}
+            ${advOnlyCount > 0 ? `<span class="text-xs text-cyan-400/60 bg-cyan-400/8 px-1.5 py-0.5 rounded-full">${advOnlyCount} advanced fields</span>` : ''}
+          </div>
+          <p class="text-xs ${isOptional ? 'text-purple-400/60' : 'text-slate-500'}">
+            ${isOptional
+              ? (completedFields > 0 ? `${completedFields} field${completedFields > 1 ? 's' : ''} filled · AI handles the rest` : 'AI handles all — add details to guide it')
+              : `${completedFields}/${visibleFields.length} filled`}
+          </p>
+        </div>
+        <div class="flex items-center gap-2">
+          ${isPartial && !isOptional ? '<span class="w-2 h-2 rounded-full bg-amber-400"></span>' : ''}
+          ${isPartial && isOptional  ? '<span class="w-2 h-2 rounded-full bg-purple-400"></span>' : ''}
+          <i class="fas fa-chevron-down text-slate-600 text-xs section-chevron-${section.key} transition-transform"></i>
+        </div>
+      </button>
+
+      <div class="section-body-${section.key} hidden px-4 pb-4 space-y-4">
+        <!-- Core fields first -->
+        ${section.fields.filter(f => !f.advancedOnly).map(f => renderField(f, section.key)).join('')}
+
+        <!-- Advanced-only fields with separator -->
+        ${section.fields.filter(f => f.advancedOnly).length > 0 ? `
+        <div class="pt-1">
+          <div class="flex items-center gap-2 mb-4">
+            <div class="flex-1 h-px bg-gradient-to-r from-transparent via-cyan-500/30 to-transparent"></div>
+            <span class="text-xs text-cyan-400/60 font-medium px-2 flex items-center gap-1.5">
+              <i class="fas fa-terminal text-xs"></i> Advanced Configuration
+            </span>
+            <div class="flex-1 h-px bg-gradient-to-l from-transparent via-cyan-500/30 to-transparent"></div>
+          </div>
+          <div class="space-y-4">
+            ${section.fields.filter(f => f.advancedOnly).map(f => renderField(f, section.key)).join('')}
+          </div>
+        </div>` : ''}
+
+        <!-- AI Assist -->
+        ${!isOptional ? `
+        <div class="pt-2 border-t border-slate-800">
+          <button onclick="aiAssistSection('${section.key}')"
+            class="text-xs text-slate-500 hover:text-cyan-400 flex items-center gap-1.5 transition-colors">
+            <i class="fas fa-wand-magic-sparkles"></i>
+            <span>AI Assist this section (2 coins each)</span>
+          </button>
+        </div>` : ''}
+      </div>
+    </div>
+  `;
+}
+
+// ── AI Tool Recommender panel ─────────────────────────────────
+function renderAIToolRecommender() {
+  const picks = {
+    db:      STATE.promptData['db_choice'] || '',
+    storage: STATE.promptData['storage_choice'] || '',
+    deploy:  STATE.promptData['deploy_choice'] || '',
+  };
+  const hasPicks = picks.db || picks.storage || picks.deploy;
+  const scored = computeAIToolScores(picks);
+  const top = scored.slice(0, 3);
+  const rest = scored.slice(3);
+
+  const badgeColors = {
+    cyan:    'bg-cyan-500/15 text-cyan-400',
+    purple:  'bg-purple-500/15 text-purple-400',
+    violet:  'bg-violet-500/15 text-violet-400',
+    emerald: 'bg-emerald-500/15 text-emerald-400',
+    amber:   'bg-amber-500/15 text-amber-400',
+    rose:    'bg-rose-500/15 text-rose-400',
+    slate:   'bg-slate-700/50 text-slate-400',
+  };
+
+  return `
+    <div class="rounded-2xl border border-slate-700/60 overflow-hidden" id="ai-tool-panel">
+      <!-- Header -->
+      <div class="px-4 py-3 bg-gradient-to-r from-slate-800/60 to-slate-900/60 border-b border-slate-700/40 flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+          <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-cyan-500/20 to-purple-500/20 flex items-center justify-center">
+            <i class="fas fa-robot text-cyan-400 text-xs"></i>
+          </div>
+          <div>
+            <p class="text-sm font-bold text-white">AI Dev Tool Recommender</p>
+            <p class="text-xs text-slate-500">${hasPicks ? 'Matched to your stack' : 'Pick your stack above to get personalised recommendations'}</p>
+          </div>
+        </div>
+        ${hasPicks ? '<span class="text-xs text-emerald-400 bg-emerald-400/10 px-2 py-0.5 rounded-full"><i class="fas fa-circle-check mr-1"></i>Live</span>' : ''}
+      </div>
+
+      <div class="p-4 space-y-3">
+        ${!hasPicks ? `
+        <div class="text-center py-6">
+          <div class="w-12 h-12 rounded-2xl bg-slate-800 flex items-center justify-center mx-auto mb-3">
+            <i class="fas fa-layer-group text-slate-600 text-xl"></i>
+          </div>
+          <p class="text-sm text-slate-500">Select a database, storage, and deployment platform above.</p>
+          <p class="text-xs text-slate-700 mt-1">We'll rank the best AI coding tools for your exact stack.</p>
+        </div>` : `
+        <!-- Top 3 recommended -->
+        <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Top Picks for Your Stack</p>
+        ${top.map((tool, i) => `
+          <div class="rounded-xl border ${i === 0 ? 'border-cyan-500/30 bg-cyan-500/5' : 'border-slate-700/50'} p-3.5">
+            <div class="flex items-start gap-3">
+              <div class="w-9 h-9 rounded-xl flex-shrink-0 flex items-center justify-center
+                ${i === 0 ? 'bg-gradient-to-br from-cyan-500/20 to-cyan-600/10' : 'bg-slate-800'}">
+                <i class="fas ${tool.iconClass} ${i === 0 ? 'text-cyan-400' : 'text-slate-500'} text-sm"></i>
+              </div>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 mb-0.5 flex-wrap">
+                  <p class="text-sm font-bold text-white">${tool.name}</p>
+                  ${i === 0 ? '<span class="text-xs bg-cyan-500/20 text-cyan-400 px-1.5 py-0.5 rounded-full font-medium">#1 Match</span>' : ''}
+                  <span class="text-xs ${badgeColors[tool.badgeColor] || badgeColors.slate} px-1.5 py-0.5 rounded-full">${tool.badge}</span>
+                </div>
+                <p class="text-xs text-slate-400 font-medium mb-1">${tool.tagline}</p>
+                <p class="text-xs text-slate-500 leading-relaxed mb-2">${tool.desc}</p>
+                <div class="flex flex-wrap gap-1 mb-2">
+                  ${tool.strengths.map(s => `<span class="text-xs bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full">${s}</span>`).join('')}
+                </div>
+                <a href="${tool.url}" target="_blank" rel="noopener"
+                  class="inline-flex items-center gap-1 text-xs ${i === 0 ? 'text-cyan-400 hover:text-cyan-300' : 'text-slate-500 hover:text-slate-400'} transition-colors">
+                  Visit ${tool.name} <i class="fas fa-arrow-up-right-from-square text-xs"></i>
+                </a>
+              </div>
+              ${i === 0 ? `<div class="flex-shrink-0 text-lg font-black text-cyan-400/20">#1</div>` : ''}
+            </div>
+          </div>
+        `).join('')}
+
+        <!-- Also consider -->
+        <p class="text-xs font-semibold text-slate-600 uppercase tracking-wider pt-1">Also Consider</p>
+        <div class="grid grid-cols-2 gap-2">
+          ${rest.map(tool => `
+            <a href="${tool.url}" target="_blank" rel="noopener"
+              class="rounded-xl border border-slate-800 hover:border-slate-700 bg-slate-900/40 p-3 transition-all group">
+              <div class="flex items-center gap-2 mb-1">
+                <i class="fas ${tool.iconClass} text-slate-600 group-hover:text-slate-500 text-xs transition-colors"></i>
+                <p class="text-xs font-semibold text-slate-400 group-hover:text-slate-300 transition-colors">${tool.name}</p>
+              </div>
+              <p class="text-xs text-slate-700 leading-tight">${tool.tagline}</p>
+            </a>
+          `).join('')}
+        </div>
+        `}
+      </div>
+    </div>
+  `;
 }
 
 function renderField(field, sectionKey) {
   const value = STATE.promptData[field.key] || '';
+
+  // ── Tech Stack Picker ────────────────────────────────────────
+  if (field.type === 'tech-picker') {
+    const items = TECH_STACK_CATALOG[field.catalog] || [];
+    const selectedId = value;
+    return `
+      <div>
+        <label class="text-xs font-medium text-slate-400 uppercase tracking-wider mb-2 block flex items-center justify-between">
+          <span>${field.label}</span>
+          ${selectedId ? `<span class="text-emerald-400 font-normal normal-case"><i class="fas fa-check-circle mr-1"></i>${items.find(x=>x.id===selectedId)?.label||selectedId}</span>` : ''}
+        </label>
+        <div class="space-y-1.5">
+          ${items.map(item => `
+            <button type="button"
+              onclick="selectTechOption('${sectionKey}','${field.key}','${item.id}')"
+              class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-all text-left
+                ${selectedId === item.id
+                  ? 'border-cyan-400/60 bg-cyan-400/8'
+                  : 'border-slate-800 hover:border-slate-700 bg-slate-900/30 hover:bg-slate-800/30'}">
+              <div class="w-7 h-7 rounded-lg flex-shrink-0 flex items-center justify-center
+                ${selectedId === item.id ? 'bg-cyan-400/15' : 'bg-slate-800'}">
+                <i class="fas ${item.icon} ${selectedId === item.id ? 'text-cyan-400' : 'text-slate-600'} text-xs"></i>
+              </div>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <p class="text-xs font-semibold ${selectedId === item.id ? 'text-cyan-400' : 'text-slate-300'}">${item.label}</p>
+                  ${item.tags.slice(0,2).map(t => `<span class="text-xs bg-slate-800/80 text-slate-600 px-1.5 py-px rounded-full">${t}</span>`).join('')}
+                </div>
+                <p class="text-xs text-slate-600 truncate">${item.desc}</p>
+              </div>
+              ${selectedId === item.id ? '<i class="fas fa-check text-cyan-400 text-xs flex-shrink-0"></i>' : ''}
+            </button>
+          `).join('')}
+        </div>
+      </div>`;
+  }
+
+  // ── Multi-Select Pills ────────────────────────────────────────
+  if (field.type === 'multi-select-pills') {
+    let selected = [];
+    try { selected = JSON.parse(value || '[]'); } catch { selected = []; }
+    return `
+      <div>
+        <label class="text-xs font-medium text-slate-400 uppercase tracking-wider mb-2 block">${field.label}</label>
+        <div class="flex flex-wrap gap-2" id="pills-${field.key}">
+          ${(field.options || []).map(opt => {
+            const isOn = selected.includes(opt);
+            return `<button type="button"
+              onclick="togglePill('${sectionKey}','${field.key}','${opt.replace(/'/g,"\\'")}',this)"
+              class="px-3 py-1.5 rounded-full text-xs font-medium border transition-all
+                ${isOn ? 'border-cyan-400/60 bg-cyan-400/10 text-cyan-400' : 'border-slate-700 text-slate-500 hover:border-slate-600 hover:text-slate-400'}">
+              ${isOn ? '<i class="fas fa-check mr-1.5 text-xs"></i>' : ''}${opt}
+            </button>`;
+          }).join('')}
+        </div>
+      </div>`;
+  }
 
   // ── Color Scheme Picker ──────────────────────────────────────
   if (field.type === 'color-scheme') {
@@ -903,9 +1431,12 @@ function fieldHasValue(field) {
   if (field.type === 'feature-list') {
     try { const arr = JSON.parse(v); return arr.some(x => x && x.trim().length > 0); } catch { return v.length > 0; }
   }
+  if (field.type === 'multi-select-pills') {
+    try { const arr = JSON.parse(v); return arr.length > 0; } catch { return v.length > 0; }
+  }
+  if (field.type === 'tech-picker') return v && v.trim().length > 0;
   if (field.type === 'color-scheme') return v && v.length > 0;
   if (field.type === 'rich-comments') return v && v.trim().length > 5;
-  // Optional visual fields — count any non-empty value
   if (['visual_features','ui_ux_notes'].includes(field.key)) return v && v.trim().length > 0;
   return v && v.trim().length > 5;
 }
@@ -913,16 +1444,20 @@ function fieldHasValue(field) {
 function renderSectionDots() {
   const container = document.getElementById('section-dots');
   container.innerHTML = PROMPT_SECTIONS_CONFIG.map(s => {
-    // Optional sections (visual extras, comments) — don't count as blocking
-    const isOptional = ['visual', 'comments'].includes(s.key);
-    const completed = s.fields.filter(f => fieldHasValue(f)).length;
-    const total = s.fields.filter(f => !['visual_features','ui_ux_notes','additional_comments'].includes(f.key)).length || s.fields.length;
-    const pct = isOptional ? (completed / s.fields.length) : (completed / total);
+    const isOptional = s.optional;
+    // In guided mode only count the non-advancedOnly fields
+    const relevantFields = PROMPT_MODE === 'guided'
+      ? s.fields.filter(f => !f.advancedOnly)
+      : s.fields;
+    const coreFields = relevantFields.filter(f => !['visual_features','ui_ux_notes','additional_comments'].includes(f.key));
+    const completed = relevantFields.filter(f => fieldHasValue(f)).length;
+    const total = isOptional ? relevantFields.length : (coreFields.length || relevantFields.length);
+    const pct = completed / total;
     let color = 'bg-slate-700';
     if (pct >= 1) color = 'bg-emerald-400';
     else if (pct > 0) color = isOptional ? 'bg-purple-400' : 'bg-amber-400';
-    const tip = isOptional ? `${s.label} (optional): ${completed}/${s.fields.length}` : `${s.label}: ${completed}/${total}`;
-    return `<div class="w-2 h-2 rounded-full ${color}" title="${tip}"></div>`;
+    const tip = isOptional ? `${s.label} (optional): ${completed}/${total}` : `${s.label}: ${completed}/${total}`;
+    return `<div class="w-2 h-1.5 rounded-full transition-all ${color}" title="${tip}"></div>`;
   }).join('');
 }
 
@@ -1018,10 +1553,13 @@ async function aiAssistField(sectionKey, fieldKey) {
 async function aiAssistSection(sectionKey) {
   const section = PROMPT_SECTIONS_CONFIG.find(s => s.key === sectionKey);
   if (!section) return;
-  
-  for (const field of section.fields) {
-    // Skip color-scheme and rich-comments — those require human input
-    if (['color-scheme', 'rich-comments'].includes(field.type)) continue;
+  // Only assist text-generatable field types; skip pickers and human-only input
+  const assistableTypes = ['text', 'textarea', 'feature-list'];
+  const fields = PROMPT_MODE === 'guided'
+    ? section.fields.filter(f => !f.advancedOnly)
+    : section.fields;
+  for (const field of fields) {
+    if (!assistableTypes.includes(field.type)) continue;
     if (!fieldHasValue(field)) {
       await aiAssistField(sectionKey, field.key);
       await new Promise(r => setTimeout(r, 600));
@@ -1029,16 +1567,50 @@ async function aiAssistSection(sectionKey) {
   }
 }
 
+// ── Tech picker selection ──────────────────────────────────────
+function selectTechOption(sectionKey, fieldKey, optionId) {
+  // If clicking same item, deselect
+  const current = STATE.promptData[fieldKey] || '';
+  const newVal = current === optionId ? '' : optionId;
+  STATE.promptData[fieldKey] = newVal;
+  saveField(sectionKey, fieldKey, newVal, true);
+  // Re-render the section + recommender
+  renderPromptSections();
+  renderSectionDots();
+}
+
+// ── Multi-select pill toggle ───────────────────────────────────
+function togglePill(sectionKey, fieldKey, option, btn) {
+  let selected = [];
+  try { selected = JSON.parse(STATE.promptData[fieldKey] || '[]'); } catch { selected = []; }
+  const idx = selected.indexOf(option);
+  if (idx === -1) selected.push(option);
+  else selected.splice(idx, 1);
+  const newVal = JSON.stringify(selected);
+  STATE.promptData[fieldKey] = newVal;
+  // Update pill UI immediately (no full re-render needed)
+  const isOn = idx === -1; // just added
+  btn.className = `px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${isOn ? 'border-cyan-400/60 bg-cyan-400/10 text-cyan-400' : 'border-slate-700 text-slate-500 hover:border-slate-600 hover:text-slate-400'}`;
+  btn.innerHTML = `${isOn ? '<i class="fas fa-check mr-1.5 text-xs"></i>' : ''}${option}`;
+  saveField(sectionKey, fieldKey, newVal, true);
+  renderSectionDots();
+}
+
+// ── Mode switcher ─────────────────────────────────────────────
 function setPromptMode(mode) {
-  const guided = document.getElementById('mode-guided');
+  PROMPT_MODE = mode;
+  const guided  = document.getElementById('mode-guided');
   const advanced = document.getElementById('mode-advanced');
+
   if (mode === 'guided') {
-    guided.className = 'flex-1 py-2 text-xs font-semibold rounded-lg btn-primary';
+    guided.className  = 'flex-1 py-2 text-xs font-semibold rounded-lg btn-primary';
     advanced.className = 'flex-1 py-2 text-xs font-semibold rounded-lg btn-ghost';
   } else {
-    guided.className = 'flex-1 py-2 text-xs font-semibold rounded-lg btn-ghost';
+    guided.className  = 'flex-1 py-2 text-xs font-semibold rounded-lg btn-ghost';
     advanced.className = 'flex-1 py-2 text-xs font-semibold rounded-lg btn-primary';
   }
+
+  renderPromptSections();
 }
 
 async function exportPrompt() {

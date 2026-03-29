@@ -14,17 +14,20 @@ const prompt = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 // reach 100 % without them.
 
 const CORE_SECTIONS = [
-  { key: 'app_info',    label: 'App Info',       weight: 25, fields: ['app_name','category','audience','problem_statement'] },
-  { key: 'features',   label: 'Core Features',   weight: 25, fields: ['core_features','roles_permissions'] },
+  { key: 'app_info',    label: 'App Info',       weight: 20, fields: ['app_name','category','audience','problem_statement'] },
+  { key: 'features',   label: 'Core Features',   weight: 20, fields: ['core_features','roles_permissions'] },
+  // advanced fields in features (optional for scoring but included)
   { key: 'technical',  label: 'Technical',        weight: 20, fields: ['workflows','data_entities','apis_tools'] },
-  { key: 'business',   label: 'Business',         weight: 20, fields: ['business_model','mvp_guardrails','future_versions'] },
+  // advanced tech stack fields — each worth extra weight when filled
+  { key: 'technical_adv', label: 'Tech Stack',   weight: 15, fields: ['backend_framework','db_choice','storage_choice','deploy_choice'] },
+  { key: 'business',   label: 'Business',         weight: 15, fields: ['business_model','mvp_guardrails','future_versions'] },
   { key: 'deployment', label: 'Deployment',       weight: 10, fields: ['deployment_preferences','platform_notes'] },
 ];
 
 const OPTIONAL_SECTIONS = [
   {
     key: 'visual',   label: 'Visual & Frontend', weight: 0,
-    fields: ['color_scheme','visual_style','visual_features','ui_ux_notes']
+    fields: ['color_scheme','visual_style','visual_features','ui_ux_notes','frontend_framework','ui_library','animation_lib']
   },
   {
     key: 'comments', label: 'Additional Comments', weight: 0,
@@ -94,6 +97,14 @@ function val(fields: Record<string, string>, key: string, fallback = 'Not specif
   return (v && v.trim()) ? v.trim() : fallback;
 }
 
+function formatMultiSelect(raw: string): string {
+  if (!raw) return 'None specified.';
+  try {
+    const arr: string[] = JSON.parse(raw);
+    return arr.length > 0 ? arr.map(x => `  - ${x}`).join('\n') : 'None specified.';
+  } catch { return raw.trim() || 'None specified.'; }
+}
+
 function buildStructuredPrompt(
   fields: Record<string, string>,
   projectName: string,
@@ -105,32 +116,56 @@ function buildStructuredPrompt(
   const problem  = val(fields, 'problem_statement');
 
   // Visual
-  const colorScheme    = val(fields, 'color_scheme', 'Cyber (default)');
-  const visualStyle    = val(fields, 'visual_style', 'Minimal & Clean');
-  const visualFeatures = formatFeatureList(fields['visual_features'] || '');
-  const uiUxNotes      = val(fields, 'ui_ux_notes', 'None specified.');
-  const hasVisual      = fields['color_scheme'] || fields['visual_style'] || fields['visual_features'] || fields['ui_ux_notes'];
+  const colorScheme      = val(fields, 'color_scheme', 'Cyber (default)');
+  const visualStyle      = val(fields, 'visual_style', 'Minimal & Clean');
+  const visualFeatures   = formatFeatureList(fields['visual_features'] || '');
+  const uiUxNotes        = val(fields, 'ui_ux_notes', 'None specified.');
+  const frontendFW       = val(fields, 'frontend_framework', '');
+  const uiLibrary        = val(fields, 'ui_library', '');
+  const animationLib     = val(fields, 'animation_lib', '');
+  const hasVisual        = fields['color_scheme'] || fields['visual_style'] || fields['visual_features'] || fields['ui_ux_notes'] || frontendFW || uiLibrary;
 
   // Features
-  const coreFeatures    = formatFeatureList(fields['core_features'] || '');
-  const roles           = val(fields, 'roles_permissions');
+  const coreFeatures     = formatFeatureList(fields['core_features'] || '');
+  const roles            = val(fields, 'roles_permissions');
+  const authMethod       = val(fields, 'auth_method', '');
+  const permModel        = val(fields, 'permission_model', '');
 
   // Technical
-  const workflows       = val(fields, 'workflows');
-  const dataEntities    = val(fields, 'data_entities');
-  const apisTools       = val(fields, 'apis_tools');
+  const workflows        = val(fields, 'workflows');
+  const dataEntities     = val(fields, 'data_entities');
+  const apisTools        = val(fields, 'apis_tools');
+  const backendFW        = val(fields, 'backend_framework', '');
+  const dbChoice         = val(fields, 'db_choice', '');
+  const storageChoice    = val(fields, 'storage_choice', '');
+  const deployChoice     = val(fields, 'deploy_choice', '');
+  const realtime         = val(fields, 'realtime', '');
+  const bgJobs           = val(fields, 'background_jobs', '');
+  const caching          = val(fields, 'caching_strategy', '');
+  const apiStyle         = val(fields, 'api_style', '');
+  const testStrategy     = val(fields, 'test_strategy', '');
+  const perfTargets      = val(fields, 'perf_targets', '');
+  const secReqs          = formatMultiSelect(fields['security_requirements'] || '');
+  const hasAdvancedStack = backendFW || dbChoice || storageChoice || deployChoice;
 
   // Business
-  const businessModel   = val(fields, 'business_model');
-  const mvpGuardrails   = val(fields, 'mvp_guardrails');
-  const futureVersions  = val(fields, 'future_versions');
+  const businessModel    = val(fields, 'business_model');
+  const mvpGuardrails    = val(fields, 'mvp_guardrails');
+  const futureVersions   = val(fields, 'future_versions');
+  const monetization     = formatMultiSelect(fields['monetization'] || '');
+  const analytics        = formatMultiSelect(fields['analytics_needs'] || '');
+  const compliance       = formatMultiSelect(fields['compliance_needs'] || '');
 
   // Deployment
-  const deployPrefs     = val(fields, 'deployment_preferences');
-  const platformNotes   = val(fields, 'platform_notes');
+  const deployPrefs      = val(fields, 'deployment_preferences');
+  const platformNotes    = val(fields, 'platform_notes');
+  const ciCd             = val(fields, 'ci_cd', '');
+  const envMatrix        = formatMultiSelect(fields['env_matrix'] || '');
+  const observability    = formatMultiSelect(fields['observability'] || '');
+  const scalability      = val(fields, 'scalability_notes', '');
 
   // Additional comments
-  const comments        = val(fields, 'additional_comments', '');
+  const comments         = val(fields, 'additional_comments', '');
 
   // ── Build the prompt ───────────────────────────────────────────────────────
   let p = '';
@@ -190,6 +225,8 @@ function buildStructuredPrompt(
   p += `## 4. CORE FEATURES — MVP SCOPE\n\n`;
   p += `${coreFeatures}\n\n`;
   p += `**User Roles & Permissions:**\n${roles}\n\n`;
+  if (authMethod) p += `**Authentication Method:** ${authMethod}\n\n`;
+  if (permModel)  p += `**Permission Model:** ${permModel}\n\n`;
   p += `**MVP Guardrails (explicitly OUT of v1):**\n${mvpGuardrails}\n\n`;
   p += `**Future Versions (v2+):**\n${futureVersions}\n\n`;
 
@@ -200,57 +237,62 @@ function buildStructuredPrompt(
   p += `${workflows}\n\n`;
 
   // ── 6. VISUAL & FRONTEND DESIGN ────────────────────────────────────────────
+  p += `${'─'.repeat(72)}\n`;
+  p += `## 6. VISUAL & FRONTEND DESIGN\n\n`;
   if (hasVisual) {
-    p += `${'─'.repeat(72)}\n`;
-    p += `## 6. VISUAL & FRONTEND DESIGN\n\n`;
     p += `> AI handles all frontend implementation. The specs below are design direction — fill in anything not stated.\n\n`;
     p += `**Color Scheme:** ${colorScheme}\n`;
-    p += `**Visual Style:** ${visualStyle}\n\n`;
-    if (fields['visual_features']) {
-      p += `**Specific Frontend Features Requested:**\n${visualFeatures}\n\n`;
-    }
-    if (fields['ui_ux_notes']) {
-      p += `**Additional UI/UX Notes:**\n${uiUxNotes}\n\n`;
-    }
-    p += `**General UI Requirements:**\n`;
-    p += `- Mobile-first responsive layout\n`;
-    p += `- Accessible (WCAG 2.1 AA minimum)\n`;
-    p += `- Consistent loading states, empty states, and error states for every screen\n`;
-    p += `- Toast notifications for all async actions\n`;
-    p += `- Optimistic UI updates where appropriate\n\n`;
+    p += `**Visual Style:** ${visualStyle}\n`;
+    if (frontendFW)  p += `**Frontend Framework:** ${frontendFW}\n`;
+    if (uiLibrary)   p += `**UI Component Library:** ${uiLibrary}\n`;
+    if (animationLib && animationLib !== 'None') p += `**Animation Library:** ${animationLib}\n`;
+    p += '\n';
+    if (fields['visual_features']) p += `**Specific Frontend Features Requested:**\n${visualFeatures}\n\n`;
+    if (fields['ui_ux_notes'])     p += `**Additional UI/UX Notes:**\n${uiUxNotes}\n\n`;
   } else {
-    p += `${'─'.repeat(72)}\n`;
-    p += `## 6. VISUAL & FRONTEND DESIGN\n\n`;
-    p += `> No specific design direction provided. AI has full creative control over the visual design.\n`;
+    p += `> No specific design direction provided. AI has full creative control.\n`;
     p += `> Apply a professional, modern aesthetic appropriate for: ${category}.\n\n`;
-    p += `**General UI Requirements:**\n`;
-    p += `- Mobile-first responsive layout\n`;
-    p += `- Accessible (WCAG 2.1 AA minimum)\n`;
-    p += `- Consistent loading, empty, and error states for every screen\n`;
-    p += `- Toast notifications for async actions\n\n`;
   }
+  p += `**Non-negotiable UI rules:**\n`;
+  p += `- Mobile-first responsive layout\n`;
+  p += `- Accessible (WCAG 2.1 AA minimum)\n`;
+  p += `- Consistent loading, empty, and error states for every screen\n`;
+  p += `- Toast / snackbar notifications for all async actions\n`;
+  p += `- Optimistic UI updates where appropriate\n\n`;
 
   // ── 7. DATA MODEL ──────────────────────────────────────────────────────────
   p += `${'─'.repeat(72)}\n`;
   p += `## 7. DATA MODEL\n\n`;
+  p += `**Database:** ${dbChoice || 'Cloudflare D1 (default)'}\n\n`;
   p += `**Primary Data Entities:**\n${dataEntities}\n\n`;
   p += `**Requirements:**\n`;
-  p += `- All tables in Cloudflare D1 (SQLite)\n`;
-  p += `- Migrations in /migrations/*.sql — numbered, idempotent, with IF NOT EXISTS guards\n`;
-  p += `- Every table must have: id (TEXT, prefixed nanoid), created_at, updated_at\n`;
-  p += `- Foreign keys + indexes for all join columns\n\n`;
+  p += `- Migrations: numbered SQL files, idempotent, IF NOT EXISTS guards\n`;
+  p += `- Every table: id (TEXT, prefixed nanoid), created_at, updated_at\n`;
+  p += `- Foreign keys + indexes on all join columns\n`;
+  if (apiStyle) p += `- API style: **${apiStyle}**\n`;
+  if (realtime && realtime !== 'None') p += `- Real-time: **${realtime}**\n`;
+  if (bgJobs && bgJobs !== 'None needed') p += `- Background jobs: **${bgJobs}**\n`;
+  if (caching && caching !== 'None') p += `- Caching: **${caching}**\n`;
+  p += '\n';
+  if (perfTargets && perfTargets !== 'Not specified.') {
+    p += `**Performance Targets:**\n${perfTargets}\n\n`;
+  }
+  if (secReqs !== 'None specified.') {
+    p += `**Security Requirements:**\n${secReqs}\n\n`;
+  }
 
   // ── 8. STORAGE MODEL ──────────────────────────────────────────────────────
   p += `${'─'.repeat(72)}\n`;
   p += `## 8. STORAGE MODEL\n\n`;
-  p += `- **R2 Buckets:** One per logical asset type (e.g., user-uploads, build-artifacts)\n`;
-  p += `- **KV Namespaces:** Session cache, feature flags, rate-limit counters\n`;
-  p += `- **D1:** All structured/relational data (see §7)\n`;
-  p += `- All R2 objects: private by default, signed URLs for access\n\n`;
+  p += `**Storage Solution:** ${storageChoice || 'Cloudflare R2 (default)'}\n\n`;
+  p += `- All user-uploaded files: private by default, signed URLs for access\n`;
+  p += `- Separate bucket/prefix per asset type (user-uploads, build-artifacts, exports)\n`;
+  p += `- Cache layer: ${caching || 'Edge caching (CDN)'}\n\n`;
 
   // ── 9. API CONTRACTS ───────────────────────────────────────────────────────
   p += `${'─'.repeat(72)}\n`;
   p += `## 9. API CONTRACTS\n\n`;
+  if (backendFW) p += `**Backend Framework:** ${backendFW}\n\n`;
   p += `**Third-Party APIs & Integrations:**\n${apisTools}\n\n`;
   p += `**API Contract Format** — for every endpoint define:\n`;
   p += `\`METHOD /path\` | Auth required | Request body (JSON) | Response (200) | Error codes\n\n`;
@@ -263,47 +305,70 @@ function buildStructuredPrompt(
   // ── 10. AUTH & SECURITY ────────────────────────────────────────────────────
   p += `${'─'.repeat(72)}\n`;
   p += `## 10. AUTH & SECURITY\n\n`;
-  p += `- JWT-based authentication (short-lived access tokens, optional refresh tokens in KV)\n`;
-  p += `- Passwords: PBKDF2-SHA256 with per-user salt (no bcrypt — Workers-compatible only)\n`;
+  if (authMethod) p += `**Auth Method:** ${authMethod}\n`;
+  if (permModel)  p += `**Permission Model:** ${permModel}\n`;
+  p += `- JWT-based sessions (short-lived access tokens)\n`;
+  p += `- Passwords: PBKDF2-SHA256 with per-user salt\n`;
   p += `- CORS: locked to production origin + localhost in dev\n`;
-  p += `- All secrets in Cloudflare secrets (wrangler secret put). Zero secrets in code or config files.\n`;
-  p += `- Audit log: every sensitive action writes to an audit_logs table (user_id, action, entity, ip, ts)\n\n`;
+  p += `- All secrets in environment variables / secrets manager. Zero secrets in code.\n`;
+  p += `- Audit log: every sensitive action writes to audit_logs (user_id, action, entity, ip, ts)\n`;
+  if (secReqs !== 'None specified.') p += `- Additional security requirements:\n${secReqs}\n`;
+  p += '\n';
 
   // ── 11. BUSINESS MODEL ─────────────────────────────────────────────────────
   p += `${'─'.repeat(72)}\n`;
   p += `## 11. BUSINESS MODEL\n\n`;
   p += `${businessModel}\n\n`;
+  if (monetization !== 'None specified.') {
+    p += `**Monetization Stack:**\n${monetization}\n\n`;
+  }
+  if (analytics !== 'None specified.') {
+    p += `**Analytics & Observability:**\n${analytics}\n\n`;
+  }
+  if (compliance !== 'None specified.') {
+    p += `**Compliance & Legal Requirements:**\n${compliance}\n\n`;
+  }
 
   // ── 12. DEPLOYMENT & INFRASTRUCTURE ───────────────────────────────────────
   p += `${'─'.repeat(72)}\n`;
   p += `## 12. DEPLOYMENT & INFRASTRUCTURE\n\n`;
-  p += `**Deployment Preferences:**\n${deployPrefs}\n\n`;
-  p += `**Platform Notes:**\n${platformNotes}\n\n`;
-  p += `**Required Cloudflare Resources:**\n`;
-  p += `- Pages project (frontend)\n`;
-  p += `- Workers (API backend)\n`;
-  p += `- D1 database (production + local dev via --local flag)\n`;
-  p += `- R2 bucket(s)\n`;
-  p += `- KV namespace(s)\n`;
-  p += `- Queues (if background jobs are needed)\n\n`;
-  p += `**wrangler.jsonc must define:** name, compatibility_date, pages_build_output_dir or main, all d1_databases, kv_namespaces, r2_buckets, queues bindings.\n\n`;
+  p += `**Deployment Platform:** ${deployChoice || 'Cloudflare Pages / Workers'}\n\n`;
+  if (deployPrefs && deployPrefs !== 'Not specified.') p += `**Deployment Preferences:**\n${deployPrefs}\n\n`;
+  if (platformNotes && platformNotes !== 'Not specified.') p += `**Platform Notes:**\n${platformNotes}\n\n`;
+  if (scalability && scalability !== 'Not specified.') p += `**Scale & Traffic Expectations:**\n${scalability}\n\n`;
+  if (envMatrix !== 'None specified.') p += `**Environment Matrix:**\n${envMatrix}\n\n`;
+  if (observability !== 'None specified.') p += `**Monitoring & Alerting:**\n${observability}\n\n`;
 
   // ── 13. FOLDER STRUCTURE ──────────────────────────────────────────────────
+  const slug = appName.toLowerCase().replace(/\s+/g, '-');
+  const isCF  = !deployChoice || deployChoice === 'cloudflare';
+  const isVercel = deployChoice === 'vercel';
   p += `${'─'.repeat(72)}\n`;
   p += `## 13. RECOMMENDED FOLDER STRUCTURE\n\n`;
   p += `\`\`\`\n`;
-  p += `${appName.toLowerCase().replace(/\s+/g, '-')}/\n`;
-  p += `├── src/\n`;
-  p += `│   ├── index.tsx          # Hono app entry point\n`;
-  p += `│   ├── routes/            # Route handlers (one file per domain)\n`;
-  p += `│   ├── services/          # Business logic & intent layer\n`;
-  p += `│   ├── middleware/        # Auth, rate-limit, logging\n`;
-  p += `│   └── types/             # TypeScript type definitions\n`;
-  p += `├── public/\n`;
-  p += `│   └── static/            # CSS, JS, images\n`;
-  p += `├── migrations/            # D1 SQL migrations (numbered)\n`;
+  p += `${slug}/\n`;
+  if (backendFW?.includes('Next')) {
+    p += `├── app/                   # Next.js App Router\n`;
+    p += `│   ├── (auth)/            # Auth-gated routes\n`;
+    p += `│   ├── api/               # API route handlers\n`;
+    p += `│   └── layout.tsx\n`;
+    p += `├── components/            # Shared UI components\n`;
+    p += `├── lib/                   # Utilities, DB client, auth helpers\n`;
+    p += `├── services/              # Business logic & intent layer\n`;
+  } else {
+    p += `├── src/\n`;
+    p += `│   ├── index.tsx          # Backend entry point (${backendFW || 'Hono'})\n`;
+    p += `│   ├── routes/            # Route handlers (one file per domain)\n`;
+    p += `│   ├── services/          # Business logic & intent layer\n`;
+    p += `│   ├── middleware/        # Auth, rate-limit, logging\n`;
+    p += `│   └── types/             # TypeScript type definitions\n`;
+    p += `├── public/static/         # CSS, JS, images\n`;
+  }
+  p += `├── migrations/            # DB migrations (numbered SQL)\n`;
+  p += `├── tests/                 # ${testStrategy || 'Unit + integration tests'}\n`;
   p += `├── .dev.vars              # Local secrets (never commit)\n`;
-  p += `├── wrangler.jsonc         # Cloudflare configuration\n`;
+  if (isCF) p += `├── wrangler.jsonc         # Cloudflare configuration\n`;
+  if (isVercel) p += `├── vercel.json            # Vercel configuration\n`;
   p += `├── package.json\n`;
   p += `└── tsconfig.json\n`;
   p += `\`\`\`\n\n`;
@@ -321,14 +386,32 @@ function buildStructuredPrompt(
   p += `(Extend this table with any keys referenced in §9.)\n\n`;
 
   // ── 15. CI/CD ──────────────────────────────────────────────────────────────
+  const ciTool = ciCd || 'GitHub Actions';
   p += `${'─'.repeat(72)}\n`;
   p += `## 15. CI/CD PIPELINE\n\n`;
+  p += `- **CI/CD Tool:** ${ciTool}\n`;
   p += `- **Repository:** GitHub (main branch = production)\n`;
   p += `- **Build:** \`npm run build\` → outputs dist/\n`;
-  p += `- **Deploy:** \`wrangler pages deploy dist --project-name ${appName.toLowerCase().replace(/\s+/g, '-')}\`\n`;
-  p += `- **DB migrations:** \`wrangler d1 migrations apply <db-name>\` — run before each deploy\n`;
-  p += `- **Env vars:** Cloudflare Pages > Settings > Environment variables (set via wrangler secret put)\n`;
-  p += `- **Preview deploys:** every PR gets a unique preview URL (Cloudflare Pages default behaviour)\n\n`;
+  if (!deployChoice || deployChoice === 'cloudflare') {
+    p += `- **Deploy:** \`wrangler pages deploy dist --project-name ${slug}\`\n`;
+    p += `- **DB migrations:** \`wrangler d1 migrations apply <db-name>\` — run before each deploy\n`;
+    p += `- **Env vars:** Cloudflare Pages > Settings > Environment variables\n`;
+    p += `- **Preview deploys:** every PR gets a unique preview URL\n\n`;
+  } else if (deployChoice === 'vercel') {
+    p += `- **Deploy:** \`vercel --prod\` or push to main (auto-deploy)\n`;
+    p += `- **Env vars:** Vercel Dashboard > Settings > Environment Variables\n`;
+    p += `- **Preview deploys:** every PR branch gets a preview URL\n\n`;
+  } else if (deployChoice === 'railway') {
+    p += `- **Deploy:** Push to main → Railway auto-deploys from Dockerfile or Nixpacks\n`;
+    p += `- **Env vars:** Railway Dashboard > Variables\n\n`;
+  } else {
+    p += `- **Deploy:** Push to main triggers ${ciTool} pipeline → SSH + Docker deploy\n`;
+    p += `- **Env vars:** Stored as CI/CD secrets, injected at deploy time\n\n`;
+  }
+  if (testStrategy && testStrategy !== 'No tests (MVP)') {
+    p += `- **Test step:** \`npm test\` — run ${testStrategy} before every deploy\n`;
+    p += `- **Block deploys** if test coverage drops below threshold\n\n`;
+  }
 
   // ── 16. ADDITIONAL COMMENTS ────────────────────────────────────────────────
   if (comments && comments.trim().length > 0) {
