@@ -257,6 +257,7 @@ function navigateTo(page) {
   if (page === 'home') loadHomeData();
   if (page === 'prompt') loadPromptPage();
   if (page === 'account') loadAccountPage();
+  if (page === 'planning') renderKanban();
 }
 
 // ============================================================
@@ -3182,11 +3183,4 @@ async function triggerWebDeploy() {
   showToast('🚀 Deployment triggered! Check your project for status updates.', 'success');
 }
 
-// Load kanban on page switch
-const _origNavigateTo = navigateTo;
-function navigateTo(page) {
-  _origNavigateTo(page);
-  if (page === 'planning') {
-    renderKanban();
-  }
-}
+
