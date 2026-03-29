@@ -1,15 +1,38 @@
 // DEPLOY Platform - Type Definitions
 
 export type Bindings = {
+  // Cloudflare native services
   DB: D1Database;
   DEPLOY_KV: KVNamespace;
   DEPLOY_R2: R2Bucket;
+
+  // Auth
   JWT_SECRET: string;
+
+  // AI providers (server-side only — never exposed to clients)
   OPENAI_API_KEY: string;
   ANTHROPIC_API_KEY: string;
+
+  // Stripe (server-side only)
   STRIPE_SECRET_KEY: string;
+  STRIPE_PUBLISHABLE_KEY: string;   // returned to frontend via /api/config endpoint only
   STRIPE_WEBHOOK_SECRET: string;
+
+  // Email (Resend)
   RESEND_API_KEY: string;
+  FROM_EMAIL: string;               // e.g. noreply@deployapp.io
+  FROM_NAME: string;                // e.g. DEPLOY Platform
+
+  // Cloudflare account (for Workers API calls, R2 S3-compat presigned URLs)
+  CLOUDFLARE_ACCOUNT_ID: string;
+  CLOUDFLARE_API_TOKEN: string;
+
+  // R2 S3-compatible credentials (for presigned upload/download URLs)
+  R2_ENDPOINT: string;
+  R2_ACCESS_KEY_ID: string;
+  R2_SECRET_ACCESS_KEY: string;
+
+  // App config
   APP_URL: string;
   ENVIRONMENT: string;
 };

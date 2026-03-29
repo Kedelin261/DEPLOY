@@ -16,6 +16,7 @@ import modelRoutes from './routes/models';
 import deploymentRoutes from './routes/deployments';
 import adminRoutes from './routes/admin';
 import notificationRoutes from './routes/notifications';
+import stripeWebhookRoutes from './routes/stripe-webhook';
 
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
@@ -46,6 +47,10 @@ app.use('/favicon.ico', serveStatic({ path: './favicon.ico' }));
 // ============================================================
 // API ROUTES
 // ============================================================
+// Stripe webhook — must be registered BEFORE general routes
+// so it can read the raw body without JSON parsing interference
+app.route('/api/webhooks/stripe', stripeWebhookRoutes);
+
 app.route('/api/auth', authRoutes);
 app.route('/api/projects', projectRoutes);
 app.route('/api/prompt', promptRoutes);
@@ -63,6 +68,20 @@ app.get('/api/health', (c) => {
     version: '1.0.0',
     timestamp: new Date().toISOString(),
     environment: c.env.ENVIRONMENT || 'development'
+  });
+});
+
+// ── Public config endpoint ──────────────────────────────────────────────────
+// Exposes ONLY safe, non-secret configuration to the frontend.
+// This is the ONLY way the frontend learns the Stripe publishable key.
+app.get('/api/config', (c) => {
+  return c.json({
+    success: true,
+    data: {
+      stripe_publishable_key: c.env.STRIPE_PUBLISHABLE_KEY || null,
+      environment: c.env.ENVIRONMENT || 'development',
+      app_url: c.env.APP_URL || 'http://localhost:3000',
+    }
   });
 });
 

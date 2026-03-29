@@ -16,6 +16,7 @@ const STATE = {
   plans: [],
   promptData: {},
   autosaveTimer: null,
+  config: null,     // Loaded from /api/config — contains stripe publishable key, env info
 };
 
 const API = axios.create({ baseURL: '/api' });
@@ -38,7 +39,27 @@ API.interceptors.response.use(
 // ============================================================
 // INIT
 // ============================================================
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+  // Always load public config first (non-blocking, safe to fail)
+  try {
+    const res = await fetch('/api/config');
+    const cfg = await res.json();
+    if (cfg.success) STATE.config = cfg.data;
+  } catch {}
+
+  // Handle post-payment redirect from Stripe
+  const urlParams = new URLSearchParams(window.location.search);
+  const paymentStatus = urlParams.get('payment');
+  if (paymentStatus === 'success') {
+    // Clean the URL without a full page reload
+    window.history.replaceState({}, document.title, '/');
+    // Will show toast after app loads
+    STATE._paymentSuccess = true;
+  } else if (paymentStatus === 'cancelled') {
+    window.history.replaceState({}, document.title, '/');
+    STATE._paymentCancelled = true;
+  }
+
   if (STATE.token) {
     initApp();
   } else {
@@ -56,6 +77,23 @@ async function initApp() {
         loadHomeData(),
         loadModels(),
       ]);
+
+      // Show payment result toasts after app has loaded
+      if (STATE._paymentSuccess) {
+        delete STATE._paymentSuccess;
+        // Refresh balance from server
+        try {
+          const { data: vd } = await API.get('/vault');
+          if (vd.success && vd.data.wallet) {
+            STATE.user.coin_balance = vd.data.wallet.balance;
+            updateHeaderUser();
+          }
+        } catch {}
+        showToast('🎉 Payment successful! Coins have been added to your vault.', 'success');
+      } else if (STATE._paymentCancelled) {
+        delete STATE._paymentCancelled;
+        showToast('Payment cancelled. No charge was made.', 'info');
+      }
     } else {
       showAuth();
     }
@@ -1851,17 +1889,35 @@ function renderCoinPackages(packages) {
 
 async function purchaseCoins(packageId, name, totalCoins) {
   try {
-    const { data } = await API.post('/vault/purchase', { package_id: packageId });
-    if (data.success) {
-      closeModal('modal-buy-coins');
-      if (STATE.user) {
-        STATE.user.coin_balance = data.data.new_balance;
-        updateHeaderUser();
+    setLoading(true);
+
+    // In development, try the checkout endpoint first; fall back to simulated purchase
+    const isDev = (STATE.config?.environment || 'development') === 'development';
+
+    if (!isDev) {
+      // Production: create a Stripe Checkout Session and redirect
+      const { data } = await API.post('/vault/checkout', { package_id: packageId });
+      if (data.success && data.data.checkout_url) {
+        window.location.href = data.data.checkout_url;
+        return; // Page will navigate away
       }
-      showToast(data.message || `${totalCoins} coins added!`, 'success');
+      throw new Error(data.error || 'Checkout unavailable');
+    } else {
+      // Development: simulated purchase (no real payment)
+      const { data } = await API.post('/vault/purchase', { package_id: packageId });
+      if (data.success) {
+        closeModal('modal-buy-coins');
+        if (STATE.user) {
+          STATE.user.coin_balance = data.data.new_balance;
+          updateHeaderUser();
+        }
+        showToast(data.message || `${totalCoins} coins added!`, 'success');
+      }
     }
   } catch (err) {
     showToast(err.response?.data?.error || 'Purchase failed', 'error');
+  } finally {
+    setLoading(false);
   }
 }
 

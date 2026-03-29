@@ -4,6 +4,7 @@
   "pages_build_output_dir": "./dist",
   "compatibility_date": "2024-09-23",
   "compatibility_flags": ["nodejs_compat"],
+  "account_id": "b7d0c7ba6b4de011cc51c878e26c70c2",
 
   // D1 Database - Production
   "d1_databases": [
@@ -14,7 +15,7 @@
     }
   ],
 
-  // KV Storage
+  // KV Storage - Session cache, rate-limit counters, email tokens
   "kv_namespaces": [
     {
       "binding": "DEPLOY_KV",
@@ -23,11 +24,26 @@
     }
   ],
 
-  // R2 Storage
+  // R2 Storage - Build artifacts, uploaded assets
   "r2_buckets": [
     {
       "binding": "DEPLOY_R2",
       "bucket_name": "deploy-assets"
     }
-  ]
+  ],
+
+  // Secrets (set via: npx wrangler pages secret put SECRET_NAME --project-name deploy-app)
+  // JWT_SECRET, OPENAI_API_KEY, ANTHROPIC_API_KEY, STRIPE_SECRET_KEY,
+  // STRIPE_PUBLISHABLE_KEY, STRIPE_WEBHOOK_SECRET, RESEND_API_KEY,
+  // CLOUDFLARE_API_TOKEN, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY,
+  // R2_ENDPOINT, FROM_EMAIL, FROM_NAME, APP_URL
+
+  "vars": {
+    "ENVIRONMENT": "production",
+    "APP_URL": "https://deploy-app.pages.dev",
+    "R2_ENDPOINT": "https://b7d0c7ba6b4de011cc51c878e26c70c2.r2.cloudflarestorage.com",
+    "FROM_EMAIL": "noreply@deployapp.io",
+    "FROM_NAME": "DEPLOY Platform",
+    "CLOUDFLARE_ACCOUNT_ID": "b7d0c7ba6b4de011cc51c878e26c70c2"
+  }
 }

@@ -3,6 +3,7 @@
 import { Hono } from 'hono';
 import { authMiddleware, signJWT, hashPassword, verifyPassword, generateId } from '../middleware/auth';
 import { CoinService } from '../services/coin.service';
+import { ResendService } from '../services/resend.service';
 import type { Bindings, Variables } from '../types';
 
 const auth = new Hono<{ Bindings: Bindings; Variables: Variables }>();
@@ -63,6 +64,14 @@ auth.post('/signup', async (c) => {
 
     const jwtSecret = c.env.JWT_SECRET || 'deploy-secret-key-change-in-production';
     const token = await signJWT({ sub: userId, email: email.toLowerCase(), role: 'user' }, jwtSecret);
+
+    // Send welcome email (non-blocking — don't fail signup if email fails)
+    try {
+      const resend = new ResendService(c.env);
+      await resend.sendWelcome({ to: email.toLowerCase(), name, coins: 50 });
+    } catch (emailErr) {
+      console.error('Welcome email failed (non-fatal):', emailErr);
+    }
 
     return c.json({
       success: true,
@@ -185,6 +194,87 @@ auth.post('/change-password', authMiddleware(), async (c) => {
 // POST /api/auth/logout
 auth.post('/logout', authMiddleware(), async (c) => {
   return c.json({ success: true, message: 'Logged out successfully' });
+});
+
+// POST /api/auth/forgot-password
+// Generates a time-limited reset token, stores it in KV, and emails the user.
+auth.post('/forgot-password', async (c) => {
+  try {
+    const { email } = await c.req.json();
+    if (!email) return c.json({ success: false, error: 'Email is required' }, 400);
+
+    const user = await c.env.DB.prepare(
+      'SELECT id, name, email FROM users WHERE email = ? AND status = ?'
+    ).bind(email.toLowerCase(), 'active').first<{ id: string; name: string; email: string }>();
+
+    // Always return success to prevent email enumeration
+    if (!user) {
+      return c.json({ success: true, message: 'If that email is registered, a reset link has been sent.' });
+    }
+
+    // Generate a secure token and store in KV (expires in 1 hour)
+    const token = crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, '');
+    const kvKey = `pwd_reset:${token}`;
+    await c.env.DEPLOY_KV.put(kvKey, JSON.stringify({ userId: user.id, email: user.email }), {
+      expirationTtl: 3600 // 1 hour
+    });
+
+    // Send reset email
+    try {
+      const resend = new ResendService(c.env);
+      await resend.sendPasswordReset({ to: user.email, name: user.name, resetToken: token });
+    } catch (emailErr) {
+      console.error('Reset email failed:', emailErr);
+      return c.json({ success: false, error: 'Failed to send reset email. Please try again.' }, 500);
+    }
+
+    return c.json({ success: true, message: 'If that email is registered, a reset link has been sent.' });
+  } catch (err) {
+    console.error('Forgot-password error:', err);
+    return c.json({ success: false, error: 'An error occurred. Please try again.' }, 500);
+  }
+});
+
+// POST /api/auth/reset-password
+// Validates the reset token from KV and updates the password.
+auth.post('/reset-password', async (c) => {
+  try {
+    const { token, new_password } = await c.req.json();
+    if (!token || !new_password) {
+      return c.json({ success: false, error: 'Token and new password are required' }, 400);
+    }
+    if (new_password.length < 8) {
+      return c.json({ success: false, error: 'Password must be at least 8 characters' }, 400);
+    }
+
+    // Validate token from KV
+    const kvKey = `pwd_reset:${token}`;
+    const stored = await c.env.DEPLOY_KV.get(kvKey);
+    if (!stored) {
+      return c.json({ success: false, error: 'Invalid or expired reset link. Please request a new one.' }, 400);
+    }
+
+    const { userId } = JSON.parse(stored) as { userId: string; email: string };
+
+    // Update password
+    const newHash = await hashPassword(new_password);
+    await c.env.DB.prepare(
+      'UPDATE users SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+    ).bind(newHash, userId).run();
+
+    // Invalidate the token immediately
+    await c.env.DEPLOY_KV.delete(kvKey);
+
+    // Audit log
+    await c.env.DB.prepare(
+      'INSERT INTO audit_logs (id, user_id, action, resource_type, resource_id) VALUES (?, ?, ?, ?, ?)'
+    ).bind(generateId('log'), userId, 'password_reset', 'user', userId).run().catch(() => {});
+
+    return c.json({ success: true, message: 'Password updated successfully. You can now log in.' });
+  } catch (err) {
+    console.error('Reset-password error:', err);
+    return c.json({ success: false, error: 'An error occurred. Please try again.' }, 500);
+  }
 });
 
 export default auth;
