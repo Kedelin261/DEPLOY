@@ -614,7 +614,7 @@ prompt.post('/:project_id/ai-assist', authMiddleware(), async (c) => {
     }
   });
 
-  if (!result.success) return c.json({ success: false, error: result.error }, 500);
+  if (!result.success) return c.json({ success: false, error: 'AI service is currently unavailable. Please try again shortly.' }, 500);
 
   const { CoinService: CS } = await import('../services/coin.service');
   const cs = new CS(c.env.DB);

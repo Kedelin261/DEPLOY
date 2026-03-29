@@ -368,7 +368,7 @@ async function this_processBuildJob(
       await env.DB.batch([
         env.DB.prepare(
           `UPDATE build_jobs SET status = 'failed', error_message = ?, completed_at = CURRENT_TIMESTAMP WHERE id = ?`
-        ).bind(result.error || 'Build failed', jobId),
+        ).bind('Build failed. Coins have been returned.', jobId),
         env.DB.prepare(
           `UPDATE projects SET status = 'draft', updated_at = CURRENT_TIMESTAMP WHERE id = ?`
         ).bind(projectId),
@@ -376,7 +376,7 @@ async function this_processBuildJob(
           `INSERT INTO notifications (id, user_id, type, title, message)
            VALUES (?, ?, ?, ?, ?)`
         ).bind(generateId('notif'), userId, 'build_failed', 'Build Failed',
-          result.error || 'Your build encountered an error. Coins have been returned.')
+          'Your build encountered an issue. Your coins have been returned — please try again.')
       ]);
     }
   } catch (err) {
@@ -600,7 +600,7 @@ projects.post('/:id/summarize', authMiddleware(), async (c) => {
   });
 
   if (!result.success) {
-    return c.json({ success: false, error: result.error || 'Failed to generate summary' }, 500);
+    return c.json({ success: false, error: 'Unable to generate summary right now. Please try again.' }, 500);
   }
 
   // Debit coins
@@ -651,7 +651,7 @@ projects.post('/:id/chat', authMiddleware(), async (c) => {
   });
 
   if (!result.success) {
-    return c.json({ success: false, error: result.error || 'Chat error' }, 500);
+    return c.json({ success: false, error: 'AI chat is temporarily unavailable. Please try again.' }, 500);
   }
 
   // Debit coins
