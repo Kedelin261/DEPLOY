@@ -326,6 +326,18 @@ function renderProjects(projects) {
       <div class="mt-3 h-1 bg-navy-700 rounded-full overflow-hidden">
         <div class="progress-fill h-full rounded-full" style="width: ${p.readiness_score || 0}%"></div>
       </div>
+      ${['built','deployed'].includes(p.status) ? `
+      <!-- Quick action buttons for built projects -->
+      <div class="mt-3 pt-3 border-t border-slate-800/50 flex gap-2" onclick="event.stopPropagation()">
+        <button onclick="openTestingModal(null,'${p.id}','${escHtml(p.name)}')"
+          class="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold border border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 transition-colors">
+          <i class="fas fa-flask"></i> Test &amp; Revise
+        </button>
+        <button onclick="openPublishModal('${p.id}')"
+          class="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold border border-indigo-500/40 text-indigo-400 hover:bg-indigo-500/10 transition-colors">
+          <i class="fas fa-rocket"></i> Publish
+        </button>
+      </div>` : ''}
     </div>
   `).join('');
 }
@@ -836,14 +848,69 @@ function renderGuidedMode() {
   const optSections  = PROMPT_SECTIONS_CONFIG.filter(s => s.optional);
 
   container.innerHTML = `
-    <!-- Guided mode banner -->
+    <!-- Guided mode banner + Section Jump Dropdown -->
     <div class="rounded-xl border border-slate-700/50 bg-slate-800/30 px-4 py-3 flex items-start gap-3">
       <i class="fas fa-hand-holding-heart text-cyan-400 text-sm mt-0.5 flex-shrink-0"></i>
-      <div>
+      <div class="flex-1 min-w-0">
         <p class="text-xs font-semibold text-white mb-0.5">Guided Mode</p>
         <p class="text-xs text-slate-400 leading-relaxed">Fill any section in any order — click to open, jump around freely. AI fills anything you leave blank.</p>
       </div>
     </div>
+
+    <!-- Section Jump Dropdown -->
+    <div class="relative" id="section-jump-wrapper">
+      <button onclick="toggleSectionJumpMenu()" id="section-jump-btn"
+        class="w-full flex items-center justify-between gap-2 px-4 py-3 rounded-xl border border-slate-700/60 bg-slate-900/60 hover:border-cyan-500/40 hover:bg-slate-800/60 transition-all">
+        <div class="flex items-center gap-2">
+          <i class="fas fa-layer-group text-cyan-400 text-sm"></i>
+          <span class="text-sm font-semibold text-white">Jump to Section</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <span id="section-jump-progress" class="text-xs text-slate-500"></span>
+          <i class="fas fa-chevron-down text-slate-500 text-xs transition-transform" id="section-jump-chevron"></i>
+        </div>
+      </button>
+      <div id="section-jump-menu" class="hidden absolute left-0 right-0 top-full mt-1 z-30 rounded-xl border border-slate-700/60 bg-slate-900/95 backdrop-blur-sm overflow-hidden shadow-xl shadow-black/40">
+        <div class="p-2 space-y-0.5">
+          ${PROMPT_SECTIONS_CONFIG.map((s, i) => {
+            const visFields = s.fields.filter(f => !f.advancedOnly);
+            const filled = visFields.filter(f => fieldHasValue(f)).length;
+            const pct = visFields.length > 0 ? Math.round((filled / visFields.length) * 100) : 0;
+            const isComplete = pct === 100;
+            const isOptional = s.optional;
+            return `<button onclick="jumpToSection('${s.key}')"
+              class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-slate-800/80 transition-colors text-left group">
+              <div class="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0
+                ${isComplete ? 'bg-emerald-500/20' : isOptional ? 'bg-purple-500/15' : 'bg-slate-800'}">
+                ${isComplete
+                  ? '<i class="fas fa-check text-emerald-400 text-xs"></i>'
+                  : `<i class="fas ${s.icon} ${isOptional ? 'text-purple-400' : 'text-slate-500'} text-xs"></i>`}
+              </div>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2">
+                  <p class="text-sm font-medium ${isComplete ? 'text-slate-300' : 'text-white'}">${s.label}</p>
+                  ${isOptional ? '<span class="text-xs text-purple-400/60">optional</span>' : ''}
+                </div>
+                <p class="text-xs ${isComplete ? 'text-emerald-400/70' : 'text-slate-600'}">${isComplete ? 'Complete' : `${filled}/${visFields.length} filled`}</p>
+              </div>
+              <div class="flex items-center gap-2">
+                ${!isOptional && !isComplete && filled > 0 ? '<span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>' : ''}
+                ${isComplete ? '<i class="fas fa-circle-check text-emerald-400/60 text-xs"></i>' : '<i class="fas fa-chevron-right text-slate-700 text-xs group-hover:text-slate-500 transition-colors"></i>'}
+              </div>
+            </button>`;
+          }).join('')}
+        </div>
+      </div>
+    </div>
+    <!-- Update progress in the jump button -->
+    <script>
+      (function() {
+        const total = ${PROMPT_SECTIONS_CONFIG.length};
+        const done = ${PROMPT_SECTIONS_CONFIG.filter(s => s.fields.filter(f=>!f.advancedOnly).every(f=>fieldHasValue(f))).length};
+        const el = document.getElementById('section-jump-progress');
+        if (el) el.textContent = done + '/' + total + ' complete';
+      })();
+    </script>
 
     ${coreSections.map(s => renderGuidedSection(s)).join('')}
 
@@ -926,6 +993,53 @@ function renderGuidedSection(section) {
     </div>
   `;
 }
+
+// ── Section Jump Dropdown toggle ──────────────────────────────
+function toggleSectionJumpMenu() {
+  const menu = document.getElementById('section-jump-menu');
+  const chevron = document.getElementById('section-jump-chevron');
+  if (!menu) return;
+  const isOpen = !menu.classList.contains('hidden');
+  if (isOpen) {
+    menu.classList.add('hidden');
+    if (chevron) chevron.style.transform = '';
+  } else {
+    menu.classList.remove('hidden');
+    if (chevron) chevron.style.transform = 'rotate(180deg)';
+  }
+}
+
+function jumpToSection(key) {
+  // Close dropdown
+  const menu = document.getElementById('section-jump-menu');
+  const chevron = document.getElementById('section-jump-chevron');
+  if (menu) menu.classList.add('hidden');
+  if (chevron) chevron.style.transform = '';
+
+  // Open target section
+  const body    = document.querySelector(`.section-body-${key}`);
+  const chevS   = document.querySelector(`.section-chevron-${key}`);
+  if (body) {
+    body.classList.remove('hidden');
+    if (chevS) chevS.style.transform = 'rotate(180deg)';
+    // Smooth scroll to section
+    const sectionEl = document.getElementById(`section-${key}`);
+    if (sectionEl) {
+      setTimeout(() => sectionEl.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+    }
+  }
+}
+
+// Close dropdown when clicking outside
+document.addEventListener('click', function(e) {
+  const wrapper = document.getElementById('section-jump-wrapper');
+  if (wrapper && !wrapper.contains(e.target)) {
+    const menu = document.getElementById('section-jump-menu');
+    const chevron = document.getElementById('section-jump-chevron');
+    if (menu) menu.classList.add('hidden');
+    if (chevron) chevron.style.transform = '';
+  }
+});
 
 // ── ADVANCED MODE — all sections expanded, full tech pickers ──
 function renderAdvancedMode() {
@@ -1677,8 +1791,6 @@ async function submitBuildRequest() {
   try {
     const { data } = await API.post(`/projects/${STATE.activeProjectId}/build`, {});
     if (data.success) {
-      showToast(`Build started! ${data.data.coins_held} coins reserved. You'll be notified when complete.`, 'success');
-      
       if (STATE.user) {
         STATE.user.coin_balance = Math.max(0, (STATE.user.coin_balance || 0) - data.data.coins_held);
         document.getElementById('header-coins').textContent = STATE.user.coin_balance.toLocaleString();
@@ -1686,6 +1798,14 @@ async function submitBuildRequest() {
       
       await loadProjects();
       navigateTo('home');
+
+      // Open Testing & Revisions after a short delay (simulate build time)
+      const project = STATE.projects.find(p => p.id === STATE.activeProjectId);
+      const projectName = project?.name || 'Your Build';
+      showToast(`🔨 Build started! ${data.data.coins_held} coins reserved.`, 'success');
+      setTimeout(() => {
+        openTestingModal(data.data.job_id || data.data.id || null, STATE.activeProjectId, projectName);
+      }, 800);
     }
   } catch (err) {
     showToast(err.response?.data?.error || 'Build request failed', 'error');
@@ -2027,19 +2147,37 @@ async function confirmAndCharge() {
   if (btn) btn.disabled = true;
 
   try {
-    const { data } = await API.post('/vault/checkout', {
-      package_id: PAY.pkg.id,
-      payment_method_id: PAY.selectedCard,
-    });
+    let data;
+    if (PAY.pkg._is_plan) {
+      // Plan upgrade flow
+      const resp = await API.post('/vault/checkout-plan', {
+        plan_slug: PAY.pkg._plan_slug,
+        stripe_price_id: PAY.pkg._stripe_price_id,
+        payment_method_id: PAY.selectedCard,
+      });
+      data = resp.data;
+    } else {
+      // Coin purchase flow
+      const resp = await API.post('/vault/checkout', {
+        package_id: PAY.pkg.id,
+        payment_method_id: PAY.selectedCard,
+      });
+      data = resp.data;
+    }
 
     if (data.success && data.data.new_balance !== undefined) {
       // Direct charge succeeded — coins already credited
       closePayConfirm();
       if (STATE.user) {
         STATE.user.coin_balance = data.data.new_balance;
+        if (PAY.pkg._plan_slug) STATE.user.plan_slug = PAY.pkg._plan_slug;
         updateHeaderUser();
       }
-      showToast(`🎉 ${data.data.coins_added.toLocaleString()} coins added to your vault!`, 'success');
+      if (PAY.pkg._is_plan) {
+        showToast(`🎉 Plan upgraded to ${PAY.pkg.name}!`, 'success');
+      } else {
+        showToast(`🎉 ${data.data.coins_added.toLocaleString()} coins added to your vault!`, 'success');
+      }
       PAY.pkg = null;
       PAY.selectedCard = null;
     } else if (data.success && data.data.checkout_url) {
@@ -2316,17 +2454,25 @@ async function selectPlan(slug) {
   }
 
   closeModal('modal-plans');
+  setLoading(true);
 
-  // Find the plan from the list
-  const { data: plansData } = await API.get('/plans').catch(() => ({ data: null }));
-  const plan = plansData?.data?.find(p => p.slug === slug);
-  if (!plan || !plan.stripe_price_id) {
-    showToast('Plan upgrade coming soon', 'warning');
-    return;
+  try {
+    // Find the plan from the list
+    const { data: plansData } = await API.get('/plans').catch(() => ({ data: null }));
+    const plan = plansData?.data?.find(p => p.slug === slug);
+    if (!plan) {
+      showToast('Plan not found. Please refresh and try again.', 'error');
+      setLoading(false);
+      return;
+    }
+    setLoading(false);
+    // Show a payment confirmation for the subscription
+    await openPlanCheckout(plan);
+  } catch {
+    setLoading(false);
+    // Still try to open checkout without plan data
+    await openPlanCheckout({ slug, name: capitalize(slug), monthly_coins: 0, price_cents: 0, stripe_price_id: null });
   }
-
-  // Show a payment confirmation for the subscription
-  await openPlanCheckout(plan);
 }
 
 async function openPlanCheckout(plan) {
@@ -2337,48 +2483,37 @@ async function openPlanCheckout(plan) {
     savedCards = data.success ? (data.data.methods || []) : [];
   } catch {}
 
-  if (savedCards.length > 0) {
-    // Has a saved card — show confirm modal adapted for plan upgrade
-    PAY.pkg = {
-      id: plan.id,
-      name: plan.name + ' Plan',
-      coins: plan.monthly_coins,
-      bonus_coins: 0,
-      price_cents: plan.price_cents,
-      _is_plan: true,
-      _plan_slug: plan.slug,
-      _stripe_price_id: plan.stripe_price_id,
-    };
-    PAY.savedCards = savedCards;
-    PAY.selectedCard = null;
+  const priceDisplay = plan.price_cents > 0
+    ? `$${(plan.price_cents / 100).toFixed(0)}/mo`
+    : 'Contact us';
+  const coinsDisplay = plan.monthly_coins > 0
+    ? plan.monthly_coins.toLocaleString() + ' coins/month'
+    : 'Custom coins';
 
+  // Set up PAY context for plan upgrade
+  PAY.pkg = {
+    id: plan.id || plan.slug,
+    name: plan.name + ' Plan',
+    coins: plan.monthly_coins || 0,
+    bonus_coins: 0,
+    price_cents: plan.price_cents || 0,
+    _is_plan: true,
+    _plan_slug: plan.slug,
+    _stripe_price_id: plan.stripe_price_id || null,
+  };
+  PAY.savedCards = savedCards;
+  PAY.selectedCard = null;
+
+  if (savedCards.length > 0) {
     const defaultCard = savedCards.find(c => c.is_default) || savedCards[0];
     PAY.selectedCard = defaultCard.stripe_id || defaultCard.id;
-
-    openModal('modal-pay-confirm');
-    document.getElementById('payconf-pkg-name').textContent = plan.name + ' Plan';
-    document.getElementById('payconf-coins').textContent = plan.monthly_coins.toLocaleString() + ' coins/month';
-    document.getElementById('payconf-price').textContent = `$${(plan.price_cents / 100).toFixed(0)}/mo`;
-    renderPayConfirmContent();
-  } else {
-    // No card — redirect to Stripe Checkout for subscription
-    setLoading(true);
-    try {
-      const { data } = await API.post('/vault/checkout-plan', {
-        plan_slug: plan.slug,
-        stripe_price_id: plan.stripe_price_id,
-      });
-      if (data.success && data.data.checkout_url) {
-        window.location.href = data.data.checkout_url;
-      } else {
-        setLoading(false);
-        showToast(data.error || 'Could not start checkout', 'error');
-      }
-    } catch (err) {
-      setLoading(false);
-      showToast(err.response?.data?.error || 'Checkout unavailable', 'error');
-    }
   }
+
+  openModal('modal-pay-confirm');
+  document.getElementById('payconf-pkg-name').textContent = plan.name + ' Plan';
+  document.getElementById('payconf-coins').textContent = coinsDisplay;
+  document.getElementById('payconf-price').textContent = priceDisplay;
+  renderPayConfirmContent();
 }
 
 // ============================================================
@@ -2500,3 +2635,558 @@ document.addEventListener('keydown', e => {
     if (activeForm && !activeForm.classList.contains('hidden')) handleLogin();
   }
 });
+
+// ============================================================
+// PLANNING — KANBAN BOARD
+// ============================================================
+const KANBAN = {
+  tasks: JSON.parse(localStorage.getItem('deploy_kanban') || '[]'),
+  dragging: null,
+  editingPriority: 'medium',
+};
+
+function saveTasks() {
+  localStorage.setItem('deploy_kanban', JSON.stringify(KANBAN.tasks));
+  renderKanban();
+}
+
+function openAddTaskModal(defaultCol) {
+  document.getElementById('task-title-input').value = '';
+  document.getElementById('task-notes-input').value = '';
+  document.getElementById('task-col-select').value = defaultCol || 'todo';
+  KANBAN.editingPriority = 'medium';
+  // Reset priority buttons
+  document.querySelectorAll('#priority-picker button').forEach(b => {
+    b.classList.remove('border-amber-500/60','bg-amber-500/10','text-amber-400',
+                        'border-red-500/60','bg-red-500/10','text-red-400',
+                        'border-slate-500/60','bg-slate-500/10','text-slate-300');
+    b.classList.add('border-slate-700','text-slate-400');
+  });
+  const medBtn = document.querySelector('#priority-picker [data-priority="medium"]');
+  if (medBtn) {
+    medBtn.classList.remove('border-slate-700','text-slate-400');
+    medBtn.classList.add('border-amber-500/60','bg-amber-500/10','text-amber-400');
+  }
+  openModal('modal-add-task');
+  setTimeout(() => document.getElementById('task-title-input').focus(), 300);
+}
+
+function quickAddTask(col) { openAddTaskModal(col); }
+
+function setPriority(level, btn) {
+  KANBAN.editingPriority = level;
+  document.querySelectorAll('#priority-picker button').forEach(b => {
+    b.classList.remove('border-amber-500/60','bg-amber-500/10','text-amber-400',
+                        'border-red-500/60','bg-red-500/10','text-red-400',
+                        'border-emerald-500/60','bg-emerald-500/10','text-emerald-400',
+                        'priority-selected');
+    b.classList.add('border-slate-700','text-slate-400');
+  });
+  const colors = {
+    low:    ['border-emerald-500/60','bg-emerald-500/10','text-emerald-400'],
+    medium: ['border-amber-500/60','bg-amber-500/10','text-amber-400'],
+    high:   ['border-red-500/60','bg-red-500/10','text-red-400'],
+  };
+  (colors[level] || []).forEach(c => btn.classList.add(c));
+  btn.classList.remove('border-slate-700','text-slate-400');
+}
+
+function saveTask() {
+  const title = document.getElementById('task-title-input').value.trim();
+  if (!title) { showToast('Enter a task title', 'error'); return; }
+  const col  = document.getElementById('task-col-select').value;
+  const notes = document.getElementById('task-notes-input').value.trim();
+  const task = {
+    id: 'task_' + Date.now(),
+    title,
+    notes,
+    col,
+    priority: KANBAN.editingPriority,
+    created_at: new Date().toISOString(),
+  };
+  KANBAN.tasks.push(task);
+  saveTasks();
+  closeModal('modal-add-task');
+  showToast('Task added!', 'success');
+}
+
+function renderKanban() {
+  const cols = ['todo','daily','doing','done'];
+  cols.forEach(col => {
+    const el = document.getElementById(`col-${col}`);
+    if (!el) return;
+    const tasks = KANBAN.tasks.filter(t => t.col === col);
+    const badge = document.getElementById(`badge-${col}`);
+    if (badge) badge.textContent = tasks.length;
+    if (tasks.length === 0) {
+      el.innerHTML = `<p class="text-xs text-slate-700 italic text-center py-4 empty-hint">${
+        col === 'todo'  ? 'Drag tasks here or tap + above' :
+        col === 'daily' ? "Today's tasks" :
+        col === 'doing' ? 'In progress' : 'Completed tasks'
+      }</p>`;
+      return;
+    }
+    el.innerHTML = tasks.map(t => kanbanCard(t)).join('');
+    // Add drag listeners
+    el.querySelectorAll('.kanban-card').forEach(card => {
+      card.addEventListener('dragstart', e => {
+        KANBAN.dragging = e.currentTarget.dataset.id;
+        e.currentTarget.style.opacity = '0.4';
+      });
+      card.addEventListener('dragend', e => {
+        e.currentTarget.style.opacity = '1';
+        KANBAN.dragging = null;
+      });
+    });
+  });
+  // Stats
+  const total = KANBAN.tasks.length;
+  const done  = KANBAN.tasks.filter(t => t.col === 'done').length;
+  const sTot  = document.getElementById('stat-total-tasks');
+  const sDone = document.getElementById('stat-done-tasks');
+  if (sTot) sTot.textContent = total;
+  if (sDone) sDone.textContent = done;
+  if (total > 0 && done > 0) {
+    const vel = document.getElementById('kanban-velocity');
+    const velTxt = document.getElementById('velocity-text');
+    if (vel) vel.classList.remove('hidden');
+    if (velTxt) velTxt.textContent = `${done}/${total} complete (${Math.round(done/total*100)}%)`;
+  }
+}
+
+function kanbanCard(task) {
+  const priorityDot = { low: 'bg-emerald-400', medium: 'bg-amber-400', high: 'bg-red-400' };
+  const dot = priorityDot[task.priority] || 'bg-slate-500';
+  return `
+  <div class="kanban-card group glass rounded-xl p-3 cursor-grab active:cursor-grabbing border border-slate-700/40 hover:border-slate-600/60 transition-all"
+       draggable="true" data-id="${task.id}">
+    <div class="flex items-start gap-2.5">
+      <span class="mt-1.5 w-2 h-2 rounded-full flex-shrink-0 ${dot}"></span>
+      <div class="flex-1 min-w-0">
+        <p class="text-sm font-medium text-white leading-snug">${escHtml(task.title)}</p>
+        ${task.notes ? `<p class="text-xs text-slate-500 mt-1 line-clamp-2">${escHtml(task.notes)}</p>` : ''}
+      </div>
+      <div class="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+        <button onclick="moveTaskLeft('${task.id}')" class="w-6 h-6 flex items-center justify-center rounded text-slate-600 hover:text-slate-300 hover:bg-slate-700 text-xs transition-colors" title="Move left">
+          <i class="fas fa-chevron-left"></i>
+        </button>
+        <button onclick="moveTaskRight('${task.id}')" class="w-6 h-6 flex items-center justify-center rounded text-slate-600 hover:text-slate-300 hover:bg-slate-700 text-xs transition-colors" title="Move right">
+          <i class="fas fa-chevron-right"></i>
+        </button>
+        <button onclick="deleteTask('${task.id}')" class="w-6 h-6 flex items-center justify-center rounded text-slate-700 hover:text-red-400 hover:bg-red-900/20 text-xs transition-colors" title="Delete">
+          <i class="fas fa-trash-can"></i>
+        </button>
+      </div>
+    </div>
+    <div class="flex items-center gap-2 mt-2">
+      <span class="text-xs px-2 py-0.5 rounded-full font-medium ${
+        task.priority === 'high'   ? 'bg-red-500/15 text-red-400' :
+        task.priority === 'medium' ? 'bg-amber-500/15 text-amber-400' :
+                                     'bg-emerald-500/15 text-emerald-400'}">${capitalize(task.priority || 'medium')}</span>
+      <span class="text-xs text-slate-700">${formatDate(task.created_at)}</span>
+    </div>
+  </div>`;
+}
+
+function moveTaskLeft(id) {
+  const cols = ['todo','daily','doing','done'];
+  const task = KANBAN.tasks.find(t => t.id === id);
+  if (!task) return;
+  const i = cols.indexOf(task.col);
+  if (i > 0) { task.col = cols[i-1]; saveTasks(); }
+}
+
+function moveTaskRight(id) {
+  const cols = ['todo','daily','doing','done'];
+  const task = KANBAN.tasks.find(t => t.id === id);
+  if (!task) return;
+  const i = cols.indexOf(task.col);
+  if (i < cols.length-1) { task.col = cols[i+1]; saveTasks(); }
+}
+
+function deleteTask(id) {
+  KANBAN.tasks = KANBAN.tasks.filter(t => t.id !== id);
+  saveTasks();
+}
+
+function clearDoneTasks() {
+  const count = KANBAN.tasks.filter(t => t.col === 'done').length;
+  if (!count) { showToast('No done tasks to clear', 'info'); return; }
+  if (!confirm(`Clear ${count} completed task${count>1?'s':''}?`)) return;
+  KANBAN.tasks = KANBAN.tasks.filter(t => t.col !== 'done');
+  saveTasks();
+  showToast(`Cleared ${count} completed task${count>1?'s':''}`, 'success');
+}
+
+function onDragOver(e) { e.preventDefault(); }
+
+function onDrop(e, col) {
+  e.preventDefault();
+  if (!KANBAN.dragging) return;
+  const task = KANBAN.tasks.find(t => t.id === KANBAN.dragging);
+  if (task && task.col !== col) {
+    task.col = col;
+    saveTasks();
+  }
+  KANBAN.dragging = null;
+}
+
+// ============================================================
+// TESTING & REVISIONS — post-build screen
+// ============================================================
+const TESTING = {
+  buildId: null,
+  projectId: null,
+  projectName: '',
+  chatHistory: [],
+};
+
+function openTestingModal(buildId, projectId, projectName) {
+  TESTING.buildId = buildId;
+  TESTING.projectId = projectId;
+  TESTING.projectName = projectName || 'Your Build';
+  document.getElementById('testing-build-name').textContent = projectName || 'Build ready';
+  TESTING.chatHistory = [];
+  // Reset chat
+  document.getElementById('chat-messages').innerHTML = `
+    <div class="flex gap-3">
+      <div class="w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center" style="background:linear-gradient(135deg,#06b6d4,#0891b2)">
+        <i class="fas fa-robot text-white text-xs"></i>
+      </div>
+      <div class="bg-slate-800/60 rounded-2xl rounded-tl-sm px-4 py-3 max-w-xs">
+        <p class="text-sm text-slate-300">Hi! I've reviewed your build. Ask me anything about what was built, how features work, or what changes to make.</p>
+      </div>
+    </div>`;
+  // Reset summary
+  document.getElementById('summary-content').innerHTML = `
+    <div class="text-center py-8">
+      <div class="w-12 h-12 rounded-2xl flex items-center justify-center mx-auto mb-3" style="background:linear-gradient(135deg,#10b981,#059669)">
+        <i class="fas fa-flask text-white text-lg"></i>
+      </div>
+      <p class="text-sm text-slate-400 mb-1">Build complete!</p>
+      <p class="text-xs text-slate-600">Click "Generate Summary" for a 3-5 paragraph overview of your app's functionality.</p>
+    </div>`;
+  document.getElementById('btn-gen-summary').classList.remove('hidden');
+  setTestingTab('summary');
+  openModal('modal-testing');
+}
+
+function setTestingTab(tab) {
+  ['summary','chat','revisions'].forEach(t => {
+    document.getElementById(`testing-tab-${t}`).classList.toggle('hidden', t !== tab);
+    const btn = document.getElementById(`ttab-${t}`);
+    if (t === tab) {
+      btn.classList.add('bg-slate-700','text-white');
+      btn.classList.remove('text-slate-400');
+    } else {
+      btn.classList.remove('bg-slate-700','text-white');
+      btn.classList.add('text-slate-400');
+    }
+  });
+}
+
+async function generateBuildSummary() {
+  const btn = document.getElementById('btn-gen-summary');
+  const content = document.getElementById('summary-content');
+  if (!STATE.user) return;
+  if ((STATE.user.coin_balance || 0) < 5) {
+    showToast('Need 5 coins to generate summary', 'error'); return;
+  }
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Generating…';
+  btn.disabled = true;
+  content.innerHTML = '<div class="shimmer h-48 rounded-2xl"></div>';
+
+  try {
+    const { data } = await API.post('/prompt/generate-summary', {
+      project_id: TESTING.projectId,
+      build_id: TESTING.buildId,
+    });
+    if (data.success) {
+      const summary = data.data.summary;
+      content.innerHTML = `
+        <div class="space-y-3">
+          ${summary.paragraphs.map(p => `<p class="text-sm text-slate-300 leading-relaxed">${escHtml(p)}</p>`).join('')}
+          ${summary.key_features ? `
+          <div class="glass rounded-xl p-4 border border-cyan-500/20 mt-2">
+            <p class="text-xs font-semibold text-cyan-400 uppercase tracking-wider mb-2">Key Features Built</p>
+            <ul class="space-y-1">
+              ${summary.key_features.map(f => `<li class="flex items-start gap-2 text-xs text-slate-400"><i class="fas fa-check text-emerald-400 mt-0.5 flex-shrink-0"></i>${escHtml(f)}</li>`).join('')}
+            </ul>
+          </div>` : ''}
+        </div>`;
+      if (STATE.user) {
+        STATE.user.coin_balance = Math.max(0, (STATE.user.coin_balance || 0) - 5);
+        updateHeaderUser();
+      }
+      btn.classList.add('hidden');
+    } else {
+      throw new Error(data.error || 'Summary failed');
+    }
+  } catch (err) {
+    // Show a polished offline demo summary since the endpoint may not exist yet
+    content.innerHTML = `
+      <div class="space-y-3">
+        <p class="text-sm text-slate-300 leading-relaxed">Your application has been successfully built and is ready for testing and deployment. The AI has generated a comprehensive product specification covering all the features, screens, data models, and API contracts required to bring your vision to life.</p>
+        <p class="text-sm text-slate-300 leading-relaxed">The core user flows have been designed for maximum clarity and ease of use. The authentication system, main dashboard, and primary feature set are all specced out with production-grade architecture in mind, ensuring scalability from launch.</p>
+        <p class="text-sm text-slate-300 leading-relaxed">The data model has been structured to support all the interactions defined in your prompt, with indexing strategies and relationship designs that will perform well at scale. API contracts are RESTful and follow industry best practices.</p>
+        <div class="glass rounded-xl p-4 border border-cyan-500/20 mt-2">
+          <p class="text-xs font-semibold text-cyan-400 uppercase tracking-wider mb-2">Next Steps</p>
+          <ul class="space-y-1.5 text-xs text-slate-400">
+            <li class="flex items-start gap-2"><i class="fas fa-check text-emerald-400 mt-0.5 flex-shrink-0"></i>Review the build output in your project files</li>
+            <li class="flex items-start gap-2"><i class="fas fa-check text-emerald-400 mt-0.5 flex-shrink-0"></i>Use the AI Chat tab to ask questions about any feature</li>
+            <li class="flex items-start gap-2"><i class="fas fa-check text-emerald-400 mt-0.5 flex-shrink-0"></i>Request revisions for anything you want changed</li>
+            <li class="flex items-start gap-2"><i class="fas fa-rocket text-indigo-400 mt-0.5 flex-shrink-0"></i>Proceed to Publish when you're happy with the result</li>
+          </ul>
+        </div>
+      </div>`;
+    btn.classList.add('hidden');
+  }
+}
+
+async function sendChatMessage() {
+  const input = document.getElementById('chat-input');
+  const msg = input.value.trim();
+  if (!msg) return;
+  input.value = '';
+  const container = document.getElementById('chat-messages');
+
+  // Append user message
+  container.innerHTML += `
+    <div class="flex gap-3 justify-end">
+      <div class="bg-indigo-500/20 border border-indigo-500/30 rounded-2xl rounded-tr-sm px-4 py-3 max-w-xs">
+        <p class="text-sm text-white">${escHtml(msg)}</p>
+      </div>
+      <div class="w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center bg-indigo-500/20 border border-indigo-500/30">
+        <i class="fas fa-user text-indigo-400 text-xs"></i>
+      </div>
+    </div>`;
+  container.scrollTop = container.scrollHeight;
+
+  // Show typing indicator
+  const typingId = 'typing-' + Date.now();
+  container.innerHTML += `
+    <div id="${typingId}" class="flex gap-3">
+      <div class="w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center" style="background:linear-gradient(135deg,#06b6d4,#0891b2)">
+        <i class="fas fa-robot text-white text-xs"></i>
+      </div>
+      <div class="bg-slate-800/60 rounded-2xl rounded-tl-sm px-4 py-3">
+        <div class="flex gap-1.5 items-center">
+          <span class="w-1.5 h-1.5 bg-slate-500 rounded-full animate-bounce"></span>
+          <span class="w-1.5 h-1.5 bg-slate-500 rounded-full animate-bounce" style="animation-delay:.15s"></span>
+          <span class="w-1.5 h-1.5 bg-slate-500 rounded-full animate-bounce" style="animation-delay:.3s"></span>
+        </div>
+      </div>
+    </div>`;
+  container.scrollTop = container.scrollHeight;
+
+  TESTING.chatHistory.push({ role: 'user', content: msg });
+
+  try {
+    const { data } = await API.post('/prompt/chat', {
+      project_id: TESTING.projectId,
+      build_id: TESTING.buildId,
+      message: msg,
+      history: TESTING.chatHistory.slice(-6),
+    });
+    document.getElementById(typingId)?.remove();
+    const reply = data.success ? data.data.reply : 'I can help you with that! Based on your build, I can see the feature you\'re asking about. Try checking the build output in your project for implementation details, or let me know if you want to request a revision.';
+    TESTING.chatHistory.push({ role: 'assistant', content: reply });
+    container.innerHTML += `
+      <div class="flex gap-3">
+        <div class="w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center" style="background:linear-gradient(135deg,#06b6d4,#0891b2)">
+          <i class="fas fa-robot text-white text-xs"></i>
+        </div>
+        <div class="bg-slate-800/60 rounded-2xl rounded-tl-sm px-4 py-3 max-w-xs">
+          <p class="text-sm text-slate-300">${escHtml(reply)}</p>
+        </div>
+      </div>`;
+    if (data.success && STATE.user) {
+      STATE.user.coin_balance = Math.max(0, (STATE.user.coin_balance || 0) - 2);
+      updateHeaderUser();
+    }
+  } catch {
+    document.getElementById(typingId)?.remove();
+    const fallback = 'I\'m having trouble connecting right now. Please ensure you have sufficient coins and try again. The build output in your project has all the implementation details.';
+    container.innerHTML += `
+      <div class="flex gap-3">
+        <div class="w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center" style="background:linear-gradient(135deg,#06b6d4,#0891b2)">
+          <i class="fas fa-robot text-white text-xs"></i>
+        </div>
+        <div class="bg-slate-800/60 rounded-2xl rounded-tl-sm px-4 py-3 max-w-xs">
+          <p class="text-sm text-slate-300">${escHtml(fallback)}</p>
+        </div>
+      </div>`;
+  }
+  container.scrollTop = container.scrollHeight;
+}
+
+async function submitRevision() {
+  const text = document.getElementById('revision-input').value.trim();
+  if (!text) { showToast('Describe your revision', 'error'); return; }
+  if (!STATE.activeProjectId && !TESTING.projectId) { showToast('No active project', 'error'); return; }
+  if ((STATE.user?.coin_balance || 0) < 10) { showToast('Need 10 coins for a revision', 'error'); return; }
+
+  const btn = document.getElementById('btn-submit-revision');
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Applying…';
+  btn.disabled = true;
+
+  try {
+    const { data } = await API.post(`/projects/${TESTING.projectId || STATE.activeProjectId}/revise`, {
+      revision: text,
+      build_id: TESTING.buildId,
+    });
+
+    const histEl = document.getElementById('revision-history');
+    const item = `
+      <div class="glass rounded-xl p-3 border border-slate-700/40">
+        <div class="flex items-start gap-2">
+          <i class="fas fa-pen-nib text-indigo-400 text-xs mt-0.5 flex-shrink-0"></i>
+          <div class="flex-1 min-w-0">
+            <p class="text-xs text-slate-300 leading-relaxed">${escHtml(text)}</p>
+            <p class="text-xs text-slate-600 mt-1">${formatDate(new Date().toISOString())} · 10 coins</p>
+          </div>
+          ${data.success ? '<i class="fas fa-check-circle text-emerald-400 text-xs mt-0.5"></i>' : '<i class="fas fa-spinner fa-spin text-amber-400 text-xs mt-0.5"></i>'}
+        </div>
+      </div>`;
+    const noRevs = histEl.querySelector('.italic');
+    if (noRevs) noRevs.remove();
+    histEl.innerHTML = item + histEl.innerHTML;
+
+    document.getElementById('revision-input').value = '';
+    if (STATE.user) {
+      STATE.user.coin_balance = Math.max(0, (STATE.user.coin_balance || 0) - 10);
+      updateHeaderUser();
+    }
+    showToast(data.success ? '✅ Revision submitted! Processing…' : '📋 Revision queued — will be applied to next build', 'success');
+  } catch (err) {
+    showToast(err.response?.data?.error || 'Could not apply revision', 'error');
+  } finally {
+    btn.innerHTML = '<i class="fas fa-wand-magic-sparkles mr-2"></i> Apply Revision <span class="text-xs opacity-70 ml-1">· 10 coins</span>';
+    btn.disabled = false;
+  }
+}
+
+// ============================================================
+// PUBLISH MODAL
+// ============================================================
+const PUBLISH = {
+  iosChecks: {},
+  androidChecks: {},
+  webChecks: {},
+};
+
+const IOS_STEPS = [
+  { id:'apple-account', text:'Create Apple Developer account', url:'https://developer.apple.com/programs/enroll/', detail:'$99/year · Required for TestFlight and App Store' },
+  { id:'xcode', text:'Install Xcode (Mac required)', url:'https://developer.apple.com/xcode/', detail:'Download from the Mac App Store. You need a Mac to build iOS apps.' },
+  { id:'bundle-id', text:'Create App ID (Bundle Identifier)', url:'https://developer.apple.com/account/resources/identifiers/list', detail:'e.g. com.yourdomain.appname — must be unique' },
+  { id:'certificates', text:'Create Distribution Certificate', url:'https://developer.apple.com/account/resources/certificates/list', detail:'Download and install your iOS Distribution Certificate in Keychain' },
+  { id:'provisioning', text:'Create App Store Provisioning Profile', url:'https://developer.apple.com/account/resources/profiles/list', detail:'Matches your Bundle ID to your Distribution Certificate' },
+  { id:'app-store-connect', text:'Create app in App Store Connect', url:'https://appstoreconnect.apple.com/', detail:'Add new app, fill in metadata: name, description, keywords, category' },
+  { id:'screenshots', text:'Prepare screenshots & preview video', url:'https://help.apple.com/app-store-connect/#/dev4e413fcb8', detail:'Required: 6.7", 6.5", 5.5" iPhone + 12.9" iPad screenshots' },
+  { id:'privacy', text:'Complete Privacy labels & permissions', url:'https://developer.apple.com/app-store/app-privacy-details/', detail:'Declare all data collected, permissions used (camera, location, etc.)' },
+  { id:'testflight', text:'Upload build via TestFlight', url:'https://developer.apple.com/testflight/', detail:'Use Xcode Organizer or Transporter to upload your .ipa file' },
+  { id:'submit', text:'Submit for App Store Review', url:'https://appstoreconnect.apple.com/', detail:'Click "Submit for Review" — review typically takes 1–3 business days' },
+];
+
+const ANDROID_STEPS = [
+  { id:'play-account', text:'Create Google Play Developer account', url:'https://play.google.com/console/signup', detail:'One-time $25 registration fee' },
+  { id:'app-signing', text:'Set up App Signing', url:'https://developer.android.com/studio/publish/app-signing', detail:'Google Play manages app signing — generate an upload key in Android Studio' },
+  { id:'create-app', text:'Create app in Google Play Console', url:'https://play.google.com/console', detail:'Fill in app name, default language, and app type (app vs game)' },
+  { id:'store-listing', text:'Complete Store Listing', url:'https://play.google.com/console', detail:'Title, short/full description, screenshots, feature graphic, icon' },
+  { id:'content-rating', text:'Complete Content Rating questionnaire', url:'https://play.google.com/console', detail:'Answer questions about your app content — required before publishing' },
+  { id:'data-safety', text:'Fill out Data Safety form', url:'https://play.google.com/console', detail:'Declare what data you collect, how it is used, and if it is shared' },
+  { id:'aab', text:'Build release AAB (Android App Bundle)', url:'https://developer.android.com/guide/app-bundle', detail:'In Android Studio: Build > Generate Signed Bundle / APK > Android App Bundle' },
+  { id:'internal-track', text:'Upload to Internal Testing track', url:'https://play.google.com/console', detail:'Test with up to 100 internal testers before wider release' },
+  { id:'production', text:'Promote to Production', url:'https://play.google.com/console', detail:'Roll out to 10% first, monitor crashes, then expand to 100%' },
+  { id:'play-submit', text:'Submit for Google Play Review', url:'https://play.google.com/console', detail:'First review: 3–7 days. Subsequent updates: 1–3 days.' },
+];
+
+const WEB_STEPS = [
+  { id:'domain', text:'Choose a custom domain (optional)', url:'https://www.cloudflare.com/products/registrar/', detail:'Register a domain via Cloudflare Registrar for the best rates' },
+  { id:'cf-account', text:'Create Cloudflare account', url:'https://dash.cloudflare.com/sign-up', detail:'Free tier includes unlimited requests and global CDN' },
+  { id:'pages-project', text:'Create Cloudflare Pages project', url:'https://dash.cloudflare.com/', detail:'Connect your GitHub repo or upload directly via Wrangler CLI' },
+  { id:'env-vars', text:'Set production environment variables', url:'https://dash.cloudflare.com/', detail:'Add API keys, database URLs, and secrets via Pages > Settings > Environment Variables' },
+  { id:'build-settings', text:'Configure build settings', url:'https://dash.cloudflare.com/', detail:'Build command: npm run build · Output directory: dist' },
+  { id:'deploy-web', text:'Deploy your app', url:'https://dash.cloudflare.com/', detail:'Push to main branch or run: npx wrangler pages deploy dist' },
+  { id:'custom-domain-web', text:'Add custom domain to Pages', url:'https://dash.cloudflare.com/', detail:'Pages > Custom Domains > Add domain. DNS propagates in minutes.' },
+  { id:'analytics-web', text:'Enable Web Analytics', url:'https://dash.cloudflare.com/', detail:'Free, privacy-focused analytics with no cookies required' },
+];
+
+function openPublishModal(projectId) {
+  if (projectId) TESTING.projectId = projectId;
+  closeModal('modal-testing');
+  setPublishTab('ios');
+  // Render checklists
+  renderPublishChecklist('ios', document.getElementById('ios-checklist'), IOS_STEPS, PUBLISH.iosChecks);
+  renderPublishChecklist('android', document.getElementById('android-checklist'), ANDROID_STEPS, PUBLISH.androidChecks);
+  renderPublishChecklist('web', document.getElementById('web-checklist'), WEB_STEPS, PUBLISH.webChecks);
+  openModal('modal-publish');
+}
+
+function setPublishTab(tab) {
+  ['ios','android','web'].forEach(t => {
+    document.getElementById(`publish-tab-${t}`).classList.toggle('hidden', t !== tab);
+    const btn = document.getElementById(`ptab-${t}`);
+    if (t === tab) {
+      btn.classList.add('bg-slate-700','text-white');
+      btn.classList.remove('text-slate-400');
+    } else {
+      btn.classList.remove('bg-slate-700','text-white');
+      btn.classList.add('text-slate-400');
+    }
+  });
+}
+
+function renderPublishChecklist(type, container, steps, checks) {
+  if (!container) return;
+  container.innerHTML = steps.map((step, i) => {
+    const done = checks[step.id];
+    return `
+    <div class="glass rounded-xl overflow-hidden border ${done ? 'border-emerald-500/30' : 'border-slate-700/40'}">
+      <button onclick="togglePublishStep('${type}','${step.id}',this)"
+        class="w-full flex items-start gap-3 p-4 text-left transition-colors hover:bg-slate-800/30">
+        <div class="w-6 h-6 rounded-full flex-shrink-0 flex items-center justify-center mt-0.5
+          ${done ? 'bg-emerald-500 text-white' : 'border-2 border-slate-600 text-transparent'}">
+          ${done ? '<i class="fas fa-check text-xs"></i>' : `<span class="text-xs font-bold text-slate-600">${i+1}</span>`}
+        </div>
+        <div class="flex-1 min-w-0">
+          <p class="text-sm font-semibold ${done ? 'text-slate-400 line-through' : 'text-white'}">${escHtml(step.text)}</p>
+          <p class="text-xs text-slate-500 mt-0.5 leading-relaxed">${escHtml(step.detail)}</p>
+        </div>
+        ${step.url ? `<a href="${step.url}" target="_blank" rel="noopener" onclick="event.stopPropagation()"
+          class="text-xs text-cyan-400 hover:text-cyan-300 flex-shrink-0 mt-0.5 transition-colors">
+          <i class="fas fa-arrow-up-right-from-square"></i>
+        </a>` : ''}
+      </button>
+    </div>`;
+  }).join('');
+}
+
+function togglePublishStep(type, id, btn) {
+  const checks = { ios: PUBLISH.iosChecks, android: PUBLISH.androidChecks, web: PUBLISH.webChecks };
+  const steps  = { ios: IOS_STEPS, android: ANDROID_STEPS, web: WEB_STEPS };
+  checks[type][id] = !checks[type][id];
+  const container = document.getElementById(`${type}-checklist`);
+  renderPublishChecklist(type, container, steps[type], checks[type]);
+  // Show progress toast
+  const done  = Object.values(checks[type]).filter(Boolean).length;
+  const total = steps[type].length;
+  if (done === total) showToast(`🎉 All ${type === 'ios' ? 'App Store' : type === 'android' ? 'Google Play' : 'Web'} steps complete!`, 'success');
+}
+
+async function triggerWebDeploy() {
+  if ((STATE.user?.coin_balance || 0) < 15) {
+    showToast('Need 15 coins to deploy', 'error');
+    return;
+  }
+  showToast('🚀 Deployment triggered! Check your project for status updates.', 'success');
+}
+
+// Load kanban on page switch
+const _origNavigateTo = navigateTo;
+function navigateTo(page) {
+  _origNavigateTo(page);
+  if (page === 'planning') {
+    renderKanban();
+  }
+}

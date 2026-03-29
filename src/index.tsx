@@ -788,6 +788,110 @@ function getAppHTML(): string {
         </div>
       </div>
       
+      <!-- PLANNING PAGE (Kanban) -->
+      <div id="page-planning" class="page pt-4">
+        <div class="animate-fade-up">
+          <div class="flex items-center justify-between mb-4">
+            <div>
+              <h2 class="text-xl font-bold text-white">Planning Board</h2>
+              <p class="text-xs text-slate-500 mt-0.5">Kanban · stay on track, ship faster</p>
+            </div>
+            <button onclick="openAddTaskModal()" class="btn-primary px-3 py-2 rounded-lg text-xs font-semibold">
+              <i class="fas fa-plus mr-1"></i> Add Task
+            </button>
+          </div>
+
+          <!-- Board scroll container -->
+          <div class="flex gap-3 overflow-x-auto pb-4 snap-x snap-mandatory -mx-4 px-4" id="kanban-board"
+               style="scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch">
+
+            <!-- Column: Project To-Do -->
+            <div class="kanban-col flex-shrink-0 w-72 snap-start rounded-2xl bg-slate-900/70 border border-slate-800/60 flex flex-col" data-col="todo">
+              <div class="flex items-center gap-2 px-4 py-3 border-b border-slate-800/60">
+                <span class="w-2.5 h-2.5 rounded-full bg-slate-500"></span>
+                <p class="text-sm font-bold text-white">Project To-Do</p>
+                <span class="ml-auto text-xs text-slate-600 bg-slate-800 px-2 py-0.5 rounded-full" id="badge-todo">0</span>
+              </div>
+              <div class="flex-1 p-3 space-y-2 kanban-cards min-h-24" id="col-todo"
+                   ondragover="onDragOver(event)" ondrop="onDrop(event,'todo')">
+                <p class="text-xs text-slate-700 italic text-center py-4 empty-hint">Drag tasks here or tap + above</p>
+              </div>
+              <div class="p-3 border-t border-slate-800/40">
+                <button onclick="quickAddTask('todo')" class="w-full text-xs text-slate-600 hover:text-slate-400 flex items-center gap-1.5 transition-colors py-1">
+                  <i class="fas fa-plus-circle"></i> Add to Project To-Do
+                </button>
+              </div>
+            </div>
+
+            <!-- Column: Daily To-Do -->
+            <div class="kanban-col flex-shrink-0 w-72 snap-start rounded-2xl bg-slate-900/70 border border-blue-500/20 flex flex-col" data-col="daily">
+              <div class="flex items-center gap-2 px-4 py-3 border-b border-blue-500/20">
+                <span class="w-2.5 h-2.5 rounded-full bg-blue-400"></span>
+                <p class="text-sm font-bold text-white">Daily To-Do</p>
+                <span class="ml-auto text-xs text-blue-400/60 bg-blue-500/10 px-2 py-0.5 rounded-full" id="badge-daily">0</span>
+              </div>
+              <div class="flex-1 p-3 space-y-2 kanban-cards min-h-24" id="col-daily"
+                   ondragover="onDragOver(event)" ondrop="onDrop(event,'daily')">
+                <p class="text-xs text-slate-700 italic text-center py-4 empty-hint">Today's tasks</p>
+              </div>
+              <div class="p-3 border-t border-blue-500/10">
+                <button onclick="quickAddTask('daily')" class="w-full text-xs text-slate-600 hover:text-blue-400 flex items-center gap-1.5 transition-colors py-1">
+                  <i class="fas fa-plus-circle"></i> Add to Daily To-Do
+                </button>
+              </div>
+            </div>
+
+            <!-- Column: Doing -->
+            <div class="kanban-col flex-shrink-0 w-72 snap-start rounded-2xl bg-slate-900/70 border border-amber-500/20 flex flex-col" data-col="doing">
+              <div class="flex items-center gap-2 px-4 py-3 border-b border-amber-500/20">
+                <span class="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse"></span>
+                <p class="text-sm font-bold text-white">Doing</p>
+                <span class="ml-auto text-xs text-amber-400/70 bg-amber-500/10 px-2 py-0.5 rounded-full" id="badge-doing">0</span>
+              </div>
+              <div class="flex-1 p-3 space-y-2 kanban-cards min-h-24" id="col-doing"
+                   ondragover="onDragOver(event)" ondrop="onDrop(event,'doing')">
+                <p class="text-xs text-slate-700 italic text-center py-4 empty-hint">In progress</p>
+              </div>
+              <div class="p-3 border-t border-amber-500/10">
+                <button onclick="quickAddTask('doing')" class="w-full text-xs text-slate-600 hover:text-amber-400 flex items-center gap-1.5 transition-colors py-1">
+                  <i class="fas fa-plus-circle"></i> Add to Doing
+                </button>
+              </div>
+            </div>
+
+            <!-- Column: Done -->
+            <div class="kanban-col flex-shrink-0 w-72 snap-start rounded-2xl bg-slate-900/70 border border-emerald-500/20 flex flex-col" data-col="done">
+              <div class="flex items-center gap-2 px-4 py-3 border-b border-emerald-500/20">
+                <span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+                <p class="text-sm font-bold text-white">Done</p>
+                <span class="ml-auto text-xs text-emerald-400/70 bg-emerald-500/10 px-2 py-0.5 rounded-full" id="badge-done">0</span>
+              </div>
+              <div class="flex-1 p-3 space-y-2 kanban-cards min-h-24" id="col-done"
+                   ondragover="onDragOver(event)" ondrop="onDrop(event,'done')">
+                <p class="text-xs text-slate-700 italic text-center py-4 empty-hint">Completed tasks</p>
+              </div>
+              <div class="p-3 border-t border-emerald-500/10">
+                <button onclick="clearDoneTasks()" class="w-full text-xs text-slate-600 hover:text-emerald-400 flex items-center gap-1.5 transition-colors py-1">
+                  <i class="fas fa-broom"></i> Clear Done
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Stats bar -->
+          <div class="glass rounded-xl p-3 flex items-center justify-between mt-1" id="kanban-stats">
+            <div class="flex items-center gap-4 text-xs text-slate-500">
+              <span><span id="stat-total-tasks" class="font-bold text-white">0</span> total</span>
+              <span><span id="stat-done-tasks" class="font-bold text-emerald-400">0</span> done</span>
+            </div>
+            <div id="kanban-velocity" class="text-xs text-slate-600 hidden">
+              <i class="fas fa-fire text-amber-400 mr-1"></i>
+              <span id="velocity-text"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- INFO PAGE -->
       <div id="page-info" class="page pt-4 space-y-4">
         <div class="animate-fade-up">
@@ -978,24 +1082,29 @@ function getAppHTML(): string {
   <!-- Bottom Navigation -->
   <nav class="bottom-nav fixed bottom-0 left-0 right-0 z-40 safe-bottom">
     <div class="flex items-stretch max-w-2xl mx-auto">
-      <button onclick="navigateTo('home')" class="nav-item active flex-1 flex flex-col items-center py-3 gap-1 relative" id="nav-home">
-        <i class="nav-icon fas fa-house text-slate-500 text-lg transition-colors"></i>
-        <span class="text-xs font-medium text-slate-600 transition-colors">Home</span>
+      <button onclick="navigateTo('home')" class="nav-item active flex-1 flex flex-col items-center py-2.5 gap-0.5 relative" id="nav-home">
+        <i class="nav-icon fas fa-house text-slate-500 text-base transition-colors"></i>
+        <span class="text-xs font-medium text-slate-600 transition-colors" style="font-size:10px">Home</span>
         <span class="nav-dot absolute bottom-0 left-1/2 -translate-x-1/2 w-1 h-1 bg-cyan-400 rounded-full"></span>
       </button>
-      <button onclick="navigateTo('prompt')" class="nav-item flex-1 flex flex-col items-center py-3 gap-1 relative" id="nav-prompt">
-        <i class="nav-icon fas fa-wand-magic-sparkles text-slate-500 text-lg transition-colors"></i>
-        <span class="text-xs font-medium text-slate-600 transition-colors">Prompt</span>
+      <button onclick="navigateTo('prompt')" class="nav-item flex-1 flex flex-col items-center py-2.5 gap-0.5 relative" id="nav-prompt">
+        <i class="nav-icon fas fa-wand-magic-sparkles text-slate-500 text-base transition-colors"></i>
+        <span class="text-xs font-medium text-slate-600 transition-colors" style="font-size:10px">Prompt</span>
         <span class="nav-dot absolute bottom-0 left-1/2 -translate-x-1/2 w-1 h-1 bg-cyan-400 rounded-full"></span>
       </button>
-      <button onclick="navigateTo('account')" class="nav-item flex-1 flex flex-col items-center py-3 gap-1 relative" id="nav-account">
-        <i class="nav-icon fas fa-user text-slate-500 text-lg transition-colors"></i>
-        <span class="text-xs font-medium text-slate-600 transition-colors">Account</span>
+      <button onclick="navigateTo('planning')" class="nav-item flex-1 flex flex-col items-center py-2.5 gap-0.5 relative" id="nav-planning">
+        <i class="nav-icon fas fa-table-columns text-slate-500 text-base transition-colors"></i>
+        <span class="text-xs font-medium text-slate-600 transition-colors" style="font-size:10px">Planning</span>
         <span class="nav-dot absolute bottom-0 left-1/2 -translate-x-1/2 w-1 h-1 bg-cyan-400 rounded-full"></span>
       </button>
-      <button onclick="navigateTo('info')" class="nav-item flex-1 flex flex-col items-center py-3 gap-1 relative" id="nav-info">
-        <i class="nav-icon fas fa-circle-info text-slate-500 text-lg transition-colors"></i>
-        <span class="text-xs font-medium text-slate-600 transition-colors">Info</span>
+      <button onclick="navigateTo('account')" class="nav-item flex-1 flex flex-col items-center py-2.5 gap-0.5 relative" id="nav-account">
+        <i class="nav-icon fas fa-user text-slate-500 text-base transition-colors"></i>
+        <span class="text-xs font-medium text-slate-600 transition-colors" style="font-size:10px">Account</span>
+        <span class="nav-dot absolute bottom-0 left-1/2 -translate-x-1/2 w-1 h-1 bg-cyan-400 rounded-full"></span>
+      </button>
+      <button onclick="navigateTo('info')" class="nav-item flex-1 flex flex-col items-center py-2.5 gap-0.5 relative" id="nav-info">
+        <i class="nav-icon fas fa-circle-info text-slate-500 text-base transition-colors"></i>
+        <span class="text-xs font-medium text-slate-600 transition-colors" style="font-size:10px">Info</span>
         <span class="nav-dot absolute bottom-0 left-1/2 -translate-x-1/2 w-1 h-1 bg-cyan-400 rounded-full"></span>
       </button>
     </div>
@@ -1224,6 +1333,291 @@ function getAppHTML(): string {
     <div class="flex gap-3">
       <button onclick="closeModal('modal-edit-profile')" class="btn-ghost flex-1 py-3 rounded-xl text-sm font-semibold">Cancel</button>
       <button onclick="submitEditProfile()" class="btn-primary flex-1 py-3 rounded-xl text-sm font-semibold">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     ADD TASK MODAL (Kanban)
+     ============================================================ -->
+<div id="modal-add-task" class="hidden fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4">
+  <div class="modal-overlay absolute inset-0" onclick="closeModal('modal-add-task')"></div>
+  <div class="relative w-full max-w-sm glass rounded-2xl p-5 space-y-4">
+    <div class="flex items-center justify-between">
+      <h3 class="text-base font-bold text-white"><i class="fas fa-plus-circle text-cyan-400 mr-2"></i>Add Task</h3>
+      <button onclick="closeModal('modal-add-task')" class="text-slate-500 hover:text-white"><i class="fas fa-xmark"></i></button>
+    </div>
+    <div>
+      <label class="text-xs font-medium text-slate-400 mb-1.5 block">Task Title</label>
+      <input id="task-title-input" type="text" placeholder="What needs to be done?" class="deploy-input w-full px-4 py-3 rounded-xl text-sm" maxlength="120">
+    </div>
+    <div>
+      <label class="text-xs font-medium text-slate-400 mb-1.5 block">Notes (optional)</label>
+      <textarea id="task-notes-input" placeholder="Add more detail…" rows="2" class="deploy-input w-full px-4 py-3 rounded-xl text-sm resize-none"></textarea>
+    </div>
+    <div>
+      <label class="text-xs font-medium text-slate-400 mb-1.5 block">Column</label>
+      <select id="task-col-select" class="deploy-input w-full px-4 py-3 rounded-xl text-sm">
+        <option value="todo">Project To-Do</option>
+        <option value="daily">Daily To-Do</option>
+        <option value="doing">Doing</option>
+        <option value="done">Done</option>
+      </select>
+    </div>
+    <div>
+      <label class="text-xs font-medium text-slate-400 mb-1.5 block">Priority</label>
+      <div class="flex gap-2" id="priority-picker">
+        <button onclick="setPriority('low',this)" data-priority="low"
+          class="flex-1 py-2 rounded-lg text-xs font-semibold border border-slate-700 text-slate-400 hover:border-slate-600 transition-all">
+          Low
+        </button>
+        <button onclick="setPriority('medium',this)" data-priority="medium"
+          class="flex-1 py-2 rounded-lg text-xs font-semibold border border-amber-500/60 bg-amber-500/10 text-amber-400 transition-all priority-selected">
+          Medium
+        </button>
+        <button onclick="setPriority('high',this)" data-priority="high"
+          class="flex-1 py-2 rounded-lg text-xs font-semibold border border-slate-700 text-slate-400 hover:border-slate-600 transition-all">
+          High
+        </button>
+      </div>
+    </div>
+    <div class="flex gap-3 pt-1">
+      <button onclick="closeModal('modal-add-task')" class="btn-ghost flex-1 py-3 rounded-xl text-sm font-semibold">Cancel</button>
+      <button onclick="saveTask()" class="btn-primary flex-1 py-3 rounded-xl text-sm font-semibold">
+        <i class="fas fa-plus mr-1"></i> Add Task
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     TESTING & REVISIONS MODAL (post-build)
+     ============================================================ -->
+<div id="modal-testing" class="hidden fixed inset-0 z-50 flex items-end justify-center p-0">
+  <div class="modal-overlay absolute inset-0" onclick="closeModal('modal-testing')"></div>
+  <div class="relative w-full max-w-2xl bg-slate-900 rounded-t-3xl flex flex-col overflow-hidden" style="max-height:92vh">
+    <!-- Handle + Header -->
+    <div class="flex-shrink-0 px-5 pt-4 pb-0">
+      <div class="w-10 h-1 bg-slate-700 rounded-full mx-auto mb-4"></div>
+      <div class="flex items-center justify-between mb-3">
+        <div class="flex items-center gap-2.5">
+          <div class="w-9 h-9 rounded-xl flex items-center justify-center" style="background:linear-gradient(135deg,#10b981,#059669)">
+            <i class="fas fa-flask text-white text-sm"></i>
+          </div>
+          <div>
+            <h3 class="text-base font-bold text-white">Testing &amp; Revisions</h3>
+            <p class="text-xs text-emerald-400" id="testing-build-name">Build ready</p>
+          </div>
+        </div>
+        <button onclick="closeModal('modal-testing')" class="text-slate-500 hover:text-white w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-800">
+          <i class="fas fa-xmark"></i>
+        </button>
+      </div>
+      <!-- Tabs -->
+      <div class="flex gap-1 bg-slate-800/60 p-1 rounded-xl mb-3">
+        <button onclick="setTestingTab('summary')" id="ttab-summary"
+          class="flex-1 py-2 text-xs font-semibold rounded-lg transition-all bg-slate-700 text-white">
+          <i class="fas fa-file-lines mr-1"></i> Summary
+        </button>
+        <button onclick="setTestingTab('chat')" id="ttab-chat"
+          class="flex-1 py-2 text-xs font-semibold rounded-lg transition-all text-slate-400">
+          <i class="fas fa-comments mr-1"></i> AI Chat
+        </button>
+        <button onclick="setTestingTab('revisions')" id="ttab-revisions"
+          class="flex-1 py-2 text-xs font-semibold rounded-lg transition-all text-slate-400">
+          <i class="fas fa-pen-nib mr-1"></i> Revisions
+        </button>
+      </div>
+    </div>
+
+    <!-- Tab content -->
+    <div class="flex-1 overflow-y-auto px-5 pb-5">
+
+      <!-- SUMMARY TAB -->
+      <div id="testing-tab-summary" class="space-y-4">
+        <div id="summary-content">
+          <div class="shimmer h-40 rounded-2xl mb-3"></div>
+          <div class="shimmer h-24 rounded-xl"></div>
+        </div>
+        <button onclick="generateBuildSummary()" id="btn-gen-summary"
+          class="btn-primary w-full py-3.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2">
+          <i class="fas fa-wand-magic-sparkles"></i> Generate Summary
+          <span class="text-xs opacity-70 ml-1">· 5 coins</span>
+        </button>
+      </div>
+
+      <!-- AI CHAT TAB -->
+      <div id="testing-tab-chat" class="hidden flex flex-col" style="min-height:300px">
+        <div id="chat-messages" class="flex-1 space-y-3 mb-4 min-h-48 max-h-72 overflow-y-auto pr-1">
+          <div class="flex gap-3">
+            <div class="w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center" style="background:linear-gradient(135deg,#06b6d4,#0891b2)">
+              <i class="fas fa-robot text-white text-xs"></i>
+            </div>
+            <div class="bg-slate-800/60 rounded-2xl rounded-tl-sm px-4 py-3 max-w-xs">
+              <p class="text-sm text-slate-300">Hi! I've reviewed your build. Ask me anything about what was built, how features work, or what changes to make.</p>
+            </div>
+          </div>
+        </div>
+        <div class="flex gap-2 sticky bottom-0 pt-2 bg-slate-900">
+          <input id="chat-input" type="text" placeholder="Ask about your build…"
+            class="deploy-input flex-1 px-4 py-3 rounded-xl text-sm"
+            onkeydown="if(event.key==='Enter')sendChatMessage()">
+          <button onclick="sendChatMessage()"
+            class="btn-primary px-4 py-3 rounded-xl text-sm font-semibold flex items-center gap-1.5">
+            <i class="fas fa-paper-plane"></i>
+          </button>
+        </div>
+        <p class="text-xs text-slate-600 mt-2 text-center">2 coins per message via Intent Layer</p>
+      </div>
+
+      <!-- REVISIONS TAB -->
+      <div id="testing-tab-revisions" class="hidden space-y-4">
+        <div class="glass rounded-xl p-4 border border-amber-500/20">
+          <div class="flex items-start gap-2 mb-2">
+            <i class="fas fa-circle-info text-amber-400 text-sm mt-0.5"></i>
+            <p class="text-xs text-slate-400 leading-relaxed">Revisions use the <span class="text-amber-400 font-semibold">Intent Layer</span> — new logic is structured, not hardcoded. Each revision costs <strong class="text-white">10 coins</strong>.</p>
+          </div>
+        </div>
+        <div id="revision-history" class="space-y-2 max-h-40 overflow-y-auto">
+          <p class="text-xs text-slate-600 italic text-center py-2">No revisions yet</p>
+        </div>
+        <div>
+          <label class="text-xs font-medium text-slate-400 mb-2 block uppercase tracking-wider">Describe your revision</label>
+          <textarea id="revision-input" placeholder="What would you like to change? Be specific — e.g. 'Add a dark mode toggle to the header' or 'Change the checkout flow to show a confirmation screen'…"
+            rows="4" class="deploy-input w-full px-4 py-3 rounded-xl text-sm resize-none"></textarea>
+          <p id="revision-coin-preview" class="text-xs text-slate-600 mt-1.5 text-right">~10 coins</p>
+        </div>
+        <button onclick="submitRevision()" id="btn-submit-revision"
+          class="btn-primary w-full py-4 rounded-xl text-sm font-semibold flex items-center justify-center gap-2">
+          <i class="fas fa-wand-magic-sparkles"></i> Apply Revision
+          <span class="text-xs opacity-70 ml-1">· 10 coins</span>
+        </button>
+        <button onclick="openPublishModal()" class="w-full py-3 rounded-xl text-sm font-semibold border border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 transition-colors flex items-center justify-center gap-2">
+          <i class="fas fa-rocket"></i> Proceed to Publish
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     PUBLISH MODAL
+     ============================================================ -->
+<div id="modal-publish" class="hidden fixed inset-0 z-50 flex items-end justify-center p-0">
+  <div class="modal-overlay absolute inset-0" onclick="closeModal('modal-publish')"></div>
+  <div class="relative w-full max-w-2xl bg-slate-900 rounded-t-3xl flex flex-col overflow-hidden" style="max-height:95vh">
+    <!-- Handle + Header -->
+    <div class="flex-shrink-0 px-5 pt-4 pb-0">
+      <div class="w-10 h-1 bg-slate-700 rounded-full mx-auto mb-4"></div>
+      <div class="flex items-center justify-between mb-3">
+        <div class="flex items-center gap-2.5">
+          <div class="w-9 h-9 rounded-xl flex items-center justify-center" style="background:linear-gradient(135deg,#6366f1,#4f46e5)">
+            <i class="fas fa-rocket text-white text-sm"></i>
+          </div>
+          <div>
+            <h3 class="text-base font-bold text-white">Publish Your App</h3>
+            <p class="text-xs text-slate-400">Step-by-step publishing guide</p>
+          </div>
+        </div>
+        <button onclick="closeModal('modal-publish')" class="text-slate-500 hover:text-white w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-800">
+          <i class="fas fa-xmark"></i>
+        </button>
+      </div>
+      <!-- Store Tabs -->
+      <div class="flex gap-1 bg-slate-800/60 p-1 rounded-xl mb-3">
+        <button onclick="setPublishTab('ios')" id="ptab-ios"
+          class="flex-1 py-2 text-xs font-semibold rounded-lg transition-all bg-slate-700 text-white flex items-center justify-center gap-1.5">
+          <i class="fab fa-apple"></i> App Store
+        </button>
+        <button onclick="setPublishTab('android')" id="ptab-android"
+          class="flex-1 py-2 text-xs font-semibold rounded-lg transition-all text-slate-400 flex items-center justify-center gap-1.5">
+          <i class="fab fa-google-play"></i> Google Play
+        </button>
+        <button onclick="setPublishTab('web')" id="ptab-web"
+          class="flex-1 py-2 text-xs font-semibold rounded-lg transition-all text-slate-400 flex items-center justify-center gap-1.5">
+          <i class="fas fa-globe"></i> Web
+        </button>
+      </div>
+    </div>
+
+    <!-- Tab content scroll -->
+    <div class="flex-1 overflow-y-auto px-5 pb-6">
+
+      <!-- iOS / App Store Tab -->
+      <div id="publish-tab-ios" class="space-y-3">
+        <div class="glass rounded-xl p-4 border border-slate-700/40">
+          <p class="text-xs text-slate-400 leading-relaxed">Publishing to the App Store requires an <span class="text-white font-semibold">Apple Developer account ($99/yr)</span>. The steps below walk you through everything from setup to launch.</p>
+        </div>
+        <div id="ios-checklist" class="space-y-2"></div>
+        <div class="glass rounded-xl p-4 border border-blue-500/20 mt-4">
+          <div class="flex items-center gap-2 mb-2">
+            <i class="fas fa-lightbulb text-blue-400 text-sm"></i>
+            <p class="text-xs font-semibold text-white">Pro Tips</p>
+          </div>
+          <ul class="space-y-1.5 text-xs text-slate-400">
+            <li class="flex items-start gap-2"><i class="fas fa-check text-emerald-400 mt-0.5 flex-shrink-0"></i>Use TestFlight for beta testing before submission</li>
+            <li class="flex items-start gap-2"><i class="fas fa-check text-emerald-400 mt-0.5 flex-shrink-0"></i>Screenshots must be for all required device sizes</li>
+            <li class="flex items-start gap-2"><i class="fas fa-check text-emerald-400 mt-0.5 flex-shrink-0"></i>Review guidelines thoroughly — rejection is common for first submissions</li>
+            <li class="flex items-start gap-2"><i class="fas fa-check text-emerald-400 mt-0.5 flex-shrink-0"></i>Average review time: 1-3 business days</li>
+          </ul>
+        </div>
+        <a href="https://developer.apple.com/app-store/" target="_blank" rel="noopener"
+          class="btn-primary w-full py-3.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 mt-2">
+          <i class="fab fa-apple"></i> Open Apple Developer Portal
+          <i class="fas fa-arrow-up-right-from-square text-xs ml-1 opacity-60"></i>
+        </a>
+      </div>
+
+      <!-- Android / Google Play Tab -->
+      <div id="publish-tab-android" class="hidden space-y-3">
+        <div class="glass rounded-xl p-4 border border-slate-700/40">
+          <p class="text-xs text-slate-400 leading-relaxed">Publishing to Google Play requires a <span class="text-white font-semibold">Google Play Developer account ($25 one-time)</span>. Follow the checklist below to go from build to live app.</p>
+        </div>
+        <div id="android-checklist" class="space-y-2"></div>
+        <div class="glass rounded-xl p-4 border border-green-500/20 mt-4">
+          <div class="flex items-center gap-2 mb-2">
+            <i class="fas fa-lightbulb text-green-400 text-sm"></i>
+            <p class="text-xs font-semibold text-white">Pro Tips</p>
+          </div>
+          <ul class="space-y-1.5 text-xs text-slate-400">
+            <li class="flex items-start gap-2"><i class="fas fa-check text-emerald-400 mt-0.5 flex-shrink-0"></i>Use Internal Testing track first — only 100 testers</li>
+            <li class="flex items-start gap-2"><i class="fas fa-check text-emerald-400 mt-0.5 flex-shrink-0"></i>AAB (Android App Bundle) is required — not APK</li>
+            <li class="flex items-start gap-2"><i class="fas fa-check text-emerald-400 mt-0.5 flex-shrink-0"></i>Data safety form is mandatory — review it carefully</li>
+            <li class="flex items-start gap-2"><i class="fas fa-check text-emerald-400 mt-0.5 flex-shrink-0"></i>First review can take 3-7 days; subsequent updates are faster</li>
+          </ul>
+        </div>
+        <a href="https://play.google.com/console" target="_blank" rel="noopener"
+          class="w-full py-3.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 mt-2 border border-green-500/40 text-green-400 hover:bg-green-500/10 transition-colors">
+          <i class="fab fa-google-play"></i> Open Google Play Console
+          <i class="fas fa-arrow-up-right-from-square text-xs ml-1 opacity-60"></i>
+        </a>
+      </div>
+
+      <!-- Web Tab -->
+      <div id="publish-tab-web" class="hidden space-y-3">
+        <div class="glass rounded-xl p-4 border border-slate-700/40">
+          <p class="text-xs text-slate-400 leading-relaxed">Deploy your web app to <span class="text-white font-semibold">Cloudflare Pages</span> — the fastest global edge network. Your app will be live at <code class="text-cyan-400">your-app.pages.dev</code> in minutes.</p>
+        </div>
+        <div id="web-checklist" class="space-y-2"></div>
+        <div class="glass rounded-xl p-4 border border-cyan-500/20 mt-4">
+          <div class="flex items-center gap-2 mb-2">
+            <i class="fas fa-lightbulb text-cyan-400 text-sm"></i>
+            <p class="text-xs font-semibold text-white">Pro Tips</p>
+          </div>
+          <ul class="space-y-1.5 text-xs text-slate-400">
+            <li class="flex items-start gap-2"><i class="fas fa-check text-emerald-400 mt-0.5 flex-shrink-0"></i>Add a custom domain in Cloudflare Pages settings</li>
+            <li class="flex items-start gap-2"><i class="fas fa-check text-emerald-400 mt-0.5 flex-shrink-0"></i>Enable Analytics to track real users from day 1</li>
+            <li class="flex items-start gap-2"><i class="fas fa-check text-emerald-400 mt-0.5 flex-shrink-0"></i>Set up environment variables for production keys</li>
+            <li class="flex items-start gap-2"><i class="fas fa-check text-emerald-400 mt-0.5 flex-shrink-0"></i>Free tier includes unlimited requests and bandwidth</li>
+          </ul>
+        </div>
+        <button onclick="triggerWebDeploy()"
+          class="btn-primary w-full py-4 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 mt-2">
+          <i class="fas fa-rocket"></i> Deploy to Cloudflare Pages
+          <span class="text-xs opacity-70 ml-1">· 15 coins</span>
+        </button>
+      </div>
+
     </div>
   </div>
 </div>
