@@ -173,10 +173,15 @@ export class StripeService {
       throw new Error('STRIPE_WEBHOOK_SECRET is not configured');
     }
 
-    // Parse Stripe-Signature header: t=timestamp,v1=hash
-    const parts = Object.fromEntries(
-      signature.split(',').map(p => p.split('=') as [string, string])
-    );
+    // Parse Stripe-Signature header: t=1234567890,v1=abcdef...
+    // Use indexOf('=') so hex values containing '=' aren't split incorrectly
+    const parts: Record<string, string> = {};
+    for (const chunk of signature.split(',')) {
+      const eqIdx = chunk.indexOf('=');
+      if (eqIdx !== -1) {
+        parts[chunk.slice(0, eqIdx)] = chunk.slice(eqIdx + 1);
+      }
+    }
     const timestamp = parts.t;
     const v1 = parts.v1;
 
@@ -186,10 +191,14 @@ export class StripeService {
     const tsDiff = Math.abs(Date.now() / 1000 - parseInt(timestamp));
     if (tsDiff > 300) throw new Error('Webhook timestamp too old');
 
-    // Compute expected signature
+    // Compute expected signature.
+    // Stripe signs with the raw secret AFTER stripping the "whsec_" prefix.
     const signedPayload = `${timestamp}.${rawBody}`;
     const enc = new TextEncoder();
-    const keyData = enc.encode(webhookSecret);
+    const rawSecret = webhookSecret.startsWith('whsec_')
+      ? webhookSecret.slice('whsec_'.length)
+      : webhookSecret;
+    const keyData = enc.encode(rawSecret);
     const msgData = enc.encode(signedPayload);
 
     const key = await crypto.subtle.importKey(
