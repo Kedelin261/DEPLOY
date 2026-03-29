@@ -236,6 +236,119 @@ export class StripeService {
   async retrieveSession(sessionId: string): Promise<StripeCheckoutSession> {
     return await stripeRequest(this.apiKey, 'GET', `/checkout/sessions/${sessionId}`) as StripeCheckoutSession;
   }
+
+  // ── Customer Management ────────────────────────────────────────────────────
+
+  /** Create or retrieve a Stripe Customer for a user */
+  async getOrCreateCustomer(opts: {
+    userId: string;
+    email: string;
+    name: string;
+    existingCustomerId?: string;
+  }): Promise<string> {
+    if (opts.existingCustomerId) return opts.existingCustomerId;
+
+    const customer = await stripeRequest(this.apiKey, 'POST', '/customers', {
+      email: opts.email,
+      name: opts.name,
+      metadata: { deploy_user_id: opts.userId },
+    }) as { id: string };
+
+    return customer.id;
+  }
+
+  // ── SetupIntent (save card without charging) ───────────────────────────────
+
+  /**
+   * Create a SetupIntent so the frontend can collect and save a card
+   * using Stripe.js Elements — no payment taken yet.
+   */
+  async createSetupIntent(customerId: string): Promise<{ clientSecret: string; setupIntentId: string }> {
+    const si = await stripeRequest(this.apiKey, 'POST', '/setup_intents', {
+      customer: customerId,
+      payment_method_types: ['card'],
+      usage: 'off_session',
+    }) as { id: string; client_secret: string };
+
+    return { clientSecret: si.client_secret, setupIntentId: si.id };
+  }
+
+  // ── Retrieve SetupIntent (after confirmation) ──────────────────────────────
+
+  async retrieveSetupIntent(setupIntentId: string): Promise<{ paymentMethodId: string; status: string }> {
+    const si = await stripeRequest(this.apiKey, 'GET', `/setup_intents/${setupIntentId}`) as {
+      status: string;
+      payment_method: string;
+    };
+    return { paymentMethodId: si.payment_method, status: si.status };
+  }
+
+  // ── Retrieve saved PaymentMethod details ──────────────────────────────────
+
+  async retrievePaymentMethod(pmId: string): Promise<SavedCard> {
+    const pm = await stripeRequest(this.apiKey, 'GET', `/payment_methods/${pmId}`) as {
+      id: string;
+      card: { brand: string; last4: string; exp_month: number; exp_year: number };
+    };
+    return {
+      id: pm.id,
+      brand: pm.card.brand,
+      last4: pm.card.last4,
+      expMonth: pm.card.exp_month,
+      expYear: pm.card.exp_year,
+    };
+  }
+
+  // ── List customer's saved PaymentMethods ──────────────────────────────────
+
+  async listPaymentMethods(customerId: string): Promise<SavedCard[]> {
+    const result = await stripeRequest(
+      this.apiKey, 'GET',
+      `/payment_methods?customer=${encodeURIComponent(customerId)}&type=card&limit=10`
+    ) as { data: Array<{ id: string; card: { brand: string; last4: string; exp_month: number; exp_year: number } }> };
+
+    return result.data.map(pm => ({
+      id: pm.id,
+      brand: pm.card.brand,
+      last4: pm.card.last4,
+      expMonth: pm.card.exp_month,
+      expYear: pm.card.exp_year,
+    }));
+  }
+
+  // ── Detach / delete a saved PaymentMethod ─────────────────────────────────
+
+  async detachPaymentMethod(pmId: string): Promise<void> {
+    await stripeRequest(this.apiKey, 'POST', `/payment_methods/${pmId}/detach`, {});
+  }
+
+  // ── Charge a saved card directly (PaymentIntent) ──────────────────────────
+
+  /**
+   * Charge a saved payment method immediately — no redirect required.
+   * Used when a user has a card on file and confirms the purchase in-app.
+   */
+  async chargePaymentMethod(opts: {
+    customerId: string;
+    paymentMethodId: string;
+    amountCents: number;
+    description: string;
+    metadata: Record<string, string>;
+  }): Promise<{ paymentIntentId: string; status: string }> {
+    const pi = await stripeRequest(this.apiKey, 'POST', '/payment_intents', {
+      amount: opts.amountCents,
+      currency: 'usd',
+      customer: opts.customerId,
+      payment_method: opts.paymentMethodId,
+      description: opts.description,
+      metadata: opts.metadata,
+      confirm: 'true',           // charge immediately
+      off_session: 'true',       // user is not actively in Stripe's flow
+      return_url: '',            // required field but unused for off_session
+    }) as { id: string; status: string };
+
+    return { paymentIntentId: pi.id, status: pi.status };
+  }
 }
 
 // ─── Webhook event types ──────────────────────────────────────────────────────
@@ -246,6 +359,14 @@ export type StripeWebhookEvent = {
   data: {
     object: Record<string, unknown>;
   };
+};
+
+export type SavedCard = {
+  id: string;          // Stripe PaymentMethod ID (pm_...)
+  brand: string;       // visa, mastercard, amex, etc.
+  last4: string;
+  expMonth: number;
+  expYear: number;
 };
 
 export type StripeCheckoutSession = {

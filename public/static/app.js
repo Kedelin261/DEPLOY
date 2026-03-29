@@ -1861,17 +1861,32 @@ async function openBuyCoinModal() {
   } catch {}
 }
 
+// ─── PAYMENT STATE ──────────────────────────────────────────────────────────
+// Holds context across the multi-step payment flow
+const PAY = {
+  pkg: null,          // { id, name, coins, bonus_coins, price_cents }
+  savedCards: [],     // [{ id, stripe_id, brand, last4, exp_month, exp_year, is_default }]
+  selectedCard: null, // stripe PaymentMethod ID (pm_...)
+  stripe: null,       // Stripe.js instance
+  cardElement: null,  // Stripe Card Element
+  setupIntentId: null,
+};
+
+// ─── Render coin packages (just display — no charge on click) ───────────────
 function renderCoinPackages(packages) {
   const container = document.getElementById('coin-packages-list');
-  
-  container.innerHTML = packages.map((pkg, i) => `
-    <button onclick="purchaseCoins('${pkg.id}', '${pkg.name}', ${pkg.coins + pkg.bonus_coins})"
-      class="w-full glass glass-hover rounded-xl p-4 text-left transition-all ${i === 1 ? 'border-cyan-500/40' : ''}">
+  container.innerHTML = packages.map((pkg, i) => {
+    const total = pkg.coins + (pkg.bonus_coins || 0);
+    const isPopular = i === 1;
+    return `
+    <button onclick="selectPackage(${JSON.stringify(pkg).replace(/"/g, '&quot;')})"
+      class="w-full glass glass-hover rounded-xl p-4 text-left transition-all group
+             ${isPopular ? 'border border-cyan-500/40' : 'border border-transparent'}">
       <div class="flex items-center justify-between">
         <div>
           <div class="flex items-center gap-2">
             <p class="text-sm font-bold text-white">${escHtml(pkg.name)}</p>
-            ${i === 1 ? '<span class="text-xs bg-cyan-500/20 text-cyan-400 px-2 py-0.5 rounded-full font-medium">Popular</span>' : ''}
+            ${isPopular ? '<span class="text-xs bg-cyan-500/20 text-cyan-400 px-2 py-0.5 rounded-full font-medium">Popular</span>' : ''}
           </div>
           <p class="text-xs text-slate-500 mt-0.5">
             ${pkg.coins.toLocaleString()} coins
@@ -1880,45 +1895,357 @@ function renderCoinPackages(packages) {
         </div>
         <div class="text-right">
           <p class="text-base font-black text-white">$${(pkg.price_cents / 100).toFixed(2)}</p>
-          <p class="text-xs text-slate-600">${((pkg.coins + pkg.bonus_coins) / (pkg.price_cents / 100)).toFixed(0)} coins/$</p>
+          <p class="text-xs text-slate-600">${(total / (pkg.price_cents / 100)).toFixed(0)} coins/$</p>
         </div>
       </div>
-    </button>
-  `).join('');
+    </button>`;
+  }).join('');
 }
 
-async function purchaseCoins(packageId, name, totalCoins) {
+// ─── Step 1: User picks a package → open confirm modal ──────────────────────
+async function selectPackage(pkg) {
+  PAY.pkg = pkg;
+  PAY.selectedCard = null;
+
+  closeModal('modal-buy-coins');
+  openModal('modal-pay-confirm');
+
+  // Populate order summary
+  const total = pkg.coins + (pkg.bonus_coins || 0);
+  document.getElementById('payconf-pkg-name').textContent = pkg.name;
+  document.getElementById('payconf-coins').textContent =
+    pkg.coins.toLocaleString() + (pkg.bonus_coins > 0 ? ` + ${pkg.bonus_coins} bonus` : '') + ' coins';
+  document.getElementById('payconf-price').textContent = `$${(pkg.price_cents / 100).toFixed(2)}`;
+
+  // Render loading state while we fetch saved cards
+  document.getElementById('payconf-method-section').innerHTML = `
+    <div class="shimmer h-16 rounded-xl"></div>`;
+  document.getElementById('payconf-actions').innerHTML = '';
+
+  // Load saved cards
   try {
-    setLoading(true);
+    const { data } = await API.get('/vault/payment-methods');
+    PAY.savedCards = data.success ? (data.data.methods || []) : [];
+  } catch {
+    PAY.savedCards = [];
+  }
 
-    // In development, try the checkout endpoint first; fall back to simulated purchase
-    const isDev = (STATE.config?.environment || 'development') === 'development';
+  renderPayConfirmContent();
+}
 
-    if (!isDev) {
-      // Production: create a Stripe Checkout Session and redirect
-      const { data } = await API.post('/vault/checkout', { package_id: packageId });
-      if (data.success && data.data.checkout_url) {
-        window.location.href = data.data.checkout_url;
-        return; // Page will navigate away
+// ─── Render the method section + action buttons inside confirm modal ─────────
+function renderPayConfirmContent() {
+  const methodSection = document.getElementById('payconf-method-section');
+  const actionsSection = document.getElementById('payconf-actions');
+  const hasSavedCards = PAY.savedCards.length > 0;
+
+  if (hasSavedCards) {
+    // Default to the first default card (or first card)
+    const defaultCard = PAY.savedCards.find(c => c.is_default) || PAY.savedCards[0];
+    if (!PAY.selectedCard) PAY.selectedCard = defaultCard.stripe_id || defaultCard.id;
+
+    methodSection.innerHTML = `
+      <div>
+        <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Payment Method</p>
+        <div class="space-y-2" id="card-list">
+          ${PAY.savedCards.map(card => {
+            const sid = card.stripe_id || card.id;
+            const isSelected = PAY.selectedCard === sid;
+            const brandIcon = cardBrandIcon(card.brand);
+            return `
+            <label class="flex items-center gap-3 cursor-pointer rounded-xl p-3 border transition-all
+                          ${isSelected ? 'border-indigo-500/60 bg-indigo-500/10' : 'border-slate-700/50 bg-slate-900/40'}">
+              <input type="radio" name="pay-card" value="${escHtml(sid)}"
+                     ${isSelected ? 'checked' : ''}
+                     onchange="PAY.selectedCard = this.value; renderPayConfirmContent()"
+                     class="accent-indigo-500">
+              <div class="flex items-center gap-2 flex-1">
+                <i class="${brandIcon} text-lg text-slate-300"></i>
+                <div>
+                  <p class="text-sm font-semibold text-white">
+                    ${capitalize(card.brand)} ···· ${card.last4}
+                  </p>
+                  <p class="text-xs text-slate-500">
+                    Expires ${String(card.exp_month).padStart(2,'0')}/${String(card.exp_year).slice(-2)}
+                    ${card.is_default ? '<span class="ml-1 text-emerald-400">Default</span>' : ''}
+                  </p>
+                </div>
+              </div>
+              <button onclick="removeCard('${escHtml(sid)}', event)"
+                      class="text-slate-600 hover:text-red-400 text-xs p-1 transition-colors"
+                      title="Remove card">
+                <i class="fas fa-trash-can"></i>
+              </button>
+            </label>`;
+          }).join('')}
+        </div>
+        <button onclick="openAddCardModal()" class="mt-2 text-xs text-indigo-400 hover:text-indigo-300 transition-colors">
+          <i class="fas fa-plus mr-1"></i> Add a different card
+        </button>
+      </div>`;
+
+    actionsSection.innerHTML = `
+      <button onclick="confirmAndCharge()"
+              class="btn-primary w-full py-3.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2">
+        <i class="fas fa-lock text-xs"></i>
+        Pay $${(PAY.pkg.price_cents / 100).toFixed(2)} · ${(PAY.pkg.coins + (PAY.pkg.bonus_coins||0)).toLocaleString()} coins
+      </button>
+      <button onclick="closePayConfirm()" class="btn-ghost w-full py-2.5 rounded-xl text-sm">Cancel</button>`;
+  } else {
+    // No saved cards
+    methodSection.innerHTML = `
+      <div class="border border-dashed border-slate-600 rounded-xl p-4 text-center">
+        <i class="fas fa-credit-card text-2xl text-slate-600 mb-2 block"></i>
+        <p class="text-sm text-slate-400 font-medium mb-1">No payment method saved</p>
+        <p class="text-xs text-slate-600">Add a card to complete your purchase</p>
+      </div>`;
+
+    actionsSection.innerHTML = `
+      <button onclick="openAddCardModal()"
+              class="btn-primary w-full py-3.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2">
+        <i class="fas fa-credit-card text-xs"></i>
+        Add Card &amp; Pay $${(PAY.pkg.price_cents / 100).toFixed(2)}
+      </button>
+      <button onclick="proceedWithStripeCheckout()"
+              class="btn-ghost w-full py-2.5 rounded-xl text-xs text-slate-400">
+        <i class="fas fa-external-link-alt mr-1"></i> Checkout via Stripe instead
+      </button>
+      <button onclick="closePayConfirm()" class="text-xs text-slate-600 hover:text-slate-400 w-full py-1">Cancel</button>`;
+  }
+}
+
+// ─── Charge the selected saved card ─────────────────────────────────────────
+async function confirmAndCharge() {
+  if (!PAY.pkg || !PAY.selectedCard) {
+    showToast('Please select a payment method', 'error');
+    return;
+  }
+
+  const btn = document.querySelector('#payconf-actions button');
+  const origText = btn?.innerHTML;
+  if (btn) btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Processing…';
+  if (btn) btn.disabled = true;
+
+  try {
+    const { data } = await API.post('/vault/checkout', {
+      package_id: PAY.pkg.id,
+      payment_method_id: PAY.selectedCard,
+    });
+
+    if (data.success && data.data.new_balance !== undefined) {
+      // Direct charge succeeded — coins already credited
+      closePayConfirm();
+      if (STATE.user) {
+        STATE.user.coin_balance = data.data.new_balance;
+        updateHeaderUser();
       }
-      throw new Error(data.error || 'Checkout unavailable');
+      showToast(`🎉 ${data.data.coins_added.toLocaleString()} coins added to your vault!`, 'success');
+      PAY.pkg = null;
+      PAY.selectedCard = null;
+    } else if (data.success && data.data.checkout_url) {
+      // 3DS required — redirect to Stripe Checkout
+      window.location.href = data.data.checkout_url;
     } else {
-      // Development: simulated purchase (no real payment)
-      const { data } = await API.post('/vault/purchase', { package_id: packageId });
-      if (data.success) {
-        closeModal('modal-buy-coins');
-        if (STATE.user) {
-          STATE.user.coin_balance = data.data.new_balance;
-          updateHeaderUser();
-        }
-        showToast(data.message || `${totalCoins} coins added!`, 'success');
-      }
+      throw new Error(data.error || 'Payment failed');
     }
   } catch (err) {
-    showToast(err.response?.data?.error || 'Purchase failed', 'error');
-  } finally {
-    setLoading(false);
+    if (btn) { btn.innerHTML = origText; btn.disabled = false; }
+    const msg = err.response?.data?.error || err.message || 'Payment failed. Please try again.';
+    showToast(msg, 'error');
   }
+}
+
+// ─── Redirect to Stripe Checkout (no saved card path) ───────────────────────
+async function proceedWithStripeCheckout() {
+  if (!PAY.pkg) return;
+  setLoading(true);
+  try {
+    const { data } = await API.post('/vault/checkout', { package_id: PAY.pkg.id });
+    if (data.success && data.data.checkout_url) {
+      window.location.href = data.data.checkout_url;
+    } else {
+      throw new Error(data.error || 'Checkout unavailable');
+    }
+  } catch (err) {
+    setLoading(false);
+    showToast(err.response?.data?.error || 'Could not start checkout', 'error');
+  }
+}
+
+// ─── Remove a saved card ─────────────────────────────────────────────────────
+async function removeCard(stripeId, event) {
+  event.preventDefault();
+  event.stopPropagation();
+  if (!confirm('Remove this card from your account?')) return;
+
+  try {
+    await API.delete(`/vault/payment-methods/${stripeId}`);
+    PAY.savedCards = PAY.savedCards.filter(c => (c.stripe_id || c.id) !== stripeId);
+    if (PAY.selectedCard === stripeId) PAY.selectedCard = null;
+    renderPayConfirmContent();
+    showToast('Card removed', 'success');
+  } catch (err) {
+    showToast(err.response?.data?.error || 'Failed to remove card', 'error');
+  }
+}
+
+// ─── Open "Add Card" modal (Stripe Elements) ─────────────────────────────────
+async function openAddCardModal() {
+  openModal('modal-add-card');
+
+  // Initialise Stripe.js once
+  if (!PAY.stripe) {
+    const pubKey = STATE.config?.stripe_publishable_key;
+    if (!pubKey) {
+      showToast('Stripe not configured', 'error');
+      closeModal('modal-add-card');
+      return;
+    }
+    PAY.stripe = Stripe(pubKey); // eslint-disable-line no-undef
+  }
+
+  // Mount card element
+  const elements = PAY.stripe.elements({
+    appearance: {
+      theme: 'night',
+      variables: {
+        colorPrimary: '#6366f1',
+        colorBackground: '#0f172a',
+        colorText: '#f8fafc',
+        colorDanger: '#ef4444',
+        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+        spacingUnit: '4px',
+        borderRadius: '8px',
+      },
+    },
+  });
+
+  // Destroy previous element if any
+  if (PAY.cardElement) {
+    PAY.cardElement.destroy();
+    PAY.cardElement = null;
+  }
+
+  PAY.cardElement = elements.create('card', { hidePostalCode: false });
+  PAY.cardElement.mount('#stripe-card-element');
+
+  PAY.cardElement.on('change', (event) => {
+    const errDiv = document.getElementById('stripe-card-errors');
+    if (event.error) {
+      errDiv.textContent = event.error.message;
+      errDiv.classList.remove('hidden');
+    } else {
+      errDiv.classList.add('hidden');
+    }
+  });
+
+  // Fetch SetupIntent client secret
+  try {
+    const { data } = await API.post('/vault/setup-intent');
+    if (!data.success) throw new Error(data.error);
+    PAY._setupClientSecret = data.data.client_secret;
+    PAY.setupIntentId = data.data.setup_intent_id;
+  } catch (err) {
+    showToast('Could not initialise card form. Please try again.', 'error');
+    closeModal('modal-add-card');
+  }
+}
+
+// ─── Save card via SetupIntent ────────────────────────────────────────────────
+async function saveCardAndProceed() {
+  if (!PAY.stripe || !PAY.cardElement || !PAY._setupClientSecret) {
+    showToast('Card form not ready. Please try again.', 'error');
+    return;
+  }
+
+  const btn = document.getElementById('btn-save-card');
+  const origText = btn.innerHTML;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Saving…';
+  btn.disabled = true;
+
+  const errDiv = document.getElementById('stripe-card-errors');
+  errDiv.classList.add('hidden');
+
+  try {
+    const { setupIntent, error } = await PAY.stripe.confirmCardSetup(PAY._setupClientSecret, {
+      payment_method: { card: PAY.cardElement },
+    });
+
+    if (error) {
+      errDiv.textContent = error.message;
+      errDiv.classList.remove('hidden');
+      btn.innerHTML = origText;
+      btn.disabled = false;
+      return;
+    }
+
+    // Card confirmed — save to our backend
+    const setDefault = document.getElementById('card-set-default')?.checked ?? true;
+    const { data } = await API.post('/vault/save-payment-method', {
+      payment_method_id: setupIntent.payment_method,
+      set_default: setDefault,
+    });
+
+    if (!data.success) throw new Error(data.error);
+
+    // Add to local PAY state
+    const newCard = {
+      id: setupIntent.payment_method,
+      stripe_id: setupIntent.payment_method,
+      brand: data.data.brand,
+      last4: data.data.last4,
+      exp_month: data.data.exp_month,
+      exp_year: data.data.exp_year,
+      is_default: setDefault,
+    };
+    PAY.savedCards = [newCard, ...PAY.savedCards];
+    PAY.selectedCard = setupIntent.payment_method;
+
+    closeModal('modal-add-card');
+    showToast(`${capitalize(data.data.brand)} ···· ${data.data.last4} saved!`, 'success');
+
+    // Re-render confirm modal with the new card ready to charge
+    if (PAY.pkg) renderPayConfirmContent();
+
+  } catch (err) {
+    btn.innerHTML = origText;
+    btn.disabled = false;
+    const msg = err.response?.data?.error || err.message || 'Failed to save card';
+    errDiv.textContent = msg;
+    errDiv.classList.remove('hidden');
+  }
+}
+
+// ─── Close confirm modal, restore packages modal ──────────────────────────────
+function closePayConfirm() {
+  closeModal('modal-pay-confirm');
+  // Don't auto-reopen buy-coins — user can reopen from vault if they want
+}
+
+// ─── Card brand → FontAwesome icon ───────────────────────────────────────────
+function cardBrandIcon(brand) {
+  const map = {
+    visa: 'fab fa-cc-visa',
+    mastercard: 'fab fa-cc-mastercard',
+    amex: 'fab fa-cc-amex',
+    discover: 'fab fa-cc-discover',
+    diners: 'fab fa-cc-diners-club',
+    jcb: 'fab fa-cc-jcb',
+    unionpay: 'fas fa-credit-card',
+    unknown: 'fas fa-credit-card',
+  };
+  return map[brand?.toLowerCase()] || 'fas fa-credit-card';
+}
+
+// ─── Legacy purchaseCoins shim (kept for any remaining call-sites) ────────────
+async function purchaseCoins(packageId, name, totalCoins) {
+  // Find the package from STATE and open confirm flow
+  const { data } = await API.get('/vault').catch(() => ({ data: null }));
+  const packages = data?.data?.packages || [];
+  const pkg = packages.find(p => p.id === packageId);
+  if (pkg) { selectPackage(pkg); return; }
+  // Fallback
+  showToast('Please select a package from the list', 'info');
 }
 
 // ============================================================
@@ -1979,9 +2306,79 @@ function renderPlans(plans) {
   `).join('');
 }
 
-function selectPlan(slug) {
-  showToast('Plan selection coming soon — Stripe integration required', 'warning');
+async function selectPlan(slug) {
+  // Free plan = instant downgrade (no payment)
+  if (slug === 'free') {
+    if (!confirm('Downgrade to Free plan? Your monthly coin grant will be reduced.')) return;
+    showToast('Please contact support to downgrade your plan', 'info');
+    closeModal('modal-plans');
+    return;
+  }
+
   closeModal('modal-plans');
+
+  // Find the plan from the list
+  const { data: plansData } = await API.get('/plans').catch(() => ({ data: null }));
+  const plan = plansData?.data?.find(p => p.slug === slug);
+  if (!plan || !plan.stripe_price_id) {
+    showToast('Plan upgrade coming soon', 'warning');
+    return;
+  }
+
+  // Show a payment confirmation for the subscription
+  await openPlanCheckout(plan);
+}
+
+async function openPlanCheckout(plan) {
+  // Load saved cards first
+  let savedCards = [];
+  try {
+    const { data } = await API.get('/vault/payment-methods');
+    savedCards = data.success ? (data.data.methods || []) : [];
+  } catch {}
+
+  if (savedCards.length > 0) {
+    // Has a saved card — show confirm modal adapted for plan upgrade
+    PAY.pkg = {
+      id: plan.id,
+      name: plan.name + ' Plan',
+      coins: plan.monthly_coins,
+      bonus_coins: 0,
+      price_cents: plan.price_cents,
+      _is_plan: true,
+      _plan_slug: plan.slug,
+      _stripe_price_id: plan.stripe_price_id,
+    };
+    PAY.savedCards = savedCards;
+    PAY.selectedCard = null;
+
+    const defaultCard = savedCards.find(c => c.is_default) || savedCards[0];
+    PAY.selectedCard = defaultCard.stripe_id || defaultCard.id;
+
+    openModal('modal-pay-confirm');
+    document.getElementById('payconf-pkg-name').textContent = plan.name + ' Plan';
+    document.getElementById('payconf-coins').textContent = plan.monthly_coins.toLocaleString() + ' coins/month';
+    document.getElementById('payconf-price').textContent = `$${(plan.price_cents / 100).toFixed(0)}/mo`;
+    renderPayConfirmContent();
+  } else {
+    // No card — redirect to Stripe Checkout for subscription
+    setLoading(true);
+    try {
+      const { data } = await API.post('/vault/checkout-plan', {
+        plan_slug: plan.slug,
+        stripe_price_id: plan.stripe_price_id,
+      });
+      if (data.success && data.data.checkout_url) {
+        window.location.href = data.data.checkout_url;
+      } else {
+        setLoading(false);
+        showToast(data.error || 'Could not start checkout', 'error');
+      }
+    } catch (err) {
+      setLoading(false);
+      showToast(err.response?.data?.error || 'Checkout unavailable', 'error');
+    }
+  }
 }
 
 // ============================================================

@@ -1079,16 +1079,98 @@ function getAppHTML(): string {
 <!-- Buy Coins Modal -->
 <div id="modal-buy-coins" class="hidden fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4">
   <div class="modal-overlay absolute inset-0" onclick="closeModal('modal-buy-coins')"></div>
-  <div class="relative w-full max-w-sm glass rounded-2xl p-5 space-y-4">
+  <div class="relative w-full max-w-sm glass rounded-2xl p-5 space-y-4 max-h-[85vh] overflow-y-auto">
     <div class="flex items-center justify-between">
-      <h3 class="text-base font-bold text-white">Add Coins</h3>
+      <h3 class="text-base font-bold text-white"><i class="fas fa-coins text-amber-400 mr-2"></i>Add Coins</h3>
       <button onclick="closeModal('modal-buy-coins')" class="text-slate-500 hover:text-white">
         <i class="fas fa-xmark"></i>
       </button>
     </div>
+    <p class="text-xs text-slate-500">Select a package — you'll confirm payment before any charge.</p>
     <div id="coin-packages-list" class="space-y-2">
       <div class="shimmer h-16 rounded-xl"></div>
     </div>
+  </div>
+</div>
+
+<!-- Payment Confirmation Modal -->
+<div id="modal-pay-confirm" class="hidden fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4">
+  <div class="modal-overlay absolute inset-0" onclick="closePayConfirm()"></div>
+  <div class="relative w-full max-w-sm glass rounded-2xl p-5 space-y-4">
+    <!-- Header -->
+    <div class="flex items-center justify-between">
+      <h3 class="text-base font-bold text-white"><i class="fas fa-lock text-emerald-400 mr-2"></i>Confirm Purchase</h3>
+      <button onclick="closePayConfirm()" class="text-slate-500 hover:text-white"><i class="fas fa-xmark"></i></button>
+    </div>
+
+    <!-- Order summary -->
+    <div class="bg-slate-900/60 border border-slate-700/50 rounded-xl p-4">
+      <div class="flex justify-between items-center mb-2">
+        <span class="text-xs text-slate-400">Package</span>
+        <span id="payconf-pkg-name" class="text-sm font-bold text-white">—</span>
+      </div>
+      <div class="flex justify-between items-center mb-2">
+        <span class="text-xs text-slate-400">Coins</span>
+        <span id="payconf-coins" class="text-sm font-semibold text-amber-400">—</span>
+      </div>
+      <div class="border-t border-slate-700/50 pt-2 mt-2 flex justify-between items-center">
+        <span class="text-sm font-bold text-white">Total</span>
+        <span id="payconf-price" class="text-lg font-black text-white">—</span>
+      </div>
+    </div>
+
+    <!-- Payment method section -->
+    <div id="payconf-method-section">
+      <!-- Filled dynamically: saved card OR "add card" prompt -->
+    </div>
+
+    <!-- CTA buttons -->
+    <div id="payconf-actions" class="space-y-2">
+      <!-- Filled dynamically -->
+    </div>
+
+    <!-- Security note -->
+    <p class="text-center text-xs text-slate-600">
+      <i class="fas fa-shield-halved text-emerald-500 mr-1"></i>
+      Secured by Stripe · PCI DSS Compliant
+    </p>
+  </div>
+</div>
+
+<!-- Add Card Modal (Stripe Elements) -->
+<div id="modal-add-card" class="hidden fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4">
+  <div class="modal-overlay absolute inset-0" onclick="closeModal('modal-add-card')"></div>
+  <div class="relative w-full max-w-sm glass rounded-2xl p-5 space-y-4">
+    <div class="flex items-center justify-between">
+      <h3 class="text-base font-bold text-white"><i class="fas fa-credit-card text-cyan-400 mr-2"></i>Add Payment Card</h3>
+      <button onclick="closeModal('modal-add-card')" class="text-slate-500 hover:text-white"><i class="fas fa-xmark"></i></button>
+    </div>
+
+    <!-- Stripe Elements mount point -->
+    <div>
+      <label class="text-xs font-medium text-slate-400 mb-2 block">Card details</label>
+      <div id="stripe-card-element" class="deploy-input rounded-xl px-4 py-3.5 min-h-[44px]">
+        <!-- Stripe.js injects the card field here -->
+      </div>
+      <div id="stripe-card-errors" class="text-red-400 text-xs mt-2 hidden"></div>
+    </div>
+
+    <label class="flex items-center gap-2 cursor-pointer">
+      <input type="checkbox" id="card-set-default" checked class="rounded accent-indigo-500">
+      <span class="text-xs text-slate-400">Set as default payment method</span>
+    </label>
+
+    <div class="flex gap-3">
+      <button onclick="closeModal('modal-add-card')" class="btn-ghost flex-1 py-3 rounded-xl text-sm font-semibold">Cancel</button>
+      <button id="btn-save-card" onclick="saveCardAndProceed()" class="btn-primary flex-1 py-3 rounded-xl text-sm font-semibold">
+        <i class="fas fa-lock mr-1"></i> Save Card
+      </button>
+    </div>
+
+    <p class="text-center text-xs text-slate-600">
+      <i class="fas fa-shield-halved text-emerald-500 mr-1"></i>
+      Your card details go directly to Stripe — we never see or store them.
+    </p>
   </div>
 </div>
 
@@ -1147,6 +1229,7 @@ function getAppHTML(): string {
 </div>
 
 <!-- Scripts -->
+<script src="https://js.stripe.com/v3/"></script>
 <script src="https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js"></script>
 <script src="/static/app.js"></script>
 </body>
