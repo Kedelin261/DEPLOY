@@ -333,15 +333,15 @@ function renderProjects(projects) {
       ${['built','deployed'].includes(p.status) ? `
       <!-- Quick action buttons for built projects -->
       <div class="mt-3 pt-3 border-t border-slate-800/50 flex gap-2" onclick="event.stopPropagation()">
-        <button onclick="openViewModal('${p.id}','${escHtml(p.name)}')"
+        <button onclick="event.stopPropagation();openViewModal('${p.id}','${escHtml(p.name)}')"
           class="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold border border-cyan-500/40 text-cyan-400 hover:bg-cyan-500/10 transition-colors">
           <i class="fas fa-eye"></i> View
         </button>
-        <button onclick="openTestingModal(null,'${p.id}','${escHtml(p.name)}')"
+        <button onclick="event.stopPropagation();openTestingModal(null,'${p.id}','${escHtml(p.name)}')"
           class="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold border border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 transition-colors">
           <i class="fas fa-flask"></i> Test &amp; Revise
         </button>
-        <button onclick="openPublishModal('${p.id}')"
+        <button onclick="event.stopPropagation();openPublishModal('${p.id}')"
           class="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold border border-indigo-500/40 text-indigo-400 hover:bg-indigo-500/10 transition-colors">
           <i class="fas fa-rocket"></i> Publish
         </button>
