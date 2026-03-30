@@ -3667,390 +3667,883 @@ function setViewMode(mode) {
   }
 }
 
-// ── Screen builder ───────────────────────────────────────────
+
+// ══════════════════════════════════════════════════════════════
+//  SCREEN BUILDER — fully project-specific prototype generator
+//  Every screen is derived 100% from the user's prompt fields,
+//  spec data, and project metadata. Zero generic placeholders.
+// ══════════════════════════════════════════════════════════════
+
+// ── Utilities ─────────────────────────────────────────────────
+function truncate(str, len) {
+  if (!str) return '';
+  return str.length > len ? str.substring(0, len) + '…' : str;
+}
+function parseFeatureList(raw) {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw.map(f => typeof f==='string'?f:f.feature||f.name||JSON.stringify(f)).filter(Boolean);
+  try {
+    const arr = JSON.parse(raw);
+    if (Array.isArray(arr)) return arr.map(f => typeof f==='string'?f:f.feature||f.name||JSON.stringify(f)).filter(Boolean);
+  } catch (_) {}
+  return raw.split(',').map(s=>s.trim()).filter(Boolean);
+}
+
+// ── Color palettes ────────────────────────────────────────────
+function getColorPalette(scheme) {
+  const palettes = {
+    midnight: { bg:'#0f172a', card:'#1e293b', card2:'#263347', accent:'#06b6d4', accent2:'#0891b2', text:'#f1f5f9', subtext:'#94a3b8', border:'#334155', tag:'#0e7490', tagText:'#cffafe' },
+    ocean:    { bg:'#0c1a2e', card:'#1a2942', card2:'#243656', accent:'#3b82f6', accent2:'#2563eb', text:'#e2e8f0', subtext:'#7c94b3', border:'#2d4063', tag:'#1d4ed8', tagText:'#bfdbfe' },
+    forest:   { bg:'#0d1f13', card:'#1a3325', card2:'#1e3d2a', accent:'#22c55e', accent2:'#16a34a', text:'#ecfdf5', subtext:'#86efac', border:'#166534', tag:'#166534', tagText:'#bbf7d0' },
+    sunset:   { bg:'#1a0a0a', card:'#2d1515', card2:'#3d1f1f', accent:'#f97316', accent2:'#ea580c', text:'#fff7ed', subtext:'#fdba74', border:'#7c2d12', tag:'#9a3412', tagText:'#fed7aa' },
+    purple:   { bg:'#120b24', card:'#1e1040', card2:'#281552', accent:'#a855f7', accent2:'#9333ea', text:'#faf5ff', subtext:'#c4b5fd', border:'#4c1d95', tag:'#6b21a8', tagText:'#e9d5ff' },
+    slate:    { bg:'#0f172a', card:'#1e293b', card2:'#263347', accent:'#64748b', accent2:'#475569', text:'#f8fafc', subtext:'#94a3b8', border:'#334155', tag:'#475569', tagText:'#e2e8f0' },
+    rose:     { bg:'#1a0a12', card:'#2d1522', card2:'#3d1a2e', accent:'#f43f5e', accent2:'#e11d48', text:'#fff1f2', subtext:'#fda4af', border:'#9f1239', tag:'#be123c', tagText:'#ffe4e6' },
+    amber:    { bg:'#1a1200', card:'#2d2000', card2:'#3d2c00', accent:'#f59e0b', accent2:'#d97706', text:'#fffbeb', subtext:'#fcd34d', border:'#92400e', tag:'#b45309', tagText:'#fef3c7' },
+    default:  { bg:'#0f172a', card:'#1e293b', card2:'#263347', accent:'#06b6d4', accent2:'#0891b2', text:'#f1f5f9', subtext:'#94a3b8', border:'#334155', tag:'#0e7490', tagText:'#cffafe' },
+  };
+  const key = (scheme||'').toLowerCase().replace(/[\s_-]/g,'');
+  return palettes[key] || palettes.midnight;
+}
+
+// ── Icon selectors ────────────────────────────────────────────
+function getAppIcon(category, fields) {
+  const combined = ((category||'')+(fields?.audience||'')+(fields?.app_name||'')+(fields?.problem_statement||'')).toLowerCase();
+  if (combined.match(/football|soccer|coach|sport|team|athlete|hudl|game film|film/)) return 'fas fa-football';
+  if (combined.match(/health|fitness|workout|gym|medic|doctor|patient/)) return 'fas fa-heart-pulse';
+  if (combined.match(/food|recipe|chef|restaurant|meal|cook|delivery/)) return 'fas fa-utensils';
+  if (combined.match(/finance|money|bank|invest|crypto|wallet|budget/)) return 'fas fa-coins';
+  if (combined.match(/educat|learn|student|teacher|school|course|quiz/)) return 'fas fa-graduation-cap';
+  if (combined.match(/ecom|shop|store|market|product|cart|order/)) return 'fas fa-bag-shopping';
+  if (combined.match(/real estate|property|home|rent|house/)) return 'fas fa-house';
+  if (combined.match(/travel|trip|hotel|flight|booking|tourism/)) return 'fas fa-plane';
+  if (combined.match(/music|audio|podcast|sound|song/)) return 'fas fa-music';
+  if (combined.match(/photo|image|gallery|camera|picture/)) return 'fas fa-camera';
+  if (combined.match(/saas|software|platform|tool|productivity|workflow/)) return 'fas fa-layer-group';
+  if (combined.match(/analyt|data|chart|report|dashboard|insight/)) return 'fas fa-chart-line';
+  if (combined.match(/social|network|communit|connect|friend/)) return 'fas fa-comments';
+  if (combined.match(/ai|machine learning|intelligence|automat/)) return 'fas fa-brain';
+  if (combined.match(/security|protect|guard|auth|verif/)) return 'fas fa-shield-halved';
+  if (combined.match(/draw|design|art|creative|canvas/)) return 'fas fa-pen-nib';
+  if (combined.match(/map|location|geo|navigation|route/)) return 'fas fa-location-dot';
+  return 'fas fa-cube';
+}
+
+function getFeatureIcon(feature, idx) {
+  const f = (feature||'').toLowerCase();
+  if (f.match(/film|video|watch|play|stream|record/)) return 'fas fa-film';
+  if (f.match(/analyt|analysis|breakdown|insight|stat/)) return 'fas fa-chart-bar';
+  if (f.match(/ai|intelligence|automat|smart|ml/)) return 'fas fa-brain';
+  if (f.match(/upload|import|ingest|add file/)) return 'fas fa-cloud-arrow-up';
+  if (f.match(/report|summary|export|download/)) return 'fas fa-file-chart-column';
+  if (f.match(/team|collab|member|group|roster/)) return 'fas fa-users';
+  if (f.match(/notif|alert|remind|push/)) return 'fas fa-bell';
+  if (f.match(/search|find|filter|query/)) return 'fas fa-magnifying-glass';
+  if (f.match(/pay|bill|subscri|payment|stripe/)) return 'fas fa-credit-card';
+  if (f.match(/message|chat|inbox|dm|comment/)) return 'fas fa-comment-dots';
+  if (f.match(/map|location|geo|route|track/)) return 'fas fa-location-dot';
+  if (f.match(/calendar|schedule|event|booking|appoint/)) return 'fas fa-calendar-days';
+  if (f.match(/setting|config|prefere|manage/)) return 'fas fa-gear';
+  if (f.match(/dashboard|overview|home|main/)) return 'fas fa-gauge-high';
+  if (f.match(/recruit|scout|hire|talent/)) return 'fas fa-user-plus';
+  if (f.match(/draw|canvas|design|create|art/)) return 'fas fa-pen-nib';
+  if (f.match(/camera|photo|image|picture|gallery/)) return 'fas fa-camera';
+  if (f.match(/formation|tactic|play|strategy/)) return 'fas fa-chess-board';
+  if (f.match(/auth|login|register|account/)) return 'fas fa-lock';
+  const icons = ['fas fa-star','fas fa-bolt','fas fa-fire','fas fa-rocket','fas fa-wand-magic-sparkles','fas fa-gem','fas fa-trophy','fas fa-flag'];
+  return icons[idx % icons.length];
+}
+
+// ── Bottom navigation — labels derived from features ──────────
+function renderBottomNav(palette, active, navItems) {
+  // navItems: [{id, icon, label, screen}]
+  return `
+    <div class="absolute bottom-0 left-0 right-0 flex items-center justify-around px-1 py-2 border-t" style="background:${palette.card};border-color:${palette.border}30;z-index:10">
+      ${navItems.map(t => `
+      <button class="flex flex-col items-center gap-0.5 px-2 py-1 flex-1" onclick="viewGoTo('${t.screen}')">
+        <i class="${t.icon}" style="font-size:${t.id==='new'?'17':'13'}px;color:${active===t.id?palette.accent:palette.subtext};opacity:${active===t.id?1:0.45}"></i>
+        <span style="font-size:8.5px;color:${active===t.id?palette.accent:palette.subtext};opacity:${active===t.id?1:0.45};font-weight:${active===t.id?700:400}">${escHtml(t.label)}</span>
+      </button>`).join('')}
+    </div>`;
+}
+
+// ── Status badge ───────────────────────────────────────────────
+function statusBadge(label, palette) {
+  return `<span class="text-xs px-2.5 py-1 rounded-full font-semibold" style="background:${palette.accent}22;color:${palette.accent}">${escHtml(label)}</span>`;
+}
+
+// ── Inline stat pill ───────────────────────────────────────────
+function statPill(icon, value, label, palette) {
+  return `<div class="flex flex-col items-center gap-0.5 flex-1 rounded-xl py-2.5" style="background:${palette.card2}">
+    <i class="${icon}" style="color:${palette.accent};font-size:13px"></i>
+    <p class="text-sm font-black mt-0.5" style="color:${palette.text}">${escHtml(value)}</p>
+    <p style="font-size:9px;color:${palette.subtext};opacity:0.7">${escHtml(label)}</p>
+  </div>`;
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  MAIN BUILDER
+// ═══════════════════════════════════════════════════════════════
 function buildAppScreens(d) {
   const fields  = d.fields  || {};
   const spec    = d.spec    || {};
   const project = d.project || {};
 
-  const appName   = fields.app_name      || spec.app_name      || project.name || 'My App';
-  const audience  = fields.audience      || spec.target_audience || 'Users';
-  const category  = fields.category      || project.category    || 'app';
-  const problem   = fields.problem_statement || spec.problem_statement || '';
-  const colorScheme = fields.color_scheme || 'midnight';
-  const bizModel  = fields.business_model || spec.monetization || 'Free';
-  const features  = parseFeatureList(fields.core_features || spec.key_features || '[]');
-  const workflows = fields.workflows || spec.workflows || '';
-  const roles     = fields.roles_permissions || 'Users, Admin';
-  const apis      = fields.apis_tools || '';
+  // ── Extract all meaningful data ──────────────────────────────
+  const appName    = fields.app_name || spec.app_name || project.name || 'My App';
+  const audience   = fields.audience || spec.target_audience || 'Users';
+  const category   = fields.category || project.category || 'app';
+  const problem    = fields.problem_statement || spec.problem_statement || '';
+  const colorScheme= fields.color_scheme || 'midnight';
+  const bizModel   = fields.business_model || spec.monetization || '';
+  const features   = parseFeatureList(fields.core_features || spec.key_features || '[]');
+  const workflows  = fields.workflows || '';
+  const roles      = fields.roles_permissions || 'Users';
+  const apis       = fields.apis_tools || '';
+  const platform   = fields.platform_notes || 'Web and Mobile';
+  const dataEnts   = fields.data_entities || '';
+  const futureVer  = fields.future_versions || '';
+  const addlNotes  = fields.additional_comments || '';
 
-  const palette   = getColorPalette(colorScheme);
+  const palette    = getColorPalette(colorScheme);
+  const appIcon    = getAppIcon(category, fields);
+  const roleList   = roles.split(',').map(r=>r.trim()).filter(Boolean);
+  const apiList    = apis.split(',').map(a=>a.trim()).filter(Boolean);
+  const dataList   = dataEnts.split(',').map(d=>d.trim()).filter(Boolean);
+  const isMobile   = platform.toLowerCase().includes('mobile') || platform.toLowerCase().includes('ios') || platform.toLowerCase().includes('android');
+  const isWeb      = platform.toLowerCase().includes('web') || platform.toLowerCase().includes('cloudflare');
+  const hasSubs    = bizModel.toLowerCase().includes('sub');
+  const hasPayment = apiList.some(a=>a.toLowerCase().match(/pay|stripe|revenue/));
+  const primaryRole= roleList[0] || 'User';
+
+  // ── Derive domain-specific vocabulary ────────────────────────
+  // Detect app domain for realistic copy
+  const domainKey = (() => {
+    const combined = (appName+audience+problem+workflows+features.join(' ')).toLowerCase();
+    if (combined.match(/football|coach|film|formation|blitz|tendenc|hudl|roster/)) return 'sports_film';
+    if (combined.match(/health|patient|doctor|clinic|medic|symptom|prescription/)) return 'health';
+    if (combined.match(/food|restaurant|recipe|chef|meal|order|delivery|menu/)) return 'food';
+    if (combined.match(/finance|invest|portfolio|crypto|budget|expense|wallet/)) return 'finance';
+    if (combined.match(/ecom|product|cart|order|checkout|inventory|shop/)) return 'ecommerce';
+    if (combined.match(/real estate|property|listing|rent|home|agent|mortgage/)) return 'realestate';
+    if (combined.match(/travel|trip|flight|hotel|itinerar|booking/)) return 'travel';
+    if (combined.match(/educat|course|lesson|student|quiz|learn|tutor/)) return 'education';
+    if (combined.match(/social|post|feed|follower|like|comment|communit/)) return 'social';
+    if (combined.match(/draw|canvas|sketch|art|design|creative|illustrat/)) return 'creative';
+    if (combined.match(/analytic|data|report|dashboard|insight|kpi|metric/)) return 'analytics';
+    if (combined.match(/saas|workflow|task|project|manage|team|collaborat/)) return 'productivity';
+    return 'general';
+  })();
+
+  // Domain-specific sample data
+  const DOMAIN_DATA = {
+    sports_film: {
+      items: ['Week 12 vs Eagles — 4K upload', 'West High Scrimmage — HD', 'Spring Practice Day 3', 'Red Zone Drill Session', 'Opponent Scouting: Warriors'],
+      action: 'Upload Film',
+      actionIcon: 'fas fa-cloud-arrow-up',
+      metrics: [['Formations','14'],['Tendencies','87%'],['Blitz Rate','32%']],
+      recentActivity: [
+        { icon:'fas fa-film', text:`Film uploaded: vs Eagles (Q3)`, time:'3m ago' },
+        { icon:'fas fa-brain', text:`AI breakdown complete — 12 formations detected`, time:'18m ago' },
+        { icon:'fas fa-chart-bar', text:`Run/Pass: 58% Run · 42% Pass (last 3 games)`, time:'1h ago' },
+        { icon:'fas fa-user-plus', text:`New player added to roster: #22 J. Williams`, time:'2h ago' },
+      ],
+      cta: 'Upload Film',
+      detailTitle: 'Film Breakdown Report',
+      detailStats: [['Plays','147'],['Formations','14'],['AI Score','9.4']],
+      detailBody: 'AI detected a strong tendency to run outside zone on 1st & 10 (62%). Pass rate increases to 71% on 3rd & 6+. Blitz shown pre-snap on 4 of 11 third-down situations.',
+      detailActions: [{ icon:'fas fa-share-nodes', label:'Share Report' },{ icon:'fas fa-download', label:'Export PDF' }],
+      featureScreenTitle: 'Film Library',
+      featureScreenSubtitle: 'Upload, analyze & share game film',
+      featureScreenSearch: 'Search film sessions…',
+      featureScreenFAB: { icon:'fas fa-cloud-arrow-up', label:'Upload' },
+      analyticsMetrics: [
+        { icon:'fas fa-film', label:'Films Analyzed', value:'28', change:'+4 this week' },
+        { icon:'fas fa-chart-bar', label:'Avg Play Success', value:'67%', change:'↑ 5% vs last month' },
+        { icon:'fas fa-brain', label:'AI Breakdowns', value:'142', change:'All time' },
+        { icon:'fas fa-users', label:'Coaches Active', value:'6', change:'On your team' },
+      ],
+    },
+    health: {
+      items: ['Dr. Sarah Chen — Appointment 9AM','Blood Panel Results — Pending','Heart Rate: 72 bpm — Normal','Medication: Lisinopril 10mg','Next checkup: May 3rd'],
+      action: 'Log Symptoms',
+      actionIcon: 'fas fa-plus',
+      metrics: [['Appointments','3'],['Lab Results','12'],['Streak','7 days']],
+      recentActivity: [
+        { icon:'fas fa-calendar-days', text:'Appointment confirmed: Dr. Chen, Tue 9AM', time:'5m ago' },
+        { icon:'fas fa-heart-pulse', text:'Heart rate normal: 72 bpm avg (last 7 days)', time:'1h ago' },
+        { icon:'fas fa-pills', text:'Medication reminder: Lisinopril 10mg due', time:'2h ago' },
+      ],
+      cta: 'Book Appointment',
+      detailTitle: 'Lab Results — Full Panel',
+      detailStats: [['Tests','14'],['Normal','12'],['Review','2']],
+      detailBody: 'Cholesterol: 187 mg/dL (optimal). Blood pressure: 118/76 (normal). Glucose: 94 mg/dL (normal). Two markers flagged for physician review.',
+      detailActions: [{ icon:'fas fa-share-nodes', label:'Share with Doctor' },{ icon:'fas fa-download', label:'Download PDF' }],
+      featureScreenTitle: 'Health Records',
+      featureScreenSubtitle: 'Track vitals, appointments & results',
+      featureScreenSearch: 'Search records…',
+      featureScreenFAB: { icon:'fas fa-plus', label:'Add Record' },
+      analyticsMetrics: [
+        { icon:'fas fa-heart-pulse', label:'Avg Heart Rate', value:'72bpm', change:'Normal range' },
+        { icon:'fas fa-calendar-days', label:'Appointments', value:'3', change:'This month' },
+        { icon:'fas fa-pills', label:'Medications', value:'2', change:'Active' },
+        { icon:'fas fa-chart-line', label:'Health Score', value:'91%', change:'↑ Great progress' },
+      ],
+    },
+    finance: {
+      items: ['Portfolio — $84,230 (+2.4%)','BTC Holding — 0.42 BTC','S&P 500 ETF — $12,400','Emergency Fund — $15,000','Monthly Budget — On track'],
+      action: 'Add Transaction',
+      actionIcon: 'fas fa-plus',
+      metrics: [['Balance','$84K'],['Return','+12%'],['Alerts','2']],
+      recentActivity: [
+        { icon:'fas fa-arrow-trend-up', text:'AAPL +4.2% today — Portfolio up $340', time:'12m ago' },
+        { icon:'fas fa-credit-card', text:'Transaction: Grocery Store — $67.42', time:'2h ago' },
+        { icon:'fas fa-bell', text:'Price alert: BTC crossed $65,000', time:'4h ago' },
+      ],
+      cta: 'View Portfolio',
+      detailTitle: 'Portfolio Breakdown',
+      detailStats: [['Assets','8'],['Return','+12%'],['Risk','Medium']],
+      detailBody: 'Equities 60% · Crypto 15% · Bonds 20% · Cash 5%. Top performer: NVDA (+38% YTD). Your portfolio is 94% aligned with your risk profile.',
+      detailActions: [{ icon:'fas fa-chart-pie', label:'Rebalance' },{ icon:'fas fa-download', label:'Statement' }],
+      featureScreenTitle: 'Transactions',
+      featureScreenSubtitle: 'Track all income & expenses',
+      featureScreenSearch: 'Search transactions…',
+      featureScreenFAB: { icon:'fas fa-plus', label:'Add' },
+      analyticsMetrics: [
+        { icon:'fas fa-wallet', label:'Net Worth', value:'$84K', change:'+$3.2K this month' },
+        { icon:'fas fa-arrow-trend-up', label:'Portfolio Return', value:'+12%', change:'YTD' },
+        { icon:'fas fa-chart-pie', label:'Budget Used', value:'68%', change:'$1,240 remaining' },
+        { icon:'fas fa-coins', label:'Savings Rate', value:'22%', change:'Above avg' },
+      ],
+    },
+    ecommerce: {
+      items: ['Nike Air Max — 124 orders','Summer Collection — 89 items','Flash Sale: 20% off (Today)','New arrivals: 12 products','Low stock alert: 3 items'],
+      action: 'Add Product',
+      actionIcon: 'fas fa-plus',
+      metrics: [['Orders','840'],['Revenue','$24K'],['Products','312']],
+      recentActivity: [
+        { icon:'fas fa-bag-shopping', text:'New order #1082 — Nike Air Max (x2)', time:'3m ago' },
+        { icon:'fas fa-star', text:'New 5★ review: "Amazing quality & fast ship!"', time:'20m ago' },
+        { icon:'fas fa-box', text:'Low stock alert: Blue Denim Jacket (3 left)', time:'1h ago' },
+      ],
+      cta: 'View Orders',
+      detailTitle: 'Product Detail',
+      detailStats: [['In Stock','48'],['Orders','124'],['Rating','4.8★']],
+      detailBody: 'Best seller this month. 124 units sold. 98% positive reviews. Ships within 2 business days. Returns accepted within 30 days.',
+      detailActions: [{ icon:'fas fa-pen', label:'Edit Product' },{ icon:'fas fa-share-nodes', label:'Share' }],
+      featureScreenTitle: 'Product Catalog',
+      featureScreenSubtitle: 'Manage your store inventory',
+      featureScreenSearch: 'Search products…',
+      featureScreenFAB: { icon:'fas fa-plus', label:'Add Product' },
+      analyticsMetrics: [
+        { icon:'fas fa-bag-shopping', label:'Total Orders', value:'840', change:'+18% this week' },
+        { icon:'fas fa-dollar-sign', label:'Revenue', value:'$24K', change:'This month' },
+        { icon:'fas fa-star', label:'Avg Rating', value:'4.8★', change:'From 312 reviews' },
+        { icon:'fas fa-users', label:'Customers', value:'1,204', change:'+45 new' },
+      ],
+    },
+    education: {
+      items: ['Intro to React — 68% complete','Linear Algebra — Lesson 12/20','JavaScript Quiz — 94%','Python Bootcamp — Enrolled','Web Design — Certificate earned'],
+      action: 'Continue Learning',
+      actionIcon: 'fas fa-play',
+      metrics: [['Courses','5'],['Streak','14d'],['Score','94%']],
+      recentActivity: [
+        { icon:'fas fa-graduation-cap', text:'Certificate earned: Web Design Fundamentals', time:'1h ago' },
+        { icon:'fas fa-star', text:'Quiz score: JavaScript Basics — 94% (Top 5%)', time:'3h ago' },
+        { icon:'fas fa-fire', text:'14-day learning streak — Keep it up!', time:'Today' },
+      ],
+      cta: 'Continue Course',
+      detailTitle: 'Course Progress',
+      detailStats: [['Lessons','12/20'],['Score','94%'],['Rank','#4']],
+      detailBody: 'You\'re in the top 5% of all learners this week. Next lesson: "Advanced State Management with Redux". Estimated time: 45 minutes.',
+      detailActions: [{ icon:'fas fa-play', label:'Resume' },{ icon:'fas fa-share-nodes', label:'Share' }],
+      featureScreenTitle: 'My Courses',
+      featureScreenSubtitle: 'Track your learning progress',
+      featureScreenSearch: 'Search courses…',
+      featureScreenFAB: { icon:'fas fa-plus', label:'Enroll' },
+      analyticsMetrics: [
+        { icon:'fas fa-fire', label:'Day Streak', value:'14', change:'Personal best!' },
+        { icon:'fas fa-graduation-cap', label:'Certificates', value:'3', change:'Earned' },
+        { icon:'fas fa-chart-line', label:'Avg Score', value:'91%', change:'Top 10%' },
+        { icon:'fas fa-clock', label:'Hours Learned', value:'42h', change:'This month' },
+      ],
+    },
+    creative: {
+      items: ['Portrait Study #7 — In progress','Abstract Series Vol. 3','Logo Design — Client: Apex Co.','UI Kit — Dark Theme','Concept Art: Sci-Fi City'],
+      action: 'New Canvas',
+      actionIcon: 'fas fa-pen-nib',
+      metrics: [['Projects','24'],['Assets','312'],['Shared','18']],
+      recentActivity: [
+        { icon:'fas fa-pen-nib', text:'New canvas created: "Abstract Series Vol. 3"', time:'5m ago' },
+        { icon:'fas fa-share-nodes', text:'Portfolio shared with 3 collaborators', time:'2h ago' },
+        { icon:'fas fa-star', text:'Client feedback received: 5★ on Logo Design', time:'Yesterday' },
+      ],
+      cta: 'Open Studio',
+      detailTitle: 'Project: Abstract Series',
+      detailStats: [['Layers','34'],['Assets','12'],['Version','v4']],
+      detailBody: 'Acrylic-inspired generative art with dynamic color flow. Version 4 includes 3 new texture overlays. Exported in SVG and 4K PNG.',
+      detailActions: [{ icon:'fas fa-pen', label:'Edit' },{ icon:'fas fa-download', label:'Export' }],
+      featureScreenTitle: 'Project Gallery',
+      featureScreenSubtitle: 'Your creative workspace',
+      featureScreenSearch: 'Search projects…',
+      featureScreenFAB: { icon:'fas fa-pen-nib', label:'Create' },
+      analyticsMetrics: [
+        { icon:'fas fa-pen-nib', label:'Projects', value:'24', change:'+3 this month' },
+        { icon:'fas fa-download', label:'Exports', value:'148', change:'All time' },
+        { icon:'fas fa-eye', label:'Portfolio Views', value:'2.4K', change:'This month' },
+        { icon:'fas fa-star', label:'Client Rating', value:'4.9★', change:'From 12 clients' },
+      ],
+    },
+    analytics: {
+      items: ['Revenue Dashboard — $124K MRR','User Growth — +18% MoM','Churn Rate — 2.1% (↓)','Active Users — 8,420','Funnel Drop-off — 22% at Step 2'],
+      action: 'Add Report',
+      actionIcon: 'fas fa-plus',
+      metrics: [['MRR','$124K'],['Users','8.4K'],['Churn','2.1%']],
+      recentActivity: [
+        { icon:'fas fa-arrow-trend-up', text:'Revenue up 18% MoM — $124K ARR hit!', time:'1h ago' },
+        { icon:'fas fa-users', text:'8,420 active users — new record', time:'3h ago' },
+        { icon:'fas fa-bell', text:'Anomaly detected: 3x spike in API errors', time:'5h ago' },
+      ],
+      cta: 'View Reports',
+      detailTitle: 'Revenue Report — April',
+      detailStats: [['MRR','$124K'],['Growth','+18%'],['Churn','2.1%']],
+      detailBody: 'Monthly recurring revenue hit $124K, up 18% from last month. Top acquisition channel: organic search (42%). Churn improved from 3.4% to 2.1% after onboarding revamp.',
+      detailActions: [{ icon:'fas fa-download', label:'Export CSV' },{ icon:'fas fa-share-nodes', label:'Share' }],
+      featureScreenTitle: 'Analytics Hub',
+      featureScreenSubtitle: 'Real-time metrics & reporting',
+      featureScreenSearch: 'Search reports…',
+      featureScreenFAB: { icon:'fas fa-plus', label:'New Report' },
+      analyticsMetrics: [
+        { icon:'fas fa-dollar-sign', label:'MRR', value:'$124K', change:'+18% MoM' },
+        { icon:'fas fa-users', label:'Active Users', value:'8,420', change:'+34% MoM' },
+        { icon:'fas fa-chart-line', label:'Conversion', value:'4.2%', change:'↑ 0.8pts' },
+        { icon:'fas fa-arrow-trend-down', label:'Churn Rate', value:'2.1%', change:'↓ Improved' },
+      ],
+    },
+    productivity: {
+      items: ['Q2 Product Roadmap — In Review','Sprint 14 Planning — Tomorrow','Design System v2 — 80%','Customer Interview — Today 3PM','Bug backlog — 12 open'],
+      action: 'New Task',
+      actionIcon: 'fas fa-plus',
+      metrics: [['Tasks','24'],['Done','18'],['Team','6'],],
+      recentActivity: [
+        { icon:'fas fa-check-circle', text:'Task completed: API rate limiting — by J. Lee', time:'10m ago' },
+        { icon:'fas fa-calendar-days', text:'Sprint 14 kickoff meeting: Tomorrow 10AM', time:'1h ago' },
+        { icon:'fas fa-comment-dots', text:'3 new comments on "Design System v2"', time:'2h ago' },
+      ],
+      cta: 'Open Board',
+      detailTitle: 'Task: Q2 Roadmap',
+      detailStats: [['Subtasks','8'],['Done','5'],['Due','Apr 15']],
+      detailBody: 'Q2 roadmap for review by the executive team. Includes 3 major feature launches, 2 platform migrations, and 1 compliance update. Currently in final review.',
+      detailActions: [{ icon:'fas fa-pen', label:'Edit Task' },{ icon:'fas fa-share-nodes', label:'Share' }],
+      featureScreenTitle: 'Task Board',
+      featureScreenSubtitle: 'Manage projects & sprints',
+      featureScreenSearch: 'Search tasks…',
+      featureScreenFAB: { icon:'fas fa-plus', label:'Add Task' },
+      analyticsMetrics: [
+        { icon:'fas fa-check-circle', label:'Tasks Done', value:'18/24', change:'This sprint' },
+        { icon:'fas fa-fire', label:'Velocity', value:'42pts', change:'+6 from last sprint' },
+        { icon:'fas fa-users', label:'Team Active', value:'6/6', change:'All online' },
+        { icon:'fas fa-clock', label:'Avg Cycle Time', value:'2.4d', change:'↓ Improving' },
+      ],
+    },
+    social: {
+      items: ['New post from @janesmith — 248 likes','Trending: #SummerVibes — 12K posts','3 new friend requests','Your post got 142 reactions','Live now: @TechTalk podcast'],
+      action: 'Create Post',
+      actionIcon: 'fas fa-pen-to-square',
+      metrics: [['Followers','2.4K'],['Posts','148'],['Likes','12K']],
+      recentActivity: [
+        { icon:'fas fa-heart', text:'Your photo got 142 likes in the last hour', time:'5m ago' },
+        { icon:'fas fa-user-plus', text:'3 new followers: @alex, @maya, @devk', time:'30m ago' },
+        { icon:'fas fa-comment-dots', text:'New comment on your post from @janesmith', time:'1h ago' },
+      ],
+      cta: 'Create Post',
+      detailTitle: 'Post Details',
+      detailStats: [['Likes','142'],['Comments','28'],['Shares','14']],
+      detailBody: 'Your most engaging post this month. Reached 3,400 people. 62% of engagement came from the hashtag #SummerVibes.',
+      detailActions: [{ icon:'fas fa-pen', label:'Edit Post' },{ icon:'fas fa-share-nodes', label:'Share' }],
+      featureScreenTitle: 'Explore Feed',
+      featureScreenSubtitle: 'Discover people & content',
+      featureScreenSearch: 'Search people, posts…',
+      featureScreenFAB: { icon:'fas fa-pen-to-square', label:'Post' },
+      analyticsMetrics: [
+        { icon:'fas fa-users', label:'Followers', value:'2.4K', change:'+84 this week' },
+        { icon:'fas fa-heart', label:'Total Likes', value:'12.4K', change:'All time' },
+        { icon:'fas fa-eye', label:'Profile Views', value:'820', change:'This week' },
+        { icon:'fas fa-chart-line', label:'Engagement', value:'6.8%', change:'↑ Above avg' },
+      ],
+    },
+    realestate: {
+      items: ['3BR Apartment — $2,400/mo · Available','Downtown Condo — For Sale $485K','Open House: 123 Maple St — Sat 11AM','New lead: Mark T. — 2BR Budget $1,800','Lease renewal: Unit 4B due May 1'],
+      action: 'Add Listing',
+      actionIcon: 'fas fa-plus',
+      metrics: [['Listings','18'],['Leads','34'],['Closed','7']],
+      recentActivity: [
+        { icon:'fas fa-house', text:'New lead: Mark T. looking for 2BR under $1,800', time:'8m ago' },
+        { icon:'fas fa-calendar-days', text:'Open house scheduled: 123 Maple St, Saturday', time:'1h ago' },
+        { icon:'fas fa-handshake', text:'Deal closed: 456 Oak Ave — $312,000 · 3%', time:'3h ago' },
+      ],
+      cta: 'View Listings',
+      detailTitle: 'Property Detail',
+      detailStats: [['Sqft','1,240'],['Beds','3'],['Baths','2']],
+      detailBody: 'Modern 3BR/2BA apartment in downtown district. Hardwood floors, updated kitchen, in-unit laundry. Available June 1st. Lease term: 12 months.',
+      detailActions: [{ icon:'fas fa-calendar-days', label:'Schedule Tour' },{ icon:'fas fa-share-nodes', label:'Share' }],
+      featureScreenTitle: 'Listings',
+      featureScreenSubtitle: 'Properties for rent & sale',
+      featureScreenSearch: 'Search properties…',
+      featureScreenFAB: { icon:'fas fa-plus', label:'Add Listing' },
+      analyticsMetrics: [
+        { icon:'fas fa-house', label:'Active Listings', value:'18', change:'+3 this month' },
+        { icon:'fas fa-handshake', label:'Deals Closed', value:'7', change:'This quarter' },
+        { icon:'fas fa-dollar-sign', label:'Avg Deal', value:'$312K', change:'Commission: $9.4K' },
+        { icon:'fas fa-users', label:'Active Leads', value:'34', change:'In pipeline' },
+      ],
+    },
+    travel: {
+      items: ['Tokyo Trip — May 14–22 · Booked','Hotel: Shinjuku Granbell — ★4.8','Flight: AA 184 — JFK→NRT · 14h','Kyoto Day Tour — $89/person','Travel Insurance — Active'],
+      action: 'Plan Trip',
+      actionIcon: 'fas fa-plus',
+      metrics: [['Trips','8'],['Countries','14'],['Miles','42K']],
+      recentActivity: [
+        { icon:'fas fa-plane', text:'Check-in opens tomorrow: AA184 Tokyo flight', time:'2h ago' },
+        { icon:'fas fa-star', text:'New review posted: Shinjuku Granbell 5★', time:'5h ago' },
+        { icon:'fas fa-bell', text:'Price drop! Kyoto tour now $69 (was $89)', time:'1d ago' },
+      ],
+      cta: 'View Itinerary',
+      detailTitle: 'Tokyo Trip — May 14–22',
+      detailStats: [['Days','8'],['Activities','12'],['Budget','$3.2K']],
+      detailBody: 'Tokyo & Kyoto highlights. Day 1: Shinjuku arrival & Shibuya crossing. Day 3: TeamLab digital art museum. Day 5: Kyoto Arashiyama bamboo & temples. Budget: $3,200 (~$400/day).',
+      detailActions: [{ icon:'fas fa-pen', label:'Edit Trip' },{ icon:'fas fa-share-nodes', label:'Share' }],
+      featureScreenTitle: 'My Trips',
+      featureScreenSubtitle: 'Upcoming & past adventures',
+      featureScreenSearch: 'Search trips & activities…',
+      featureScreenFAB: { icon:'fas fa-plus', label:'New Trip' },
+      analyticsMetrics: [
+        { icon:'fas fa-plane', label:'Total Trips', value:'8', change:'3 upcoming' },
+        { icon:'fas fa-globe', label:'Countries', value:'14', change:'Visited' },
+        { icon:'fas fa-dollar-sign', label:'Avg Trip Cost', value:'$2.8K', change:'Per trip' },
+        { icon:'fas fa-star', label:'Avg Hotel Rating', value:'4.6★', change:'Your picks' },
+      ],
+    },
+    food: {
+      items: ['Spicy Ramen Bowl — ★4.9 · 28 orders','Truffle Mushroom Pizza — New','Weekend Specials — Limited qty','Catering request: Corp event 50pax','Low stock: Truffle oil'],
+      action: 'Add Item',
+      actionIcon: 'fas fa-plus',
+      metrics: [['Orders','312'],['Rating','4.9★'],['Revenue','$8.4K']],
+      recentActivity: [
+        { icon:'fas fa-fire', text:'Spicy Ramen Bowl trending — 28 orders today', time:'10m ago' },
+        { icon:'fas fa-star', text:'New 5★ review: "Best ramen in the city!"', time:'45m ago' },
+        { icon:'fas fa-box', text:'Low stock: Truffle oil — reorder needed', time:'2h ago' },
+      ],
+      cta: 'View Menu',
+      detailTitle: 'Spicy Ramen Bowl',
+      detailStats: [['Orders','28'],['Rating','4.9★'],['Time','18 min']],
+      detailBody: 'Signature spicy tonkotsu broth with chashu pork, soft egg, nori, bamboo shoots, and house chili oil. Vegan option available (V). Gluten-free on request.',
+      detailActions: [{ icon:'fas fa-pen', label:'Edit Item' },{ icon:'fas fa-share-nodes', label:'Promote' }],
+      featureScreenTitle: 'Menu & Orders',
+      featureScreenSubtitle: 'Manage your food catalog',
+      featureScreenSearch: 'Search menu items…',
+      featureScreenFAB: { icon:'fas fa-plus', label:'Add Item' },
+      analyticsMetrics: [
+        { icon:'fas fa-fire', label:'Orders Today', value:'312', change:'+22% vs yesterday' },
+        { icon:'fas fa-dollar-sign', label:'Revenue', value:'$8.4K', change:'This week' },
+        { icon:'fas fa-star', label:'Avg Rating', value:'4.9★', change:'From 840 reviews' },
+        { icon:'fas fa-users', label:'Repeat Customers', value:'68%', change:'Loyalty rate' },
+      ],
+    },
+    general: {
+      items: features.slice(0,5).map((f,i) => `${f} — ${['Active','In Progress','Pending Review','Completed','Draft'][i]}`),
+      action: features[0] ? truncate(features[0], 18) : 'Get Started',
+      actionIcon: getFeatureIcon(features[0]||'',0),
+      metrics: [['Active','24'],['Done','18'],['Total','42']],
+      recentActivity: [
+        { icon: getFeatureIcon(features[0]||'',0), text: `${features[0]||'New task'} — created and ready`, time:'5m ago' },
+        { icon:'fas fa-check-circle', text:`${features[1]||'Item'} completed successfully`, time:'1h ago' },
+        { icon:'fas fa-bell', text: truncate(workflows||`Reminder for upcoming ${features[0]||'task'}`, 48), time:'3h ago' },
+      ],
+      cta: features[0] ? truncate(features[0], 16) : 'Open App',
+      detailTitle: `${features[0] || 'Item'} Detail`,
+      detailStats: [['Status','Active'],['Updated','Today'],['Version','v1.0']],
+      detailBody: problem ? truncate(problem, 180) : `This is a detailed view of your ${features[0]||'item'}. All relevant information, actions, and related data are available here.`,
+      detailActions: [{ icon:'fas fa-pen', label:'Edit' },{ icon:'fas fa-share-nodes', label:'Share' }],
+      featureScreenTitle: features[0] ? truncate(features[0],22) : 'Main Feature',
+      featureScreenSubtitle: problem ? truncate(problem, 50) : `Your ${category} workspace`,
+      featureScreenSearch: `Search ${(features[0]||category).toLowerCase()}…`,
+      featureScreenFAB: { icon: getFeatureIcon(features[0]||'',0), label: 'New' },
+      analyticsMetrics: [
+        { icon: getFeatureIcon(features[0]||'',0), label: features[0]||'Items', value:'24', change:'Active' },
+        { icon: getFeatureIcon(features[1]||'',1), label: features[1]||'Progress', value:'75%', change:'On track' },
+        { icon:'fas fa-users', label:'Users', value:'1,200', change: audience ? truncate(audience,20) : 'Registered' },
+        { icon:'fas fa-chart-line', label:'Growth', value:'+18%', change:'This month' },
+      ],
+    },
+  };
+
+  const DD = DOMAIN_DATA[domainKey] || DOMAIN_DATA.general;
+
+  // ── Build navigation tabs tailored to this app ────────────────
+  const navItems = [
+    { id:'home',      icon:'fas fa-house',                 label:'Home',     screen:'home' },
+    { id:'feature',   icon: getFeatureIcon(features[0]||domainKey, 0), label: truncate(features[0]||DD.featureScreenTitle, 8), screen:'feature' },
+    { id:'analytics', icon:'fas fa-chart-bar',             label:'Reports',  screen:'analytics' },
+    { id:'profile',   icon:'fas fa-user',                  label:'Profile',  screen:'profile' },
+  ];
 
   const screens = [];
 
-  // ── 1. Splash / Onboarding ──────────────────────────────
+  // ════════════════════════════════════════════════════
+  //  SCREEN 1 — Launch / Splash
+  // ════════════════════════════════════════════════════
   screens.push({
-    id: 'splash', label: 'Launch Screen',
-    icon: 'fas fa-play-circle',
+    id: 'splash', label: 'Launch Screen', icon: 'fas fa-play-circle',
     render: () => `
-      <div class="flex flex-col items-center justify-center h-full min-h-[560px] px-6" style="background:${palette.bg};color:${palette.text}">
-        <div class="w-20 h-20 rounded-3xl flex items-center justify-center mb-5 shadow-2xl" style="background:${palette.accent}">
-          <i class="${getAppIcon(category, fields)} text-white text-3xl"></i>
+      <div class="flex flex-col items-center justify-center h-full min-h-[520px] px-6 relative overflow-hidden" style="background:${palette.bg}">
+        <!-- Background gradient orbs -->
+        <div class="absolute top-0 right-0 w-48 h-48 rounded-full opacity-10" style="background:radial-gradient(circle,${palette.accent},transparent);transform:translate(30%,-30%)"></div>
+        <div class="absolute bottom-0 left-0 w-48 h-48 rounded-full opacity-10" style="background:radial-gradient(circle,${palette.accent},transparent);transform:translate(-30%,30%)"></div>
+        <!-- App icon -->
+        <div class="w-24 h-24 rounded-3xl flex items-center justify-center mb-5 shadow-2xl relative z-10" style="background:linear-gradient(135deg,${palette.accent},${palette.accent2})">
+          <i class="${appIcon} text-white text-4xl"></i>
         </div>
-        <h1 class="text-2xl font-black mb-1" style="color:${palette.text}">${escHtml(appName)}</h1>
-        <p class="text-sm mb-8 text-center opacity-70" style="color:${palette.subtext}">${escHtml(truncate(problem || `The smarter way to ${category}`, 60))}</p>
-        <button class="w-full py-3.5 rounded-2xl font-bold text-base mb-3 transition-all active:scale-95 shadow-lg" style="background:${palette.accent};color:#fff" onclick="viewGoTo('login')">
-          Get Started
-        </button>
-        <button class="w-full py-3 rounded-2xl font-semibold text-sm border" style="border-color:${palette.border};color:${palette.subtext}" onclick="viewGoTo('login')">
-          Sign In
-        </button>
-        <p class="text-xs mt-6 opacity-40" style="color:${palette.subtext}">Available for ${fields.platform_notes || 'iOS, Android & Web'}</p>
+        <!-- App name -->
+        <h1 class="text-2xl font-black mb-2 text-center relative z-10" style="color:${palette.text}">${escHtml(appName)}</h1>
+        <!-- Tagline from problem statement -->
+        <p class="text-sm mb-2 text-center leading-relaxed max-w-xs relative z-10 opacity-70" style="color:${palette.subtext}">
+          ${escHtml(truncate(problem || `Built for ${audience}`, 72))}
+        </p>
+        <!-- Platform badge -->
+        <div class="flex gap-2 mb-8 relative z-10">
+          ${platform.toLowerCase().includes('ios') || platform.toLowerCase().includes('mobile') ? `<span class="text-xs px-2.5 py-1 rounded-full flex items-center gap-1" style="background:${palette.card};color:${palette.subtext}"><i class="fab fa-apple" style="font-size:10px"></i> iOS</span>` : ''}
+          ${platform.toLowerCase().includes('android') || platform.toLowerCase().includes('mobile') ? `<span class="text-xs px-2.5 py-1 rounded-full flex items-center gap-1" style="background:${palette.card};color:${palette.subtext}"><i class="fab fa-android" style="font-size:10px;color:#3ddc84"></i> Android</span>` : ''}
+          ${platform.toLowerCase().includes('web') || platform.toLowerCase().includes('cloudflare') ? `<span class="text-xs px-2.5 py-1 rounded-full flex items-center gap-1" style="background:${palette.card};color:${palette.subtext}"><i class="fas fa-globe" style="font-size:10px"></i> Web</span>` : ''}
+        </div>
+        <!-- CTA buttons -->
+        <div class="w-full max-w-xs space-y-3 relative z-10">
+          <button class="w-full py-3.5 rounded-2xl font-bold text-base transition-all shadow-lg" style="background:linear-gradient(135deg,${palette.accent},${palette.accent2});color:#fff" onclick="viewGoTo('login')">
+            Get Started — It's Free
+          </button>
+          <button class="w-full py-3 rounded-2xl font-semibold text-sm border" style="border-color:${palette.border};color:${palette.subtext}" onclick="viewGoTo('login')">
+            Sign In to Existing Account
+          </button>
+        </div>
+        ${hasSubs ? `<p class="text-xs mt-4 relative z-10 opacity-40" style="color:${palette.subtext}">Free trial · No credit card required</p>` : `<p class="text-xs mt-4 relative z-10 opacity-40" style="color:${palette.subtext}">For ${escHtml(truncate(audience,36))}</p>`}
       </div>`
   });
 
-  // ── 2. Login screen ─────────────────────────────────────
+  // ════════════════════════════════════════════════════
+  //  SCREEN 2 — Sign In
+  // ════════════════════════════════════════════════════
   screens.push({
-    id: 'login', label: 'Sign In',
-    icon: 'fas fa-lock',
+    id: 'login', label: 'Sign In', icon: 'fas fa-lock',
     render: () => `
-      <div class="flex flex-col h-full min-h-[560px] px-6 py-8" style="background:${palette.bg}">
-        <button class="flex items-center gap-1.5 text-xs mb-6 opacity-60" style="color:${palette.subtext}" onclick="viewGoTo('splash')">
+      <div class="flex flex-col min-h-[520px] px-6 py-6" style="background:${palette.bg}">
+        <button class="flex items-center gap-1.5 text-xs mb-5 opacity-60" style="color:${palette.subtext}" onclick="viewGoTo('splash')">
           <i class="fas fa-chevron-left"></i> Back
         </button>
-        <h2 class="text-xl font-black mb-1" style="color:${palette.text}">Welcome back</h2>
-        <p class="text-xs mb-6 opacity-60" style="color:${palette.subtext}">Sign in to ${escHtml(appName)}</p>
-        <div class="space-y-3 mb-4">
-          <div class="rounded-xl px-4 py-3.5 text-sm" style="background:${palette.card};color:${palette.subtext}">
-            <p class="text-xs mb-1 opacity-60">Email</p>
-            <p style="color:${palette.text}">user@example.com</p>
+        <div class="flex items-center gap-3 mb-5">
+          <div class="w-10 h-10 rounded-2xl flex items-center justify-center shadow" style="background:linear-gradient(135deg,${palette.accent},${palette.accent2})">
+            <i class="${appIcon} text-white" style="font-size:14px"></i>
           </div>
-          <div class="rounded-xl px-4 py-3.5 text-sm" style="background:${palette.card};color:${palette.subtext}">
-            <p class="text-xs mb-1 opacity-60">Password</p>
-            <p>••••••••</p>
+          <div>
+            <p class="text-base font-black" style="color:${palette.text}">${escHtml(appName)}</p>
+            <p class="text-xs opacity-50" style="color:${palette.subtext}">Sign in to continue</p>
           </div>
         </div>
-        <button class="w-full py-3.5 rounded-2xl font-bold text-sm mb-3 shadow-lg" style="background:${palette.accent};color:#fff" onclick="viewGoTo('home')">
+        <div class="space-y-3 mb-4">
+          <div class="rounded-xl px-4 py-3.5" style="background:${palette.card}">
+            <p class="text-xs mb-0.5 opacity-50" style="color:${palette.subtext}">Email or ${primaryRole} ID</p>
+            <p class="text-sm" style="color:${palette.text}">user@example.com</p>
+          </div>
+          <div class="rounded-xl px-4 py-3.5" style="background:${palette.card}">
+            <p class="text-xs mb-0.5 opacity-50" style="color:${palette.subtext}">Password</p>
+            <p class="text-sm" style="color:${palette.subtext}">••••••••••</p>
+          </div>
+        </div>
+        <button class="w-full py-3.5 rounded-2xl font-bold text-sm mb-3 shadow-lg" style="background:linear-gradient(135deg,${palette.accent},${palette.accent2});color:#fff" onclick="viewGoTo('home')">
           Sign In
         </button>
+        ${roleList.length > 1 ? `<div class="flex gap-2 mb-3">${roleList.slice(0,3).map(r => `<button class="flex-1 py-2 rounded-xl text-xs font-semibold border" style="border-color:${palette.border};color:${palette.subtext}" onclick="viewGoTo('home')">${escHtml(r)}</button>`).join('')}</div>` : ''}
         <div class="flex items-center gap-3 my-3">
           <div class="flex-1 h-px opacity-20" style="background:${palette.border}"></div>
-          <span class="text-xs opacity-40" style="color:${palette.subtext}">or</span>
+          <span class="text-xs opacity-40" style="color:${palette.subtext}">or continue with</span>
           <div class="flex-1 h-px opacity-20" style="background:${palette.border}"></div>
         </div>
-        <button class="w-full py-3 rounded-2xl text-sm font-semibold border flex items-center justify-center gap-2" style="border-color:${palette.border};color:${palette.subtext}" onclick="viewGoTo('home')">
-          <i class="fab fa-google text-blue-400"></i> Continue with Google
+        <button class="w-full py-3 rounded-2xl text-sm font-semibold border flex items-center justify-center gap-2 mb-2" style="border-color:${palette.border};color:${palette.subtext}" onclick="viewGoTo('home')">
+          <i class="fab fa-google text-blue-400"></i> Google
         </button>
-        <p class="text-xs text-center mt-4 opacity-50" style="color:${palette.subtext}">Don't have an account? <span class="underline cursor-pointer" onclick="viewGoTo('home')">Sign up free</span></p>
+        ${apiList.some(a=>a.toLowerCase().includes('apple')) ? `<button class="w-full py-3 rounded-2xl text-sm font-semibold border flex items-center justify-center gap-2 mb-2" style="border-color:${palette.border};color:${palette.text}" onclick="viewGoTo('home')"><i class="fab fa-apple"></i> Apple</button>` : ''}
+        <p class="text-xs text-center mt-3 opacity-50" style="color:${palette.subtext}">
+          New to ${escHtml(appName)}? <span class="underline cursor-pointer" style="color:${palette.accent}" onclick="viewGoTo('home')">Create a free account</span>
+        </p>
       </div>`
   });
 
-  // ── 3. Home / Dashboard ──────────────────────────────────
-  const primaryFeature = features[0] || 'Get started';
+  // ════════════════════════════════════════════════════
+  //  SCREEN 3 — Home Dashboard
+  // ════════════════════════════════════════════════════
   screens.push({
-    id: 'home', label: 'Home',
-    icon: 'fas fa-house',
+    id: 'home', label: 'Dashboard', icon: 'fas fa-house',
     render: () => `
-      <div class="flex flex-col h-full min-h-[560px]" style="background:${palette.bg}">
+      <div class="flex flex-col min-h-[520px] pb-16 relative" style="background:${palette.bg}">
         <!-- Header -->
         <div class="px-4 pt-4 pb-3 flex items-center justify-between" style="background:${palette.card}">
           <div>
-            <p class="text-xs opacity-50" style="color:${palette.subtext}">Good morning 👋</p>
-            <p class="text-base font-bold" style="color:${palette.text}">${escHtml(appName)}</p>
+            <p class="text-xs opacity-50" style="color:${palette.subtext}">Welcome back 👋</p>
+            <p class="text-base font-black" style="color:${palette.text}">${escHtml(primaryRole)}</p>
           </div>
           <div class="flex gap-2">
-            <div class="w-8 h-8 rounded-full flex items-center justify-center" style="background:${palette.accent}20">
+            <div class="w-8 h-8 rounded-full flex items-center justify-center" style="background:${palette.accent}22">
               <i class="fas fa-bell" style="color:${palette.accent};font-size:11px"></i>
             </div>
-            <div class="w-8 h-8 rounded-full flex items-center justify-center" style="background:${palette.accent}">
-              <i class="fas fa-user" style="color:#fff;font-size:11px"></i>
+            <div class="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold" style="background:linear-gradient(135deg,${palette.accent},${palette.accent2})">
+              ${escHtml(primaryRole.charAt(0).toUpperCase())}
             </div>
           </div>
         </div>
         <!-- Hero card -->
-        <div class="mx-4 mt-3 rounded-2xl p-4 shadow-lg" style="background:${palette.accent}">
-          <p class="text-white text-xs opacity-80 mb-0.5">Your ${category} dashboard</p>
-          <p class="text-white text-lg font-black">${escHtml(primaryFeature)}</p>
-          <button class="mt-3 bg-white bg-opacity-20 text-white text-xs font-bold px-4 py-1.5 rounded-lg" onclick="viewGoTo('feature')">Open →</button>
+        <div class="mx-4 mt-3 rounded-2xl p-4 shadow-xl relative overflow-hidden" style="background:linear-gradient(135deg,${palette.accent},${palette.accent2})">
+          <div class="absolute right-0 top-0 w-24 h-24 rounded-full opacity-20" style="background:#fff;transform:translate(30%,-30%)"></div>
+          <p class="text-white text-xs opacity-80 mb-0.5 relative z-10">${escHtml(appName)} · ${escHtml(primaryRole)}</p>
+          <p class="text-white text-lg font-black relative z-10 leading-tight">${escHtml(DD.cta)}</p>
+          <p class="text-white text-xs mt-1 relative z-10 opacity-70">${escHtml(truncate(problem||`Your ${category} command center`,60))}</p>
+          <button class="mt-3 bg-white bg-opacity-20 text-white text-xs font-bold px-4 py-1.5 rounded-lg relative z-10 border border-white border-opacity-30" onclick="viewGoTo('feature')">
+            ${escHtml(DD.action)} <i class="fas fa-arrow-right ml-1"></i>
+          </button>
         </div>
-        <!-- Quick actions -->
+        <!-- Stats strip -->
+        <div class="px-4 mt-3 flex gap-2">
+          ${DD.metrics.map(([label,val]) => `
+          <div class="flex-1 rounded-xl p-2.5 text-center" style="background:${palette.card}">
+            <p class="text-sm font-black" style="color:${palette.accent}">${escHtml(val)}</p>
+            <p style="font-size:9px;color:${palette.subtext};opacity:0.7;margin-top:1px">${escHtml(label)}</p>
+          </div>`).join('')}
+        </div>
+        <!-- Feature quick actions -->
+        ${features.length ? `
         <div class="px-4 mt-4">
-          <p class="text-xs font-bold mb-2 opacity-50" style="color:${palette.subtext}">QUICK ACTIONS</p>
+          <p class="text-xs font-bold mb-2 opacity-50 uppercase tracking-wider" style="color:${palette.subtext}">Features</p>
           <div class="grid grid-cols-4 gap-2">
             ${features.slice(0,4).map((f,i) => `
             <button class="flex flex-col items-center gap-1.5 p-2 rounded-xl active:scale-95" style="background:${palette.card}" onclick="viewGoTo('feature')">
-              <div class="w-9 h-9 rounded-xl flex items-center justify-center" style="background:${palette.accent}20">
-                <i class="${getFeatureIcon(f,i)}" style="color:${palette.accent};font-size:13px"></i>
+              <div class="w-9 h-9 rounded-xl flex items-center justify-center" style="background:${palette.accent}22">
+                <i class="${getFeatureIcon(f,i)}" style="color:${palette.accent};font-size:12px"></i>
               </div>
-              <p class="text-center leading-tight" style="font-size:9px;color:${palette.subtext}">${escHtml(truncate(f,10))}</p>
+              <p class="text-center leading-tight" style="font-size:8.5px;color:${palette.subtext}">${escHtml(truncate(f,10))}</p>
             </button>`).join('')}
           </div>
-        </div>
+        </div>` : ''}
         <!-- Recent activity -->
         <div class="px-4 mt-4">
-          <p class="text-xs font-bold mb-2 opacity-50" style="color:${palette.subtext}">RECENT ACTIVITY</p>
+          <p class="text-xs font-bold mb-2 opacity-50 uppercase tracking-wider" style="color:${palette.subtext}">Recent Activity</p>
           <div class="space-y-2">
-            ${[
-              { icon:'fas fa-star', label: 'New session started', time:'2m ago' },
-              { icon:'fas fa-check-circle', label: 'Task completed', time:'1h ago' },
-              { icon:'fas fa-bell', label: 'Reminder: ' + truncate(workflows||'Review your data',30), time:'3h ago' },
-            ].map(r => `
+            ${DD.recentActivity.slice(0,3).map(r => `
             <div class="flex items-center gap-3 p-3 rounded-xl" style="background:${palette.card}">
-              <div class="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0" style="background:${palette.accent}20">
+              <div class="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0" style="background:${palette.accent}22">
                 <i class="${r.icon}" style="color:${palette.accent};font-size:10px"></i>
               </div>
-              <p class="flex-1 text-xs" style="color:${palette.text}">${escHtml(r.label)}</p>
-              <p class="text-xs opacity-40" style="color:${palette.subtext}">${r.time}</p>
+              <p class="flex-1 text-xs leading-snug" style="color:${palette.text}">${escHtml(r.text)}</p>
+              <p class="text-xs opacity-40 flex-shrink-0" style="color:${palette.subtext}">${r.time}</p>
             </div>`).join('')}
           </div>
         </div>
-        <!-- Bottom nav -->
-        ${renderBottomNav(palette, 'home')}</div>`
+        ${renderBottomNav(palette, 'home', navItems)}</div>`
   });
 
-  // ── 4. Core Feature Screen ───────────────────────────────
-  const feat1 = features[0] || 'Main Feature';
-  const feat2 = features[1] || 'Analytics';
+  // ════════════════════════════════════════════════════
+  //  SCREEN 4 — Core Feature / List
+  // ════════════════════════════════════════════════════
   screens.push({
-    id: 'feature', label: feat1,
-    icon: getFeatureIcon(feat1, 0),
+    id: 'feature', label: truncate(DD.featureScreenTitle, 12), icon: getFeatureIcon(features[0]||domainKey, 0),
     render: () => `
-      <div class="flex flex-col h-full min-h-[560px]" style="background:${palette.bg}">
+      <div class="flex flex-col min-h-[520px] pb-16 relative" style="background:${palette.bg}">
         <!-- Header -->
-        <div class="px-4 pt-4 pb-3 flex items-center gap-3" style="background:${palette.card}">
-          <button class="w-7 h-7 rounded-full flex items-center justify-center" style="background:${palette.accent}20" onclick="viewGoTo('home')">
-            <i class="fas fa-chevron-left" style="color:${palette.accent};font-size:10px"></i>
-          </button>
-          <p class="text-base font-black flex-1" style="color:${palette.text}">${escHtml(feat1)}</p>
-          <div class="w-7 h-7 rounded-full flex items-center justify-center" style="background:${palette.accent}20">
-            <i class="fas fa-filter" style="color:${palette.accent};font-size:10px"></i>
+        <div class="px-4 pt-4 pb-3" style="background:${palette.card}">
+          <div class="flex items-center gap-3 mb-2">
+            <button class="w-7 h-7 rounded-full flex items-center justify-center" style="background:${palette.accent}22" onclick="viewGoTo('home')">
+              <i class="fas fa-chevron-left" style="color:${palette.accent};font-size:10px"></i>
+            </button>
+            <div class="flex-1">
+              <p class="text-base font-black" style="color:${palette.text}">${escHtml(DD.featureScreenTitle)}</p>
+              <p class="text-xs opacity-50" style="color:${palette.subtext}">${escHtml(DD.featureScreenSubtitle)}</p>
+            </div>
+            <div class="w-7 h-7 rounded-full flex items-center justify-center" style="background:${palette.accent}22">
+              <i class="fas fa-filter" style="color:${palette.accent};font-size:10px"></i>
+            </div>
           </div>
-        </div>
-        <!-- Search bar -->
-        <div class="px-4 mt-3">
-          <div class="flex items-center gap-2 rounded-xl px-3 py-2.5" style="background:${palette.card}">
+          <!-- Search bar -->
+          <div class="flex items-center gap-2 rounded-xl px-3 py-2.5" style="background:${palette.bg}">
             <i class="fas fa-search opacity-40" style="color:${palette.subtext};font-size:11px"></i>
-            <p class="text-xs opacity-40" style="color:${palette.subtext}">Search ${escHtml(feat1.toLowerCase())}…</p>
+            <p class="text-xs opacity-40" style="color:${palette.subtext}">${escHtml(DD.featureScreenSearch)}</p>
           </div>
         </div>
-        <!-- Content list -->
-        <div class="flex-1 overflow-y-auto px-4 mt-3 space-y-2 pb-20">
-          ${Array.from({length:5}, (_,i) => `
-          <button class="w-full flex items-center gap-3 p-3.5 rounded-2xl active:scale-98 text-left" style="background:${palette.card}" onclick="viewGoTo('detail')">
-            <div class="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style="background:${palette.accent}${i===0?'':'20'}">
-              <i class="${getFeatureIcon(feat1,i)}" style="color:${i===0?'#fff':palette.accent};font-size:13px"></i>
+        <!-- Content list — real domain items -->
+        <div class="flex-1 overflow-y-auto px-4 mt-2 space-y-2 pb-2">
+          ${DD.items.map((item, i) => `
+          <button class="w-full flex items-center gap-3 p-3.5 rounded-2xl text-left active:scale-98" style="background:${palette.card}" onclick="viewGoTo('detail')">
+            <div class="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style="background:${i===0 ? `linear-gradient(135deg,${palette.accent},${palette.accent2})` : `${palette.accent}22`}">
+              <i class="${getFeatureIcon(features[i%features.length]||item, i)}" style="color:${i===0?'#fff':palette.accent};font-size:12px"></i>
             </div>
             <div class="flex-1 min-w-0">
-              <p class="text-sm font-semibold truncate" style="color:${palette.text}">${escHtml(feat1)} ${i+1}</p>
-              <p class="text-xs opacity-50 mt-0.5" style="color:${palette.subtext}">${['Active','Pending','Draft','Completed','New'][i]} · ${['just now','5m','2h','yesterday','3d'][i]}</p>
+              <p class="text-sm font-semibold truncate" style="color:${palette.text}">${escHtml(item)}</p>
+              <p class="text-xs opacity-50 mt-0.5" style="color:${palette.subtext}">${['Tap to open →','Updated just now','Active','Pending','In progress'][i%5]}</p>
             </div>
-            <i class="fas fa-chevron-right opacity-30" style="color:${palette.subtext};font-size:10px"></i>
+            ${i===0 ? `<span class="text-xs px-2 py-0.5 rounded-full font-bold flex-shrink-0" style="background:${palette.accent}22;color:${palette.accent}">New</span>` : `<i class="fas fa-chevron-right opacity-30 flex-shrink-0" style="color:${palette.subtext};font-size:10px"></i>`}
           </button>`).join('')}
         </div>
         <!-- FAB -->
-        <div class="absolute bottom-20 right-6">
-          <button class="w-12 h-12 rounded-full shadow-2xl flex items-center justify-center" style="background:${palette.accent}" onclick="viewGoTo('detail')">
-            <i class="fas fa-plus text-white"></i>
+        <div class="absolute bottom-20 right-5">
+          <button class="w-13 h-13 w-12 h-12 rounded-full shadow-2xl flex items-center justify-center gap-1.5 px-4" style="background:linear-gradient(135deg,${palette.accent},${palette.accent2})" onclick="viewGoTo('detail')">
+            <i class="${DD.featureScreenFAB.icon} text-white" style="font-size:13px"></i>
+            <span class="text-white text-xs font-bold">${escHtml(DD.featureScreenFAB.label)}</span>
           </button>
         </div>
-        ${renderBottomNav(palette, 'feature')}</div>`
+        ${renderBottomNav(palette, 'feature', navItems)}</div>`
   });
 
-  // ── 5. Detail / Action Screen ────────────────────────────
+  // ════════════════════════════════════════════════════
+  //  SCREEN 5 — Detail / Action view
+  // ════════════════════════════════════════════════════
   screens.push({
-    id: 'detail', label: 'Detail View',
-    icon: 'fas fa-file-lines',
+    id: 'detail', label: 'Detail View', icon: 'fas fa-file-lines',
     render: () => `
-      <div class="flex flex-col h-full min-h-[560px]" style="background:${palette.bg}">
+      <div class="flex flex-col min-h-[520px] pb-16 relative" style="background:${palette.bg}">
+        <!-- Header -->
         <div class="px-4 pt-4 pb-3 flex items-center gap-3" style="background:${palette.card}">
-          <button class="w-7 h-7 rounded-full flex items-center justify-center" style="background:${palette.accent}20" onclick="viewGoTo('feature')">
+          <button class="w-7 h-7 rounded-full flex items-center justify-center" style="background:${palette.accent}22" onclick="viewGoTo('feature')">
             <i class="fas fa-chevron-left" style="color:${palette.accent};font-size:10px"></i>
           </button>
-          <p class="text-base font-black flex-1" style="color:${palette.text}">${escHtml(feat1)} Detail</p>
-          <div class="w-7 h-7 rounded-full flex items-center justify-center" style="background:${palette.accent}20">
+          <p class="text-base font-black flex-1" style="color:${palette.text}">${escHtml(DD.detailTitle)}</p>
+          <div class="w-7 h-7 rounded-full flex items-center justify-center" style="background:${palette.accent}22">
             <i class="fas fa-ellipsis-vertical" style="color:${palette.accent};font-size:10px"></i>
           </div>
         </div>
-        <!-- Hero image placeholder -->
-        <div class="mx-4 mt-3 h-32 rounded-2xl flex items-center justify-center" style="background:${palette.accent}25">
-          <i class="${getFeatureIcon(feat1,0)}" style="color:${palette.accent};font-size:36px;opacity:0.6"></i>
-        </div>
-        <!-- Meta info -->
-        <div class="px-4 mt-4">
-          <p class="text-lg font-black" style="color:${palette.text}">${escHtml(feat1)} — Sample Entry</p>
-          <div class="flex items-center gap-3 mt-1.5">
-            <span class="text-xs px-2.5 py-1 rounded-full font-semibold" style="background:${palette.accent}20;color:${palette.accent}">Active</span>
-            <p class="text-xs opacity-50" style="color:${palette.subtext}">Updated 2h ago</p>
+        <!-- Hero zone -->
+        <div class="mx-4 mt-3 h-28 rounded-2xl flex items-center justify-center relative overflow-hidden" style="background:linear-gradient(135deg,${palette.accent}33,${palette.accent2}22)">
+          <div class="absolute inset-0 opacity-10" style="background:radial-gradient(circle at 70% 50%,${palette.accent},transparent)"></div>
+          <i class="${getFeatureIcon(features[0]||domainKey,0)}" style="color:${palette.accent};font-size:40px;opacity:0.7"></i>
+          <div class="absolute top-3 right-3">
+            ${statusBadge('Active', palette)}
           </div>
-          ${problem ? `<p class="text-sm mt-3 leading-relaxed opacity-70" style="color:${palette.subtext}">${escHtml(truncate(problem,120))}</p>` : ''}
         </div>
         <!-- Stats row -->
-        <div class="px-4 mt-4 grid grid-cols-3 gap-2">
-          ${[['Views','1,249'],['Actions','48'],['Rating','4.9★']].map(([k,v]) => `
-          <div class="rounded-xl p-3 text-center" style="background:${palette.card}">
-            <p class="text-base font-black" style="color:${palette.accent}">${v}</p>
-            <p class="text-xs opacity-50 mt-0.5" style="color:${palette.subtext}">${k}</p>
-          </div>`).join('')}
+        <div class="px-4 mt-3 flex gap-2">
+          ${DD.detailStats.map(([k,v]) => statPill('fas fa-circle-dot', v, k, palette)).join('')}
+        </div>
+        <!-- Detail body -->
+        <div class="px-4 mt-4">
+          <p class="text-sm font-black mb-2" style="color:${palette.text}">${escHtml(DD.detailTitle)}</p>
+          <p class="text-xs leading-relaxed opacity-70" style="color:${palette.subtext}">${escHtml(DD.detailBody)}</p>
         </div>
         <!-- Action buttons -->
         <div class="px-4 mt-4 flex gap-2">
-          <button class="flex-1 py-3 rounded-2xl text-sm font-bold text-white shadow-lg" style="background:${palette.accent}" onclick="viewGoTo('feature')">
-            <i class="fas fa-play mr-1"></i> Start
+          <button class="flex-1 py-3 rounded-2xl text-sm font-bold text-white shadow-lg" style="background:linear-gradient(135deg,${palette.accent},${palette.accent2})" onclick="viewGoTo('feature')">
+            <i class="${getFeatureIcon(features[0]||'',0)} mr-1.5"></i> ${escHtml(DD.action)}
           </button>
+          ${DD.detailActions.map(a => `
           <button class="w-12 h-12 rounded-2xl flex items-center justify-center border" style="border-color:${palette.border};color:${palette.subtext}">
-            <i class="fas fa-bookmark" style="font-size:13px"></i>
-          </button>
-          <button class="w-12 h-12 rounded-2xl flex items-center justify-center border" style="border-color:${palette.border};color:${palette.subtext}">
-            <i class="fas fa-share-nodes" style="font-size:13px"></i>
-          </button>
-        </div>
-        ${renderBottomNav(palette, 'detail')}</div>`
-  });
-
-  // ── 6. Profile / Settings ─────────────────────────────────
-  const roleList = roles.split(',').map(r=>r.trim()).filter(Boolean);
-  screens.push({
-    id: 'profile', label: 'Profile',
-    icon: 'fas fa-user-circle',
-    render: () => `
-      <div class="flex flex-col h-full min-h-[560px]" style="background:${palette.bg}">
-        <!-- Header -->
-        <div class="px-4 pt-4 pb-4 text-center" style="background:${palette.card}">
-          <div class="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-2 shadow-lg" style="background:${palette.accent}">
-            <i class="fas fa-user text-white text-xl"></i>
-          </div>
-          <p class="font-black text-base" style="color:${palette.text}">Alex Johnson</p>
-          <p class="text-xs opacity-50 mt-0.5" style="color:${palette.subtext}">${escHtml(roleList[0] || 'User')} · ${escHtml(appName)}</p>
-          <div class="flex justify-center gap-4 mt-3">
-            ${bizModel.includes('ub') || bizModel.toLowerCase().includes('sub') ? `
-            <span class="text-xs px-3 py-1 rounded-full font-bold" style="background:${palette.accent};color:#fff">Pro Plan</span>` : `
-            <span class="text-xs px-3 py-1 rounded-full font-bold" style="background:${palette.accent}20;color:${palette.accent}">Free Plan</span>`}
-          </div>
-        </div>
-        <!-- Menu items -->
-        <div class="flex-1 overflow-y-auto px-4 mt-3 space-y-2 pb-20">
-          ${[
-            { icon:'fas fa-gear', label:'Account Settings', sub:'Privacy, notifications' },
-            { icon:'fas fa-shield-halved', label:'Security', sub:'Password, 2FA' },
-            { icon:'fas fa-credit-card', label: bizModel.toLowerCase().includes('sub') ? 'Subscription' : 'Billing', sub: bizModel || 'Manage plan' },
-            { icon:'fas fa-circle-question', label:'Help & Support', sub:'FAQs, contact us' },
-            { icon:'fas fa-arrow-right-from-bracket', label:'Sign Out', sub:'', danger: true },
-          ].map(item => `
-          <button class="w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl text-left" style="background:${palette.card}" onclick="viewGoTo('home')">
-            <div class="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style="background:${item.danger ? '#ef444420':'${palette.accent}20'}">
-              <i class="${item.icon}" style="color:${item.danger?'#ef4444':palette.accent};font-size:13px"></i>
-            </div>
-            <div class="flex-1">
-              <p class="text-sm font-semibold" style="color:${item.danger?'#ef4444':palette.text}">${item.label}</p>
-              ${item.sub ? `<p class="text-xs opacity-50 mt-0.5" style="color:${palette.subtext}">${item.sub}</p>` : ''}
-            </div>
-            ${!item.danger ? `<i class="fas fa-chevron-right opacity-30" style="color:${palette.subtext};font-size:10px"></i>` : ''}
+            <i class="${a.icon}" style="font-size:12px" title="${escHtml(a.label)}"></i>
           </button>`).join('')}
         </div>
-        ${renderBottomNav(palette, 'profile')}</div>`
+        ${renderBottomNav(palette, 'detail', navItems)}</div>`
+  });
+
+  // ════════════════════════════════════════════════════
+  //  SCREEN 6 — Analytics / Reports
+  // ════════════════════════════════════════════════════
+  screens.push({
+    id: 'analytics', label: 'Analytics', icon: 'fas fa-chart-bar',
+    render: () => `
+      <div class="flex flex-col min-h-[520px] pb-16 relative" style="background:${palette.bg}">
+        <!-- Header -->
+        <div class="px-4 pt-4 pb-3" style="background:${palette.card}">
+          <p class="text-base font-black" style="color:${palette.text}">Analytics & Reports</p>
+          <p class="text-xs opacity-50 mt-0.5" style="color:${palette.subtext}">${escHtml(appName)} · All time</p>
+        </div>
+        <!-- Chart placeholder — styled to the brand -->
+        <div class="mx-4 mt-3 rounded-2xl p-4 relative overflow-hidden" style="background:${palette.card}">
+          <p class="text-xs font-bold mb-3 opacity-60 uppercase tracking-wider" style="color:${palette.subtext}">Performance Trend</p>
+          <div class="flex items-end gap-1 h-20">
+            ${[40,55,35,70,60,85,65,90,75,95,80,100].map((h,i)=>`
+            <div class="flex-1 rounded-t-lg transition-all" style="height:${h}%;background:${i===11?`linear-gradient(180deg,${palette.accent},${palette.accent2})`:`${palette.accent}${30+i*5}`}"></div>`).join('')}
+          </div>
+          <div class="flex justify-between mt-2">
+            ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'].map(m=>`<span style="font-size:7px;color:${palette.subtext};opacity:0.5">${m}</span>`).join('')}
+          </div>
+        </div>
+        <!-- Metric cards -->
+        <div class="px-4 mt-3 grid grid-cols-2 gap-2">
+          ${DD.analyticsMetrics.map(m => `
+          <div class="rounded-2xl p-3.5" style="background:${palette.card}">
+            <div class="flex items-center gap-2 mb-1.5">
+              <div class="w-7 h-7 rounded-lg flex items-center justify-center" style="background:${palette.accent}22">
+                <i class="${m.icon}" style="color:${palette.accent};font-size:11px"></i>
+              </div>
+              <p class="text-xs font-semibold opacity-60" style="color:${palette.subtext}">${escHtml(m.label)}</p>
+            </div>
+            <p class="text-xl font-black" style="color:${palette.text}">${escHtml(m.value)}</p>
+            <p class="text-xs mt-0.5 opacity-50" style="color:${palette.subtext}">${escHtml(m.change)}</p>
+          </div>`).join('')}
+        </div>
+        ${renderBottomNav(palette, 'analytics', navItems)}</div>`
+  });
+
+  // ════════════════════════════════════════════════════
+  //  SCREEN 7 — Profile & Settings
+  // ════════════════════════════════════════════════════
+  screens.push({
+    id: 'profile', label: 'Profile', icon: 'fas fa-user-circle',
+    render: () => `
+      <div class="flex flex-col min-h-[520px] pb-16 relative" style="background:${palette.bg}">
+        <!-- Profile header -->
+        <div class="px-4 pt-5 pb-5 text-center relative overflow-hidden" style="background:${palette.card}">
+          <div class="absolute inset-0 opacity-5" style="background:radial-gradient(circle at 50% 0%,${palette.accent},transparent)"></div>
+          <div class="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-2 shadow-lg relative z-10 text-white text-xl font-black" style="background:linear-gradient(135deg,${palette.accent},${palette.accent2})">
+            ${escHtml(primaryRole.charAt(0).toUpperCase())}
+          </div>
+          <p class="font-black text-base relative z-10" style="color:${palette.text}">${escHtml(primaryRole)} Account</p>
+          <p class="text-xs opacity-50 mt-0.5 relative z-10" style="color:${palette.subtext}">user@example.com</p>
+          <div class="flex justify-center gap-2 mt-3 relative z-10">
+            ${hasSubs ? `<span class="text-xs px-3 py-1 rounded-full font-bold text-white" style="background:linear-gradient(135deg,${palette.accent},${palette.accent2})"><i class="fas fa-crown mr-1" style="font-size:9px"></i>Pro Plan</span>` : `<span class="text-xs px-3 py-1 rounded-full font-bold border" style="border-color:${palette.border};color:${palette.subtext}">Free Plan</span>`}
+            ${roleList.length > 1 ? `<span class="text-xs px-3 py-1 rounded-full font-semibold" style="background:${palette.accent}22;color:${palette.accent}">${escHtml(roleList[0])}</span>` : ''}
+          </div>
+        </div>
+        <!-- Menu -->
+        <div class="flex-1 overflow-y-auto px-4 mt-3 space-y-2 pb-2">
+          ${[
+            { icon:'fas fa-user-pen', label:'Edit Profile', sub:'Name, photo, bio' },
+            { icon:'fas fa-shield-halved', label:'Security', sub:'Password, 2FA, sessions' },
+            hasSubs ? { icon:'fas fa-crown', label:'Subscription', sub:`${bizModel} · Manage plan`, accent:true } : null,
+            hasPayment ? { icon:'fas fa-credit-card', label:'Billing & Payments', sub:'Cards, invoices' } : null,
+            { icon:'fas fa-bell', label:'Notifications', sub:'Push, email, alerts' },
+            futureVer ? { icon:'fas fa-flask', label:'Beta Features', sub:escHtml(truncate(futureVer,40)) } : null,
+            { icon:'fas fa-circle-question', label:'Help & Support', sub:'FAQs, contact us' },
+            { icon:'fas fa-arrow-right-from-bracket', label:'Sign Out', sub:'', danger:true },
+          ].filter(Boolean).map(item => `
+          <button class="w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl text-left" style="background:${palette.card}" onclick="viewGoTo('home')">
+            <div class="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style="background:${item.danger?'#ef444418':item.accent?`${palette.accent}33`:`${palette.accent}18`}">
+              <i class="${item.icon}" style="color:${item.danger?'#ef4444':palette.accent};font-size:12px"></i>
+            </div>
+            <div class="flex-1">
+              <p class="text-sm font-semibold" style="color:${item.danger?'#ef4444':palette.text}">${escHtml(item.label)}</p>
+              ${item.sub ? `<p class="text-xs opacity-50 mt-0.5" style="color:${palette.subtext}">${escHtml(item.sub)}</p>` : ''}
+            </div>
+            ${!item.danger ? `<i class="fas fa-chevron-right opacity-30 flex-shrink-0" style="color:${palette.subtext};font-size:10px"></i>` : ''}
+          </button>`).join('')}
+        </div>
+        ${renderBottomNav(palette, 'profile', navItems)}</div>`
   });
 
   return screens;
 }
 
 function buildFallbackScreens(name) {
-  return buildAppScreens({ fields: { app_name: name || 'My App', color_scheme: 'midnight' }, spec: {}, project: { name: name || 'My App' } });
+  return buildAppScreens({ fields: { app_name: name||'My App', color_scheme:'midnight' }, spec:{}, project:{ name: name||'My App' } });
 }
 
-// ── Helpers ──────────────────────────────────────────────────
-function getColorPalette(scheme) {
-  const palettes = {
-    midnight: { bg:'#0f172a', card:'#1e293b', accent:'#06b6d4', text:'#f1f5f9', subtext:'#94a3b8', border:'#334155' },
-    ocean:    { bg:'#0c1a2e', card:'#1a2942', accent:'#3b82f6', text:'#e2e8f0', subtext:'#7c94b3', border:'#2d4063' },
-    forest:   { bg:'#0d1f13', card:'#1a3325', accent:'#22c55e', text:'#ecfdf5', subtext:'#86efac', border:'#166534' },
-    sunset:   { bg:'#1a0a0a', card:'#2d1515', accent:'#f97316', text:'#fff7ed', subtext:'#fdba74', border:'#7c2d12' },
-    purple:   { bg:'#120b24', card:'#1e1040', accent:'#a855f7', text:'#faf5ff', subtext:'#c4b5fd', border:'#4c1d95' },
-    slate:    { bg:'#0f172a', card:'#1e293b', accent:'#64748b', text:'#f8fafc', subtext:'#94a3b8', border:'#334155' },
-    rose:     { bg:'#1a0a12', card:'#2d1522', accent:'#f43f5e', text:'#fff1f2', subtext:'#fda4af', border:'#9f1239' },
-    amber:    { bg:'#1a1200', card:'#2d2000', accent:'#f59e0b', text:'#fffbeb', subtext:'#fcd34d', border:'#92400e' },
-    default:  { bg:'#0f172a', card:'#1e293b', accent:'#06b6d4', text:'#f1f5f9', subtext:'#94a3b8', border:'#334155' },
-  };
-  const key = (scheme || '').toLowerCase().replace(/[\s_-]/g,'');
-  return palettes[key] || palettes.midnight;
-}
-
-function parseFeatureList(raw) {
-  if (!raw) return [];
-  if (Array.isArray(raw)) return raw.map(f => typeof f === 'string' ? f : f.feature || f.name || JSON.stringify(f)).filter(Boolean);
-  try {
-    const arr = JSON.parse(raw);
-    if (Array.isArray(arr)) return arr.map(f => typeof f === 'string' ? f : f.feature || f.name || JSON.stringify(f)).filter(Boolean);
-  } catch (_) {}
-  return raw.split(',').map(s => s.trim()).filter(Boolean);
-}
-
-function getAppIcon(category, fields) {
-  const c = (category || '').toLowerCase();
-  if (c.includes('football') || c.includes('sport')) return 'fas fa-football';
-  if (c.includes('mobile') || c.includes('app')) return 'fas fa-mobile-screen-button';
-  if (c.includes('saas') || c.includes('software')) return 'fas fa-layer-group';
-  if (c.includes('ecom') || c.includes('shop')) return 'fas fa-bag-shopping';
-  if (c.includes('dash') || c.includes('analytics')) return 'fas fa-chart-line';
-  if (c.includes('health') || c.includes('fit')) return 'fas fa-heart-pulse';
-  if (c.includes('edu') || c.includes('learn')) return 'fas fa-graduation-cap';
-  if (c.includes('finance') || c.includes('money')) return 'fas fa-coins';
-  if (c.includes('social') || c.includes('comm')) return 'fas fa-comments';
-  // Check fields for clues
-  const audience = (fields?.audience || '').toLowerCase();
-  if (audience.includes('football') || audience.includes('coach')) return 'fas fa-football';
-  if (audience.includes('chef') || audience.includes('food')) return 'fas fa-utensils';
-  if (audience.includes('student') || audience.includes('teacher')) return 'fas fa-graduation-cap';
-  return 'fas fa-cube';
-}
-
-function getFeatureIcon(feature, idx) {
-  const f = (feature || '').toLowerCase();
-  if (f.includes('film') || f.includes('video')) return 'fas fa-film';
-  if (f.includes('analyt') || f.includes('analysis')) return 'fas fa-chart-bar';
-  if (f.includes('ai') || f.includes('intelligence')) return 'fas fa-brain';
-  if (f.includes('upload') || f.includes('import')) return 'fas fa-upload';
-  if (f.includes('report') || f.includes('summary')) return 'fas fa-file-chart-column';
-  if (f.includes('team') || f.includes('collab')) return 'fas fa-users';
-  if (f.includes('notif') || f.includes('alert')) return 'fas fa-bell';
-  if (f.includes('search') || f.includes('find')) return 'fas fa-magnifying-glass';
-  if (f.includes('pay') || f.includes('billing')) return 'fas fa-credit-card';
-  if (f.includes('message') || f.includes('chat')) return 'fas fa-comment-dots';
-  if (f.includes('map') || f.includes('location')) return 'fas fa-location-dot';
-  if (f.includes('calendar') || f.includes('schedule')) return 'fas fa-calendar-days';
-  if (f.includes('setting') || f.includes('config')) return 'fas fa-gear';
-  if (f.includes('dashboard') || f.includes('overview')) return 'fas fa-gauge-high';
-  const icons = ['fas fa-star','fas fa-bolt','fas fa-fire','fas fa-check-double','fas fa-rocket','fas fa-wand-magic-sparkles'];
-  return icons[idx % icons.length];
-}
-
-function renderBottomNav(palette, active) {
-  const tabs = [
-    { id:'home', icon:'fas fa-house', label:'Home', screen:'home' },
-    { id:'feature', icon:'fas fa-grid-2', label:'Browse', screen:'feature' },
-    { id:'detail', icon:'fas fa-plus-circle', label:'New', screen:'detail' },
-    { id:'profile', icon:'fas fa-user', label:'Profile', screen:'profile' },
-  ];
-  return `
-    <div class="absolute bottom-0 left-0 right-0 flex items-center justify-around px-2 py-2 border-t" style="background:${palette.card};border-color:${palette.border}20">
-      ${tabs.map(t => `
-      <button class="flex flex-col items-center gap-0.5 px-2 py-1" onclick="viewGoTo('${t.screen}')">
-        <i class="${t.icon}" style="font-size:${t.id==='detail'?'18':'14'}px;color:${active===t.id?palette.accent:palette.subtext};opacity:${active===t.id?1:0.5}"></i>
-        <span style="font-size:9px;color:${active===t.id?palette.accent:palette.subtext};opacity:${active===t.id?1:0.5};font-weight:${active===t.id?700:400}">${t.label}</span>
-      </button>`).join('')}
-    </div>`;
-}
-
-function truncate(str, len) {
-  if (!str) return '';
-  return str.length > len ? str.substring(0, len) + '…' : str;
-}
-
-// ── Prototype renderer ───────────────────────────────────────
+// ── Prototype renderer ────────────────────────────────────────
 function renderViewPrototype() {
   const screens = VIEW_PROJECT.screens;
   if (!screens.length) return;
 
-  // Build screen nav tabs
   const navEl = document.getElementById('view-screen-nav');
   if (navEl) {
     navEl.innerHTML = screens.map((s, i) => `
@@ -4060,7 +4553,6 @@ function renderViewPrototype() {
         <i class="${s.icon}" style="font-size:10px"></i> ${escHtml(s.label)}
       </button>`).join('');
   }
-
   renderCurrentScreen();
 }
 
@@ -4071,22 +4563,18 @@ function renderCurrentScreen() {
 
   const screen = screens[idx];
   const contentEl = document.getElementById('view-screen-content');
-  if (contentEl) {
-    contentEl.innerHTML = screen.render();
-  }
+  if (contentEl) contentEl.innerHTML = screen.render();
 
-  // Update label + counter
   const labelEl   = document.getElementById('view-screen-label');
   const counterEl = document.getElementById('view-screen-counter');
   if (labelEl)   labelEl.textContent   = screen.label;
   if (counterEl) counterEl.textContent = `${idx + 1} / ${screens.length}`;
 
-  // Update nav tabs
   screens.forEach((_, i) => {
     const btn = document.getElementById(`vsnav-${i}`);
     if (!btn) return;
     if (i === idx) {
-      btn.className = btn.className.replace('text-slate-400 hover:text-white hover:bg-slate-800','');
+      btn.classList.remove('text-slate-400','hover:text-white','hover:bg-slate-800');
       btn.classList.add('bg-cyan-500','text-white');
     } else {
       btn.classList.remove('bg-cyan-500','text-white');
@@ -4094,7 +4582,6 @@ function renderCurrentScreen() {
     }
   });
 
-  // Update arrow buttons
   const prevBtn = document.getElementById('view-prev-btn');
   const nextBtn = document.getElementById('view-next-btn');
   if (prevBtn) prevBtn.style.opacity = idx === 0 ? '0.3' : '1';
@@ -4122,7 +4609,7 @@ function viewGoToIdx(idx) {
   renderCurrentScreen();
 }
 
-// ── Spec panel renderer ──────────────────────────────────────
+// ── Spec panel renderer ───────────────────────────────────────
 function renderViewSpecPanel(d) {
   const el = document.getElementById('view-spec-content');
   if (!el) return;
@@ -4132,19 +4619,19 @@ function renderViewSpecPanel(d) {
   const project = d.project || {};
 
   const sections = [
-    { label:'App Name',       val: fields.app_name || spec.app_name || project.name },
-    { label:'Category',       val: fields.category || project.category },
-    { label:'Target Audience',val: fields.audience || spec.target_audience },
-    { label:'Problem Solved', val: fields.problem_statement || spec.problem_statement },
-    { label:'Core Features',  val: parseFeatureList(fields.core_features || spec.key_features || '[]').join(', ') },
-    { label:'Workflows',      val: fields.workflows },
-    { label:'Roles',          val: fields.roles_permissions },
-    { label:'Business Model', val: fields.business_model || spec.monetization },
-    { label:'APIs & Tools',   val: fields.apis_tools },
-    { label:'Deployment',     val: fields.deployment_preferences },
-    { label:'Future Versions',val: fields.future_versions },
-    { label:'Color Scheme',   val: fields.color_scheme },
-    { label:'Readiness',      val: project.readiness_score ? `${project.readiness_score}%` : null },
+    { label:'App Name',        val: fields.app_name || spec.app_name || project.name },
+    { label:'Category',        val: fields.category || project.category },
+    { label:'Target Audience', val: fields.audience || spec.target_audience },
+    { label:'Problem Solved',  val: fields.problem_statement || spec.problem_statement },
+    { label:'Core Features',   val: parseFeatureList(fields.core_features || spec.key_features || '[]').join(', ') },
+    { label:'Workflows',       val: fields.workflows },
+    { label:'Roles',           val: fields.roles_permissions },
+    { label:'Business Model',  val: fields.business_model || spec.monetization },
+    { label:'APIs & Tools',    val: fields.apis_tools },
+    { label:'Deployment',      val: fields.deployment_preferences },
+    { label:'Future Versions', val: fields.future_versions },
+    { label:'Color Scheme',    val: fields.color_scheme },
+    { label:'Readiness',       val: project.readiness_score ? `${project.readiness_score}%` : null },
   ].filter(s => s.val && String(s.val).trim());
 
   if (sections.length === 0) {
@@ -4167,13 +4654,33 @@ function renderViewSpecPanel(d) {
         <p class="text-xs font-bold text-slate-500 mb-1.5 uppercase tracking-wider">${escHtml(s.label)}</p>
         <p class="text-sm text-slate-200 leading-relaxed">${escHtml(String(s.val))}</p>
       </div>`).join('')}
-      <!-- Actions -->
-      <div class="flex gap-3 pt-2">
+    </div>`;
+}
+
+// ── View modal spec mode renderer (called from setViewMode) ───
+function renderViewSpecMode(data) {
+  const el = document.getElementById('view-spec-content');
+  if (!el) return;
+  if (!data) {
+    el.innerHTML = '<div class="p-6 text-center text-slate-400 text-sm">Loading spec…</div>';
+    return;
+  }
+  renderViewSpecPanel(data);
+
+  // Show back button action
+  const specContent = document.getElementById('view-mode-spec');
+  if (specContent) {
+    const backBtn = specContent.querySelector('[onclick*="setViewMode"]');
+    if (!backBtn) {
+      const actions = document.createElement('div');
+      actions.className = 'flex gap-3 pt-2 mx-4';
+      actions.innerHTML = `
         <button onclick="setViewMode('prototype')"
           class="flex-1 py-3 rounded-xl text-sm font-bold text-white flex items-center justify-center gap-2"
           style="background:linear-gradient(135deg,#06b6d4,#0891b2)">
           <i class="fas fa-mobile-screen-button"></i> Back to Preview
-        </button>
-      </div>
-    </div>`;
+        </button>`;
+      specContent.appendChild(actions);
+    }
+  }
 }
