@@ -1842,9 +1842,9 @@ function getAppHTML(): string {
         </div>
       </div>
 
-      <!-- Phone + screen content -->
-      <div class="flex-1 flex items-start justify-center overflow-y-auto py-6 px-4" style="background:radial-gradient(ellipse at 50% 0%,rgba(6,182,212,0.06) 0%,transparent 60%)">
-        <div class="w-full max-w-sm">
+      <!-- Phone + screen content — scrollable middle -->
+      <div class="flex-1 flex items-start justify-center overflow-y-auto py-4 px-4" style="background:radial-gradient(ellipse at 50% 0%,rgba(6,182,212,0.06) 0%,transparent 60%)">
+        <div class="w-full max-w-sm pb-2">
           <!-- Phone frame -->
           <div class="relative mx-auto" style="width:100%;max-width:320px">
             <!-- Phone bezel -->
@@ -1860,7 +1860,7 @@ function getAppHTML(): string {
                 </div>
               </div>
               <!-- Screen content area -->
-              <div id="view-screen-content" class="overflow-y-auto" style="min-height:560px;max-height:600px;background:#f8fafc">
+              <div id="view-screen-content" class="overflow-y-auto" style="min-height:520px;max-height:560px;background:#f8fafc">
                 <!-- Populated by JS -->
               </div>
               <!-- Home indicator -->
@@ -1871,7 +1871,7 @@ function getAppHTML(): string {
           </div>
 
           <!-- Screen label + nav arrows -->
-          <div class="flex items-center justify-between mt-4 px-2">
+          <div class="flex items-center justify-between mt-3 px-2">
             <button id="view-prev-btn" onclick="viewNavigate(-1)"
               class="w-9 h-9 rounded-full flex items-center justify-center transition-all border border-slate-700 text-slate-400 hover:border-cyan-500 hover:text-cyan-400">
               <i class="fas fa-chevron-left text-xs"></i>
@@ -1885,20 +1885,20 @@ function getAppHTML(): string {
               <i class="fas fa-chevron-right text-xs"></i>
             </button>
           </div>
-
-          <!-- Action buttons -->
-          <div class="flex gap-3 mt-5">
-            <button onclick="closeModal('modal-view'); openTestingModal(null, VIEW_PROJECT.id, VIEW_PROJECT.name)"
-              class="flex-1 py-3 rounded-xl text-sm font-semibold border border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 transition-colors flex items-center justify-center gap-2">
-              <i class="fas fa-flask"></i> Revise
-            </button>
-            <button onclick="closeModal('modal-view'); openPublishModal(VIEW_PROJECT.id)"
-              class="flex-1 py-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-colors"
-              style="background:linear-gradient(135deg,#6366f1,#4f46e5);color:white">
-              <i class="fas fa-rocket"></i> Publish
-            </button>
-          </div>
         </div>
+      </div>
+
+      <!-- Action buttons — pinned at bottom, never cut off -->
+      <div class="flex-shrink-0 flex gap-3 px-4 py-3 border-t border-slate-800/60" style="background:#0d1424">
+        <button onclick="closeModal('modal-view'); openTestingModal(null, VIEW_PROJECT.id, VIEW_PROJECT.name)"
+          class="flex-1 py-3 rounded-xl text-sm font-semibold border border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 transition-colors flex items-center justify-center gap-2">
+          <i class="fas fa-flask"></i> Revise
+        </button>
+        <button onclick="closeModal('modal-view'); openPublishModal(VIEW_PROJECT.id)"
+          class="flex-1 py-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-colors"
+          style="background:linear-gradient(135deg,#6366f1,#4f46e5);color:white">
+          <i class="fas fa-rocket"></i> Publish
+        </button>
       </div>
     </div>
 
