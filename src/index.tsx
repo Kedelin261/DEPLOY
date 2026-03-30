@@ -1722,9 +1722,9 @@ function getAppHTML(): string {
             <li class="flex items-start gap-2"><i class="fas fa-check text-emerald-400 mt-0.5 flex-shrink-0"></i>Average review time: 1-3 business days</li>
           </ul>
         </div>
-        <a href="https://developer.apple.com/app-store/" target="_blank" rel="noopener"
+        <a id="publish-cta-ios" href="https://developer.apple.com/programs/enroll/" target="_blank" rel="noopener"
           class="btn-primary w-full py-3.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 mt-2">
-          <i class="fab fa-apple"></i> Open Apple Developer Portal
+          <i class="fab fa-apple"></i> Start Here: Create Apple Developer Account
           <i class="fas fa-arrow-up-right-from-square text-xs ml-1 opacity-60"></i>
         </a>
       </div>
@@ -1747,9 +1747,9 @@ function getAppHTML(): string {
             <li class="flex items-start gap-2"><i class="fas fa-check text-emerald-400 mt-0.5 flex-shrink-0"></i>First review can take 3-7 days; subsequent updates are faster</li>
           </ul>
         </div>
-        <a href="https://play.google.com/console" target="_blank" rel="noopener"
+        <a id="publish-cta-android" href="https://play.google.com/console/signup" target="_blank" rel="noopener"
           class="w-full py-3.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 mt-2 border border-green-500/40 text-green-400 hover:bg-green-500/10 transition-colors">
-          <i class="fab fa-google-play"></i> Open Google Play Console
+          <i class="fab fa-google-play"></i> Start Here: Create Google Play Account
           <i class="fas fa-arrow-up-right-from-square text-xs ml-1 opacity-60"></i>
         </a>
       </div>
@@ -1772,11 +1772,95 @@ function getAppHTML(): string {
             <li class="flex items-start gap-2"><i class="fas fa-check text-emerald-400 mt-0.5 flex-shrink-0"></i>Free tier includes unlimited requests and bandwidth</li>
           </ul>
         </div>
-        <button onclick="triggerWebDeploy()"
-          class="btn-primary w-full py-4 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 mt-2">
-          <i class="fas fa-rocket"></i> Deploy to Cloudflare Pages
-          <span class="text-xs opacity-70 ml-1">· 15 coins</span>
+        <a id="publish-cta-web" href="https://dash.cloudflare.com/sign-up" target="_blank" rel="noopener"
+          class="btn-primary w-full py-3.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 mt-2">
+          <i class="fas fa-rocket"></i> Start Here: Create Cloudflare Account
+          <i class="fas fa-arrow-up-right-from-square text-xs ml-1 opacity-60"></i>
+        </a>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     VIEW PROJECT MODAL
+     ============================================================ -->
+<div id="modal-view" class="hidden fixed inset-0 z-50 flex items-end justify-center p-0">
+  <div class="modal-overlay absolute inset-0" onclick="closeModal('modal-view')"></div>
+  <div class="relative w-full max-w-2xl bg-slate-900 rounded-t-3xl flex flex-col overflow-hidden" style="max-height:95vh">
+    <!-- Handle + Header -->
+    <div class="flex-shrink-0 px-5 pt-4 pb-0">
+      <div class="w-10 h-1 bg-slate-700 rounded-full mx-auto mb-4"></div>
+      <div class="flex items-center justify-between mb-3">
+        <div class="flex items-center gap-2.5">
+          <div class="w-9 h-9 rounded-xl flex items-center justify-center" style="background:linear-gradient(135deg,#06b6d4,#0891b2)">
+            <i class="fas fa-eye text-white text-sm"></i>
+          </div>
+          <div>
+            <h3 class="text-base font-bold text-white" id="view-project-name">Your Project</h3>
+            <p class="text-xs text-slate-400">Project overview &amp; details</p>
+          </div>
+        </div>
+        <button onclick="closeModal('modal-view')" class="text-slate-500 hover:text-white w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-800">
+          <i class="fas fa-xmark"></i>
         </button>
+      </div>
+      <!-- View Tabs -->
+      <div class="flex gap-1 bg-slate-800/60 p-1 rounded-xl mb-3">
+        <button onclick="setViewTab('overview')" id="vtab-overview"
+          class="flex-1 py-2 text-xs font-semibold rounded-lg transition-all bg-slate-700 text-white flex items-center justify-center gap-1.5">
+          <i class="fas fa-layer-group"></i> Overview
+        </button>
+        <button onclick="setViewTab('spec')" id="vtab-spec"
+          class="flex-1 py-2 text-xs font-semibold rounded-lg transition-all text-slate-400 flex items-center justify-center gap-1.5">
+          <i class="fas fa-file-code"></i> Spec
+        </button>
+        <button onclick="setViewTab('timeline')" id="vtab-timeline"
+          class="flex-1 py-2 text-xs font-semibold rounded-lg transition-all text-slate-400 flex items-center justify-center gap-1.5">
+          <i class="fas fa-timeline"></i> Timeline
+        </button>
+      </div>
+    </div>
+
+    <!-- Loading state -->
+    <div id="view-loading" class="hidden flex-1 flex items-center justify-center py-12">
+      <div class="text-center">
+        <div class="w-10 h-10 border-2 border-cyan-500/40 border-t-cyan-400 rounded-full animate-spin mx-auto mb-3"></div>
+        <p class="text-slate-400 text-sm">Loading project data…</p>
+      </div>
+    </div>
+
+    <!-- Tab content scroll -->
+    <div id="view-content" class="flex-1 overflow-y-auto px-5 pb-6">
+
+      <!-- Overview Tab -->
+      <div id="view-tab-overview">
+        <div id="view-overview-content" class="space-y-3 pt-1">
+          <!-- Populated by JS -->
+          <div class="glass rounded-xl p-6 text-center border border-slate-700/40">
+            <div class="w-10 h-10 border-2 border-cyan-500/40 border-t-cyan-400 rounded-full animate-spin mx-auto mb-3"></div>
+            <p class="text-slate-400 text-sm">Loading overview…</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Spec Tab -->
+      <div id="view-tab-spec" class="hidden pt-1">
+        <div id="view-spec-content" class="space-y-3">
+          <div class="glass rounded-xl p-6 text-center border border-slate-700/40">
+            <p class="text-slate-400 text-sm">Loading spec…</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Timeline Tab -->
+      <div id="view-tab-timeline" class="hidden pt-1">
+        <div id="view-timeline-content" class="space-y-3">
+          <div class="glass rounded-xl p-6 text-center border border-slate-700/40">
+            <p class="text-slate-400 text-sm">Loading timeline…</p>
+          </div>
+        </div>
       </div>
 
     </div>

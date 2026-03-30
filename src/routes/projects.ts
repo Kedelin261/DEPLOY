@@ -175,6 +175,37 @@ projects.get('/:id/outputs', authMiddleware(), async (c) => {
   return c.json({ success: true, data: outputs.results });
 });
 
+// GET /api/projects/:id/spec  — fetch latest spec JSON from R2
+projects.get('/:id/spec', authMiddleware(), async (c) => {
+  const user = c.get('user')!;
+  const projectId = c.req.param('id');
+
+  const project = await c.env.DB.prepare('SELECT id FROM projects WHERE id = ? AND user_id = ?').bind(projectId, user.id).first();
+  if (!project) return c.json({ success: false, error: 'Project not found' }, 404);
+
+  // Find the latest output for this project
+  const output = await c.env.DB.prepare(
+    `SELECT go.r2_key FROM generated_outputs go
+     WHERE go.project_id = ? AND go.is_current = 1
+     ORDER BY go.created_at DESC LIMIT 1`
+  ).bind(projectId).first<{ r2_key: string }>();
+
+  if (!output) return c.json({ success: true, spec: null });
+
+  // Fetch from R2
+  try {
+    const obj = await c.env.DEPLOY_R2.get(output.r2_key);
+    if (!obj) return c.json({ success: true, spec: null });
+    const text = await obj.text();
+    let spec = null;
+    try { spec = JSON.parse(text); } catch (_) { spec = { raw: text }; }
+    return c.json({ success: true, spec });
+  } catch (err) {
+    console.error('R2 fetch error', err);
+    return c.json({ success: true, spec: null });
+  }
+});
+
 // POST /api/projects/:id/build
 projects.post('/:id/build', authMiddleware(), async (c) => {
   const user = c.get('user')!;

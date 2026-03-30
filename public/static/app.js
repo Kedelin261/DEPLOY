@@ -330,6 +330,10 @@ function renderProjects(projects) {
       ${['built','deployed'].includes(p.status) ? `
       <!-- Quick action buttons for built projects -->
       <div class="mt-3 pt-3 border-t border-slate-800/50 flex gap-2" onclick="event.stopPropagation()">
+        <button onclick="openViewModal('${p.id}','${escHtml(p.name)}')"
+          class="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold border border-cyan-500/40 text-cyan-400 hover:bg-cyan-500/10 transition-colors">
+          <i class="fas fa-eye"></i> View
+        </button>
         <button onclick="openTestingModal(null,'${p.id}','${escHtml(p.name)}')"
           class="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold border border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 transition-colors">
           <i class="fas fa-flask"></i> Test &amp; Revise
@@ -3461,6 +3465,10 @@ function openPublishModal(projectId) {
   renderPublishChecklist('ios', document.getElementById('ios-checklist'), IOS_STEPS, PUBLISH.iosChecks);
   renderPublishChecklist('android', document.getElementById('android-checklist'), ANDROID_STEPS, PUBLISH.androidChecks);
   renderPublishChecklist('web', document.getElementById('web-checklist'), WEB_STEPS, PUBLISH.webChecks);
+  // Init CTA buttons
+  updatePublishCTA('ios', IOS_STEPS, PUBLISH.iosChecks);
+  updatePublishCTA('android', ANDROID_STEPS, PUBLISH.androidChecks);
+  updatePublishCTA('web', WEB_STEPS, PUBLISH.webChecks);
   openModal('modal-publish');
 }
 
@@ -3509,10 +3517,60 @@ function togglePublishStep(type, id, btn) {
   checks[type][id] = !checks[type][id];
   const container = document.getElementById(`${type}-checklist`);
   renderPublishChecklist(type, container, steps[type], checks[type]);
+  // Update the CTA button for this tab
+  updatePublishCTA(type, steps[type], checks[type]);
   // Show progress toast
   const done  = Object.values(checks[type]).filter(Boolean).length;
   const total = steps[type].length;
   if (done === total) showToast(`🎉 All ${type === 'ios' ? 'App Store' : type === 'android' ? 'Google Play' : 'Web'} steps complete!`, 'success');
+}
+
+/**
+ * Update the CTA button at the bottom of each publish tab to point
+ * to the next unchecked step, or show a "All Done" state when complete.
+ */
+function updatePublishCTA(type, steps, checks) {
+  const btnId = `publish-cta-${type}`;
+  const btn = document.getElementById(btnId);
+  if (!btn) return;
+
+  // Find the first incomplete step
+  const nextStep = steps.find(s => !checks[s.id]);
+
+  if (!nextStep) {
+    // All steps complete
+    btn.innerHTML = `<i class="fas fa-check-circle"></i> All Steps Complete — You're Ready to Launch! 🎉`;
+    btn.className = 'w-full py-3.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 mt-2 bg-emerald-500 hover:bg-emerald-400 text-white transition-colors cursor-default';
+    btn.removeAttribute('href');
+    btn.removeAttribute('onclick');
+    btn.setAttribute('disabled', 'true');
+    return;
+  }
+
+  const stepNum = steps.findIndex(s => s.id === nextStep.id) + 1;
+  const totalSteps = steps.length;
+  const doneCount = steps.filter(s => checks[s.id]).length;
+
+  const platformConfig = {
+    ios: { icon: 'fab fa-apple', color: 'bg-white text-slate-900 hover:bg-slate-100', label: 'Apple Developer Portal' },
+    android: { icon: 'fab fa-google-play', color: 'border border-green-500/40 text-green-400 hover:bg-green-500/10', label: 'Google Play Console' },
+    web: { icon: 'fas fa-rocket', color: 'btn-primary', label: 'Cloudflare Dashboard' },
+  };
+
+  const cfg = platformConfig[type];
+  const progressText = doneCount === 0 ? 'Start Here' : `Step ${stepNum} of ${totalSteps}`;
+
+  btn.innerHTML = `
+    <i class="${cfg.icon}"></i>
+    <span>${progressText}: ${escHtml(nextStep.text)}</span>
+    <i class="fas fa-arrow-up-right-from-square text-xs ml-1 opacity-60"></i>`;
+
+  if (nextStep.url) {
+    btn.setAttribute('href', nextStep.url);
+    btn.setAttribute('target', '_blank');
+    btn.setAttribute('rel', 'noopener');
+  }
+  btn.removeAttribute('disabled');
 }
 
 async function triggerWebDeploy() {
@@ -3521,6 +3579,291 @@ async function triggerWebDeploy() {
     return;
   }
   showToast('🚀 Deployment triggered! Check your project for status updates.', 'success');
+}
+
+// ============================================================
+// VIEW MODAL
+// ============================================================
+const VIEW_PROJECT = { id: null, name: '', data: null };
+
+async function openViewModal(projectId, projectName) {
+  VIEW_PROJECT.id = projectId;
+  VIEW_PROJECT.name = projectName || 'Your Project';
+  VIEW_PROJECT.data = null;
+
+  // Set header
+  const nameEl = document.getElementById('view-project-name');
+  if (nameEl) nameEl.textContent = VIEW_PROJECT.name;
+
+  // Reset to overview tab
+  setViewTab('overview');
+
+  // Show modal
+  openModal('modal-view');
+
+  // Load project data
+  await loadViewProjectData(projectId);
+}
+
+async function loadViewProjectData(projectId) {
+  const loadingEl = document.getElementById('view-loading');
+  const contentEl = document.getElementById('view-content');
+  if (loadingEl) loadingEl.classList.remove('hidden');
+  if (contentEl) contentEl.classList.add('hidden');
+
+  try {
+    // Load project details, outputs, and spec content in parallel
+    const [projRes, outputsRes, specRes] = await Promise.allSettled([
+      axios.get(`/api/projects/${projectId}`),
+      axios.get(`/api/projects/${projectId}/outputs`),
+      axios.get(`/api/projects/${projectId}/spec`),
+    ]);
+
+    const project = projRes.status === 'fulfilled' ? (projRes.value.data?.data || projRes.value.data?.project) : null;
+    const outputs = outputsRes.status === 'fulfilled' ? (outputsRes.value.data?.data || outputsRes.value.data?.outputs || []) : [];
+    const spec    = specRes.status === 'fulfilled' ? (specRes.value.data?.spec || null) : null;
+
+    VIEW_PROJECT.data = { project, outputs, spec };
+    renderViewOverview(project, outputs, spec);
+    renderViewSpec(project, outputs, spec);
+    renderViewTimeline(project);
+
+  } catch (err) {
+    console.error('loadViewProjectData error', err);
+    renderViewOverview(null, []);
+  } finally {
+    if (loadingEl) loadingEl.classList.add('hidden');
+    if (contentEl) contentEl.classList.remove('hidden');
+  }
+}
+
+function setViewTab(tab) {
+  ['overview', 'spec', 'timeline'].forEach(t => {
+    const panel = document.getElementById(`view-tab-${t}`);
+    const btn   = document.getElementById(`vtab-${t}`);
+    if (!panel || !btn) return;
+    if (t === tab) {
+      panel.classList.remove('hidden');
+      btn.classList.add('bg-slate-700', 'text-white');
+      btn.classList.remove('text-slate-400');
+    } else {
+      panel.classList.add('hidden');
+      btn.classList.remove('bg-slate-700', 'text-white');
+      btn.classList.add('text-slate-400');
+    }
+  });
+}
+
+function renderViewOverview(project, outputs, spec) {
+  const el = document.getElementById('view-overview-content');
+  if (!el) return;
+
+  const p = project || {};
+  const latestOutput = outputs[0];
+
+  const readiness = p.readiness_score || 0;
+  const readinessColor = readiness >= 80 ? 'text-emerald-400' : readiness >= 50 ? 'text-amber-400' : 'text-slate-400';
+  const statusColors = { built:'bg-emerald-500/15 text-emerald-400', deployed:'bg-blue-500/15 text-blue-400', draft:'bg-slate-700 text-slate-400' };
+  const statusCls = statusColors[p.status] || statusColors.draft;
+
+  el.innerHTML = `
+    <!-- Hero card -->
+    <div class="glass rounded-2xl p-5 border border-slate-700/50 mb-4">
+      <div class="flex items-start gap-4">
+        <div class="w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0 ${categoryIcon(p.category)?.bg || 'bg-slate-800'}">
+          <i class="${categoryIcon(p.category)?.icon || 'fas fa-cube'} text-xl"></i>
+        </div>
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2 flex-wrap">
+            <h3 class="text-lg font-bold text-white">${escHtml(p.name || VIEW_PROJECT.name)}</h3>
+            <span class="text-xs px-2.5 py-0.5 rounded-full font-semibold ${statusCls}">${p.status || 'built'}</span>
+          </div>
+          ${p.category ? `<p class="text-sm text-slate-400 mt-0.5">${capitalize(p.category)} App</p>` : ''}
+          <div class="flex items-center gap-4 mt-3">
+            <div class="text-center">
+              <p class="text-xl font-bold ${readinessColor}">${readiness}%</p>
+              <p class="text-xs text-slate-500">Readiness</p>
+            </div>
+            <div class="text-center">
+              <p class="text-xl font-bold text-white">${p.build_count || 0}</p>
+              <p class="text-xs text-slate-500">Builds</p>
+            </div>
+            <div class="text-center">
+              <p class="text-xl font-bold text-white">${outputs.length}</p>
+              <p class="text-xs text-slate-500">Outputs</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Readiness bar -->
+    <div class="glass rounded-xl p-4 border border-slate-700/50 mb-4">
+      <div class="flex items-center justify-between mb-2">
+        <p class="text-xs font-semibold text-slate-300">Build Readiness</p>
+        <p class="text-xs ${readinessColor} font-bold">${readiness}%</p>
+      </div>
+      <div class="h-2 bg-slate-800 rounded-full overflow-hidden">
+        <div class="progress-fill h-full rounded-full transition-all" style="width:${readiness}%"></div>
+      </div>
+      <p class="text-xs text-slate-500 mt-1.5">
+        ${readiness >= 80 ? '🎉 Excellent — your app is well defined and ready to ship!' :
+          readiness >= 60 ? '👍 Good progress — a few more details will strengthen your spec.' :
+          readiness >= 40 ? '🔧 Getting there — fill in more sections to improve the build quality.' :
+          '📝 Early stage — complete more of the prompt builder for a better result.'}
+      </p>
+    </div>
+
+    ${spec?.app_description || p.description ? `
+    <!-- Description -->
+    <div class="glass rounded-xl p-4 border border-slate-700/50 mb-4">
+      <p class="text-xs font-semibold text-slate-300 mb-1.5">About this app</p>
+      <p class="text-sm text-slate-400 leading-relaxed">${escHtml(spec?.app_description || p.description || '')}</p>
+    </div>` : ''}
+
+    ${spec?.key_features?.length ? `
+    <!-- Key features -->
+    <div class="glass rounded-xl p-4 border border-slate-700/50 mb-4">
+      <p class="text-xs font-semibold text-slate-300 mb-3">Key Features</p>
+      <div class="space-y-2">
+        ${spec.key_features.slice(0,8).map(f => `
+        <div class="flex items-start gap-2.5">
+          <div class="w-5 h-5 rounded-full bg-cyan-500/15 flex items-center justify-center flex-shrink-0 mt-0.5">
+            <i class="fas fa-check text-cyan-400" style="font-size:9px"></i>
+          </div>
+          <p class="text-sm text-slate-300 leading-snug">${escHtml(typeof f === 'string' ? f : f.feature || f.name || JSON.stringify(f))}</p>
+        </div>`).join('')}
+      </div>
+    </div>` : ''}
+
+    <!-- Quick actions -->
+    <div class="grid grid-cols-2 gap-3 mt-2">
+      <button onclick="closeModal('modal-view'); openTestingModal(null,'${p.id || VIEW_PROJECT.id}','${escHtml(p.name || VIEW_PROJECT.name)}')"
+        class="flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold border border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 transition-colors">
+        <i class="fas fa-flask"></i> Test &amp; Revise
+      </button>
+      <button onclick="closeModal('modal-view'); openPublishModal('${p.id || VIEW_PROJECT.id}')"
+        class="flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold border border-indigo-500/40 text-indigo-400 hover:bg-indigo-500/10 transition-colors">
+        <i class="fas fa-rocket"></i> Publish
+      </button>
+    </div>`;
+}
+
+function renderViewSpec(project, outputs, spec) {
+  const el = document.getElementById('view-spec-content');
+  if (!el) return;
+
+  if (!outputs || outputs.length === 0) {
+    el.innerHTML = `
+      <div class="glass rounded-xl p-8 text-center border border-slate-700/40">
+        <i class="fas fa-file-code text-slate-600 text-3xl mb-3 block"></i>
+        <p class="text-slate-400 text-sm">No build output yet.</p>
+        <p class="text-slate-500 text-xs mt-1">Generate a build to see your app spec here.</p>
+      </div>`;
+    return;
+  }
+
+  const latest = outputs[0];
+  // spec is passed in from R2 (may be null)
+
+  if (!spec || Object.keys(spec).length === 0) {
+    el.innerHTML = `
+      <div class="glass rounded-xl p-5 border border-slate-700/40">
+        <div class="flex items-center gap-2 mb-2">
+          <i class="fas fa-file-alt text-cyan-400"></i>
+          <p class="text-sm font-semibold text-white">Build Output v${latest.version || 1}</p>
+        </div>
+        <p class="text-xs text-slate-400">Build completed successfully. Your app specification has been generated and stored.</p>
+        <p class="text-xs text-slate-500 mt-2">Use the AI Summary in the Testing tab for a detailed breakdown.</p>
+      </div>`;
+    return;
+  }
+
+  const sections = [
+    { key: 'app_name', label: 'App Name', icon: 'fas fa-tag' },
+    { key: 'app_description', label: 'Description', icon: 'fas fa-align-left' },
+    { key: 'target_audience', label: 'Target Audience', icon: 'fas fa-users' },
+    { key: 'problem_statement', label: 'Problem Solved', icon: 'fas fa-lightbulb' },
+    { key: 'monetization', label: 'Monetization', icon: 'fas fa-dollar-sign' },
+    { key: 'platform', label: 'Platform', icon: 'fas fa-mobile-alt' },
+    { key: 'tech_stack', label: 'Tech Stack', icon: 'fas fa-code' },
+  ];
+
+  el.innerHTML = `
+    <div class="space-y-3">
+      <div class="flex items-center gap-2 mb-1">
+        <span class="text-xs text-slate-500">Build v${latest.version || 1}</span>
+        <span class="text-xs text-slate-600">·</span>
+        <span class="text-xs text-slate-500">${latest.created_at ? new Date(latest.created_at).toLocaleDateString() : 'Recent'}</span>
+      </div>
+      ${sections.filter(s => spec[s.key]).map(s => `
+      <div class="glass rounded-xl p-4 border border-slate-700/50">
+        <div class="flex items-center gap-2 mb-1.5">
+          <i class="${s.icon} text-cyan-400 text-xs"></i>
+          <p class="text-xs font-semibold text-slate-400">${s.label}</p>
+        </div>
+        <p class="text-sm text-white leading-relaxed">${escHtml(typeof spec[s.key] === 'string' ? spec[s.key] : JSON.stringify(spec[s.key]))}</p>
+      </div>`).join('')}
+      ${spec.key_features?.length ? `
+      <div class="glass rounded-xl p-4 border border-slate-700/50">
+        <div class="flex items-center gap-2 mb-2">
+          <i class="fas fa-list-check text-cyan-400 text-xs"></i>
+          <p class="text-xs font-semibold text-slate-400">Key Features (${spec.key_features.length})</p>
+        </div>
+        <ul class="space-y-1.5">${spec.key_features.map((f,i) => `
+          <li class="flex items-start gap-2">
+            <span class="text-xs text-slate-600 font-mono w-4 flex-shrink-0">${i+1}.</span>
+            <span class="text-sm text-slate-300">${escHtml(typeof f==='string'?f:f.feature||f.name||JSON.stringify(f))}</span>
+          </li>`).join('')}
+        </ul>
+      </div>` : ''}
+    </div>`;
+}
+
+function renderViewTimeline(project) {
+  const el = document.getElementById('view-timeline-content');
+  if (!el) return;
+
+  const p = project || {};
+  const created = p.created_at ? new Date(p.created_at) : null;
+  const updated = p.updated_at ? new Date(p.updated_at) : null;
+
+  const fmtDate = d => d ? d.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric', hour:'2-digit', minute:'2-digit' }) : 'Unknown';
+
+  const events = [
+    created && { icon:'fas fa-plus-circle', color:'text-cyan-400', bg:'bg-cyan-500/15', label:'Project Created', date: fmtDate(created), detail:'Project initialized in the DEPLOY platform.' },
+    p.build_count > 0 && { icon:'fas fa-hammer', color:'text-amber-400', bg:'bg-amber-500/15', label:`${p.build_count} Build${p.build_count>1?'s':''} Generated`, date: updated ? fmtDate(updated) : 'Recent', detail:'AI processed your prompt and generated a product specification.' },
+    ['built','deployed'].includes(p.status) && { icon:'fas fa-check-circle', color:'text-emerald-400', bg:'bg-emerald-500/15', label:'Build Complete', date: updated ? fmtDate(updated) : 'Recent', detail:'Your app spec is ready for testing, revision, and publishing.' },
+    p.status === 'deployed' && { icon:'fas fa-rocket', color:'text-indigo-400', bg:'bg-indigo-500/15', label:'App Deployed', date: updated ? fmtDate(updated) : 'Recent', detail:'Your app has been published and is live.' },
+  ].filter(Boolean);
+
+  if (events.length === 0) {
+    el.innerHTML = `<div class="glass rounded-xl p-6 text-center border border-slate-700/40">
+      <i class="fas fa-clock text-slate-600 text-2xl mb-2 block"></i>
+      <p class="text-slate-500 text-sm">No activity yet.</p>
+    </div>`;
+    return;
+  }
+
+  el.innerHTML = `
+    <div class="relative">
+      <div class="absolute left-5 top-4 bottom-4 w-0.5 bg-slate-700/60"></div>
+      <div class="space-y-4">
+        ${events.map((ev, i) => `
+        <div class="flex items-start gap-4 relative">
+          <div class="w-10 h-10 rounded-full ${ev.bg} flex items-center justify-center flex-shrink-0 z-10">
+            <i class="${ev.icon} ${ev.color} text-sm"></i>
+          </div>
+          <div class="flex-1 glass rounded-xl p-3.5 border border-slate-700/40">
+            <div class="flex items-start justify-between gap-2">
+              <p class="text-sm font-semibold text-white">${ev.label}</p>
+              <p class="text-xs text-slate-500 flex-shrink-0">${ev.date}</p>
+            </div>
+            <p class="text-xs text-slate-400 mt-1 leading-relaxed">${ev.detail}</p>
+          </div>
+        </div>`).join('')}
+      </div>
+    </div>`;
 }
 
 
