@@ -3581,27 +3581,38 @@ async function triggerWebDeploy() {
   showToast('🚀 Deployment triggered! Check your project for status updates.', 'success');
 }
 
+
 // ============================================================
-// VIEW MODAL
+// VIEW MODAL — Interactive Prototype Viewer
 // ============================================================
-const VIEW_PROJECT = { id: null, name: '', data: null };
+const VIEW_PROJECT = { id: null, name: '', data: null, screens: [], currentScreen: 0 };
+
+// Update clock in phone status bar
+(function updateViewClock() {
+  const el = document.getElementById('view-time');
+  if (el) {
+    const now = new Date();
+    el.textContent = now.getHours() + ':' + String(now.getMinutes()).padStart(2,'0');
+  }
+  setTimeout(updateViewClock, 30000);
+})();
 
 async function openViewModal(projectId, projectName) {
   VIEW_PROJECT.id = projectId;
   VIEW_PROJECT.name = projectName || 'Your Project';
   VIEW_PROJECT.data = null;
+  VIEW_PROJECT.screens = [];
+  VIEW_PROJECT.currentScreen = 0;
 
-  // Set header
   const nameEl = document.getElementById('view-project-name');
   if (nameEl) nameEl.textContent = VIEW_PROJECT.name;
 
-  // Reset to overview tab
-  setViewTab('overview');
+  // Default to prototype mode
+  setViewMode('prototype');
 
-  // Show modal
   openModal('modal-view');
 
-  // Load project data
+  // Load data
   await loadViewProjectData(projectId);
 }
 
@@ -3612,7 +3623,6 @@ async function loadViewProjectData(projectId) {
   if (contentEl) contentEl.classList.add('hidden');
 
   try {
-    // Load project details, outputs, and spec content in parallel
     const [projRes, outputsRes, specRes] = await Promise.allSettled([
       axios.get(`/api/projects/${projectId}`),
       axios.get(`/api/projects/${projectId}/outputs`),
@@ -3624,131 +3634,486 @@ async function loadViewProjectData(projectId) {
     const spec    = specRes.status === 'fulfilled' ? (specRes.value.data?.spec || null) : null;
 
     VIEW_PROJECT.data = { project, outputs, spec };
-    renderViewOverview(project, outputs, spec);
+
+    // Build screens from spec or project data
+    VIEW_PROJECT.screens = buildPrototypeScreens(project, spec);
+    VIEW_PROJECT.currentScreen = 0;
+
+    renderPrototype();
     renderViewSpec(project, outputs, spec);
-    renderViewTimeline(project);
 
   } catch (err) {
     console.error('loadViewProjectData error', err);
-    renderViewOverview(null, []);
+    VIEW_PROJECT.screens = buildPrototypeScreens(null, null);
+    renderPrototype();
   } finally {
     if (loadingEl) loadingEl.classList.add('hidden');
     if (contentEl) contentEl.classList.remove('hidden');
   }
 }
 
-function setViewTab(tab) {
-  ['overview', 'spec', 'timeline'].forEach(t => {
-    const panel = document.getElementById(`view-tab-${t}`);
-    const btn   = document.getElementById(`vtab-${t}`);
-    if (!panel || !btn) return;
-    if (t === tab) {
-      panel.classList.remove('hidden');
-      btn.classList.add('bg-slate-700', 'text-white');
-      btn.classList.remove('text-slate-400');
-    } else {
-      panel.classList.add('hidden');
-      btn.classList.remove('bg-slate-700', 'text-white');
-      btn.classList.add('text-slate-400');
-    }
-  });
+function setViewMode(mode) {
+  const protoEl = document.getElementById('view-mode-prototype');
+  const specEl  = document.getElementById('view-mode-spec');
+  const btnProto = document.getElementById('vmode-prototype');
+  const btnSpec  = document.getElementById('vmode-spec');
+  if (!protoEl || !specEl) return;
+
+  if (mode === 'prototype') {
+    protoEl.classList.remove('hidden');
+    specEl.classList.add('hidden');
+    btnProto?.classList.add('bg-cyan-500','text-white');
+    btnProto?.classList.remove('text-slate-400');
+    btnSpec?.classList.remove('bg-cyan-500','text-white');
+    btnSpec?.classList.add('text-slate-400');
+  } else {
+    protoEl.classList.add('hidden');
+    specEl.classList.remove('hidden');
+    btnSpec?.classList.add('bg-cyan-500','text-white');
+    btnSpec?.classList.remove('text-slate-400');
+    btnProto?.classList.remove('bg-cyan-500','text-white');
+    btnProto?.classList.add('text-slate-400');
+  }
 }
 
-function renderViewOverview(project, outputs, spec) {
-  const el = document.getElementById('view-overview-content');
-  if (!el) return;
-
+// ── Build screen list from spec data ────────────────────────────────────────
+function buildPrototypeScreens(project, spec) {
   const p = project || {};
-  const latestOutput = outputs[0];
+  const appName = p.name || VIEW_PROJECT.name || 'My App';
+  const category = p.category || 'mobile';
+  const colorTheme = getCategoryTheme(category);
 
-  const readiness = p.readiness_score || 0;
-  const readinessColor = readiness >= 80 ? 'text-emerald-400' : readiness >= 50 ? 'text-amber-400' : 'text-slate-400';
-  const statusColors = { built:'bg-emerald-500/15 text-emerald-400', deployed:'bg-blue-500/15 text-blue-400', draft:'bg-slate-700 text-slate-400' };
-  const statusCls = statusColors[p.status] || statusColors.draft;
+  // Try to get screens from AI spec's screen_map
+  let aiScreens = [];
+  if (spec?.screen_map) {
+    if (Array.isArray(spec.screen_map)) {
+      aiScreens = spec.screen_map;
+    } else if (typeof spec.screen_map === 'object') {
+      aiScreens = Object.entries(spec.screen_map).map(([key, val]) => ({
+        name: key,
+        ...(typeof val === 'object' ? val : { description: String(val) })
+      }));
+    }
+  }
 
-  el.innerHTML = `
-    <!-- Hero card -->
-    <div class="glass rounded-2xl p-5 border border-slate-700/50 mb-4">
-      <div class="flex items-start gap-4">
-        <div class="w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0 ${categoryIcon(p.category)?.bg || 'bg-slate-800'}">
-          <i class="${categoryIcon(p.category)?.icon || 'fas fa-cube'} text-xl"></i>
+  const features = spec?.feature_map ? (
+    Array.isArray(spec.feature_map) ? spec.feature_map :
+    Object.entries(spec.feature_map).map(([k,v]) => typeof v === 'string' ? v : k)
+  ) : [];
+
+  const screens = [];
+
+  // ── Screen 1: Splash / Welcome ──────────────────────────────────────────
+  screens.push({
+    id: 'splash',
+    label: 'Welcome',
+    icon: 'fas fa-door-open',
+    render: () => renderSplashScreen(appName, spec, colorTheme, category)
+  });
+
+  // ── Screen 2: Onboarding / Sign Up ──────────────────────────────────────
+  screens.push({
+    id: 'onboarding',
+    label: 'Sign Up',
+    icon: 'fas fa-user-plus',
+    render: () => renderOnboardingScreen(appName, colorTheme)
+  });
+
+  // ── Screen 3: Home / Dashboard ──────────────────────────────────────────
+  screens.push({
+    id: 'home',
+    label: 'Home',
+    icon: 'fas fa-house',
+    render: () => renderHomeScreen(appName, spec, features, colorTheme, category)
+  });
+
+  // ── Screens from AI spec screen_map ─────────────────────────────────────
+  if (aiScreens.length > 0) {
+    aiScreens.slice(0, 4).forEach((s, i) => {
+      const screenName = s.name || s.screen_name || s.title || `Screen ${i+4}`;
+      screens.push({
+        id: `ai-screen-${i}`,
+        label: screenName,
+        icon: getScreenIcon(screenName),
+        render: () => renderAIScreen(screenName, s, colorTheme, appName)
+      });
+    });
+  } else {
+    // Fallback screens based on category
+    const fallbacks = getCategoryFallbackScreens(category, appName, spec, features, colorTheme);
+    screens.push(...fallbacks);
+  }
+
+  // ── Last Screen: Profile / Settings ─────────────────────────────────────
+  screens.push({
+    id: 'profile',
+    label: 'Profile',
+    icon: 'fas fa-user-circle',
+    render: () => renderProfileScreen(appName, colorTheme)
+  });
+
+  return screens;
+}
+
+// ── Render helpers ───────────────────────────────────────────────────────────
+
+function renderSplashScreen(appName, spec, theme, category) {
+  const tagline = spec?.product_summary?.split('.')[0] || spec?.app_description?.split('.')[0] || getCategoryTagline(category);
+  return `
+  <div class="flex flex-col items-center justify-center min-h-full py-16 px-6 text-center" style="background:linear-gradient(160deg,${theme.dark} 0%,${theme.darker} 100%)">
+    <div class="w-20 h-20 rounded-3xl flex items-center justify-center mb-6 shadow-2xl" style="background:linear-gradient(135deg,${theme.primary},${theme.secondary})">
+      <i class="${getCategoryAppIcon(category)} text-white text-3xl"></i>
+    </div>
+    <h1 class="text-2xl font-bold text-white mb-2">${escHtml(appName)}</h1>
+    <p class="text-sm mb-8 leading-relaxed px-4" style="color:${theme.muted}">${escHtml(tagline)}</p>
+    <button class="w-full max-w-xs py-3.5 rounded-2xl text-white font-semibold text-sm shadow-lg mb-3" style="background:linear-gradient(135deg,${theme.primary},${theme.secondary})">
+      Get Started
+    </button>
+    <button class="w-full max-w-xs py-3.5 rounded-2xl font-semibold text-sm" style="background:rgba(255,255,255,0.08);color:${theme.accent}">
+      Sign In
+    </button>
+    <p class="text-xs mt-6" style="color:${theme.muted}">By continuing you agree to our Terms &amp; Privacy Policy</p>
+  </div>`;
+}
+
+function renderOnboardingScreen(appName, theme) {
+  return `
+  <div class="flex flex-col h-full" style="background:#f8fafc">
+    <!-- Header -->
+    <div class="px-5 pt-6 pb-4" style="background:linear-gradient(135deg,${theme.primary},${theme.secondary})">
+      <p class="text-xs font-semibold mb-1" style="color:rgba(255,255,255,0.7)">Welcome to</p>
+      <h2 class="text-xl font-bold text-white">${escHtml(appName)}</h2>
+    </div>
+    <!-- Form -->
+    <div class="flex-1 px-5 py-6 space-y-4">
+      <div>
+        <label class="block text-xs font-semibold text-gray-500 mb-1.5">Full Name</label>
+        <div class="w-full px-4 py-3 rounded-xl text-sm text-gray-800 border" style="background:#fff;border-color:#e2e8f0">John Doe</div>
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-gray-500 mb-1.5">Email Address</label>
+        <div class="w-full px-4 py-3 rounded-xl text-sm border" style="background:#fff;border-color:#e2e8f0;color:#94a3b8">john@example.com</div>
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-gray-500 mb-1.5">Password</label>
+        <div class="w-full px-4 py-3 rounded-xl text-sm border flex items-center justify-between" style="background:#fff;border-color:#e2e8f0">
+          <span style="color:#94a3b8">••••••••</span>
+          <i class="fas fa-eye" style="color:#94a3b8;font-size:12px"></i>
         </div>
-        <div class="flex-1 min-w-0">
-          <div class="flex items-center gap-2 flex-wrap">
-            <h3 class="text-lg font-bold text-white">${escHtml(p.name || VIEW_PROJECT.name)}</h3>
-            <span class="text-xs px-2.5 py-0.5 rounded-full font-semibold ${statusCls}">${p.status || 'built'}</span>
-          </div>
-          ${p.category ? `<p class="text-sm text-slate-400 mt-0.5">${capitalize(p.category)} App</p>` : ''}
-          <div class="flex items-center gap-4 mt-3">
-            <div class="text-center">
-              <p class="text-xl font-bold ${readinessColor}">${readiness}%</p>
-              <p class="text-xs text-slate-500">Readiness</p>
-            </div>
-            <div class="text-center">
-              <p class="text-xl font-bold text-white">${p.build_count || 0}</p>
-              <p class="text-xs text-slate-500">Builds</p>
-            </div>
-            <div class="text-center">
-              <p class="text-xl font-bold text-white">${outputs.length}</p>
-              <p class="text-xs text-slate-500">Outputs</p>
-            </div>
-          </div>
+      </div>
+      <button class="w-full py-3.5 rounded-xl text-white font-semibold text-sm mt-2" style="background:linear-gradient(135deg,${theme.primary},${theme.secondary})">
+        Create Account
+      </button>
+      <p class="text-center text-xs" style="color:#94a3b8">Already have an account? <span style="color:${theme.primary};font-weight:600">Sign In</span></p>
+    </div>
+  </div>`;
+}
+
+function renderHomeScreen(appName, spec, features, theme, category) {
+  const featureItems = features.slice(0,3).map(f => typeof f === 'string' ? f : f.name || f.feature || JSON.stringify(f));
+  const greeting = 'Good morning';
+  const stats = getCategoryStats(category);
+
+  return `
+  <div style="background:#f8fafc">
+    <!-- App header -->
+    <div class="px-4 pt-4 pb-3" style="background:linear-gradient(135deg,${theme.primary},${theme.secondary})">
+      <div class="flex items-center justify-between">
+        <div>
+          <p class="text-xs" style="color:rgba(255,255,255,0.75)">${greeting}, User 👋</p>
+          <p class="text-base font-bold text-white">${escHtml(appName)}</p>
         </div>
+        <div class="w-9 h-9 rounded-full flex items-center justify-center text-white font-bold text-sm" style="background:rgba(255,255,255,0.2)">U</div>
       </div>
     </div>
 
-    <!-- Readiness bar -->
-    <div class="glass rounded-xl p-4 border border-slate-700/50 mb-4">
-      <div class="flex items-center justify-between mb-2">
-        <p class="text-xs font-semibold text-slate-300">Build Readiness</p>
-        <p class="text-xs ${readinessColor} font-bold">${readiness}%</p>
-      </div>
-      <div class="h-2 bg-slate-800 rounded-full overflow-hidden">
-        <div class="progress-fill h-full rounded-full transition-all" style="width:${readiness}%"></div>
-      </div>
-      <p class="text-xs text-slate-500 mt-1.5">
-        ${readiness >= 80 ? '🎉 Excellent — your app is well defined and ready to ship!' :
-          readiness >= 60 ? '👍 Good progress — a few more details will strengthen your spec.' :
-          readiness >= 40 ? '🔧 Getting there — fill in more sections to improve the build quality.' :
-          '📝 Early stage — complete more of the prompt builder for a better result.'}
-      </p>
+    <!-- Stats row -->
+    <div class="grid grid-cols-3 gap-2 mx-4 -mt-3">
+      ${stats.map(s => `
+      <div class="rounded-xl p-2.5 shadow-sm text-center" style="background:#fff">
+        <p class="text-base font-bold" style="color:${theme.primary}">${s.value}</p>
+        <p class="text-xs text-gray-500 leading-tight">${s.label}</p>
+      </div>`).join('')}
     </div>
-
-    ${spec?.app_description || p.description ? `
-    <!-- Description -->
-    <div class="glass rounded-xl p-4 border border-slate-700/50 mb-4">
-      <p class="text-xs font-semibold text-slate-300 mb-1.5">About this app</p>
-      <p class="text-sm text-slate-400 leading-relaxed">${escHtml(spec?.app_description || p.description || '')}</p>
-    </div>` : ''}
-
-    ${spec?.key_features?.length ? `
-    <!-- Key features -->
-    <div class="glass rounded-xl p-4 border border-slate-700/50 mb-4">
-      <p class="text-xs font-semibold text-slate-300 mb-3">Key Features</p>
-      <div class="space-y-2">
-        ${spec.key_features.slice(0,8).map(f => `
-        <div class="flex items-start gap-2.5">
-          <div class="w-5 h-5 rounded-full bg-cyan-500/15 flex items-center justify-center flex-shrink-0 mt-0.5">
-            <i class="fas fa-check text-cyan-400" style="font-size:9px"></i>
-          </div>
-          <p class="text-sm text-slate-300 leading-snug">${escHtml(typeof f === 'string' ? f : f.feature || f.name || JSON.stringify(f))}</p>
-        </div>`).join('')}
-      </div>
-    </div>` : ''}
 
     <!-- Quick actions -->
-    <div class="grid grid-cols-2 gap-3 mt-2">
-      <button onclick="closeModal('modal-view'); openTestingModal(null,'${p.id || VIEW_PROJECT.id}','${escHtml(p.name || VIEW_PROJECT.name)}')"
-        class="flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold border border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 transition-colors">
-        <i class="fas fa-flask"></i> Test &amp; Revise
-      </button>
-      <button onclick="closeModal('modal-view'); openPublishModal('${p.id || VIEW_PROJECT.id}')"
-        class="flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold border border-indigo-500/40 text-indigo-400 hover:bg-indigo-500/10 transition-colors">
-        <i class="fas fa-rocket"></i> Publish
-      </button>
-    </div>`;
+    <div class="px-4 mt-4">
+      <p class="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Quick Actions</p>
+      <div class="grid grid-cols-2 gap-2.5">
+        ${getCategoryQuickActions(category, theme).map(a => `
+        <div class="rounded-xl p-3 flex items-center gap-2.5 shadow-sm" style="background:#fff">
+          <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style="background:${a.bg}">
+            <i class="${a.icon} text-xs" style="color:${a.color}"></i>
+          </div>
+          <p class="text-xs font-semibold text-gray-700 leading-tight">${a.label}</p>
+        </div>`).join('')}
+      </div>
+    </div>
+
+    <!-- Features / Recent -->
+    ${featureItems.length > 0 ? `
+    <div class="px-4 mt-4 mb-4">
+      <p class="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Features</p>
+      <div class="space-y-2">
+        ${featureItems.map((f,i) => `
+        <div class="flex items-center gap-3 p-3 rounded-xl shadow-sm" style="background:#fff">
+          <div class="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style="background:${theme.tint}">
+            <i class="${getFeatureIcon(i)} text-xs" style="color:${theme.primary}"></i>
+          </div>
+          <p class="text-xs text-gray-700 font-medium leading-tight flex-1">${escHtml(String(f))}</p>
+          <i class="fas fa-chevron-right text-gray-300" style="font-size:9px"></i>
+        </div>`).join('')}
+      </div>
+    </div>` : `
+    <div class="px-4 mt-4 mb-4">
+      <p class="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Recent Activity</p>
+      ${[1,2,3].map(i => `
+      <div class="flex items-center gap-3 p-3 rounded-xl shadow-sm mb-2" style="background:#fff">
+        <div class="w-7 h-7 rounded-full flex-shrink-0" style="background:${theme.tint}"></div>
+        <div class="flex-1"><div class="h-2.5 rounded-full mb-1.5" style="background:#e2e8f0;width:${60+i*15}%"></div><div class="h-2 rounded-full" style="background:#f1f5f9;width:40%"></div></div>
+      </div>`).join('')}
+    </div>`}
+
+    <!-- Bottom nav -->
+    ${renderBottomNav(0, theme)}
+  </div>`;
 }
 
+function renderAIScreen(screenName, screenData, theme, appName) {
+  const desc = screenData.description || screenData.purpose || screenData.functionality || '';
+  const components = screenData.components || screenData.elements || screenData.ui_elements || [];
+  const compList = Array.isArray(components) ? components : Object.values(components);
+
+  return `
+  <div style="background:#f8fafc">
+    <!-- Screen header -->
+    <div class="px-4 pt-4 pb-4 flex items-center gap-3" style="background:linear-gradient(135deg,${theme.primary},${theme.secondary})">
+      <button class="w-7 h-7 rounded-full flex items-center justify-center" style="background:rgba(255,255,255,0.15)">
+        <i class="fas fa-arrow-left text-white" style="font-size:11px"></i>
+      </button>
+      <div>
+        <h2 class="text-base font-bold text-white">${escHtml(screenName)}</h2>
+        ${desc ? `<p class="text-xs" style="color:rgba(255,255,255,0.75)">${escHtml(String(desc).substring(0,50))}</p>` : ''}
+      </div>
+    </div>
+
+    <!-- Content -->
+    <div class="px-4 py-4 space-y-3">
+      ${compList.length > 0 ? compList.slice(0,5).map((comp, i) => {
+        const label = typeof comp === 'string' ? comp : comp.name || comp.label || comp.component || JSON.stringify(comp);
+        return `
+        <div class="rounded-xl p-4 shadow-sm" style="background:#fff">
+          <div class="flex items-center gap-3">
+            <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style="background:${theme.tint}">
+              <i class="${getFeatureIcon(i)} text-xs" style="color:${theme.primary}"></i>
+            </div>
+            <div class="flex-1">
+              <p class="text-xs font-semibold text-gray-700">${escHtml(String(label).substring(0,40))}</p>
+              <div class="h-2 rounded-full mt-1" style="background:#f1f5f9;width:70%"></div>
+            </div>
+          </div>
+        </div>`;
+      }).join('') : `
+      <div class="rounded-xl p-4 shadow-sm" style="background:#fff">
+        <p class="text-xs font-semibold text-gray-700 mb-3">${escHtml(screenName)}</p>
+        ${[1,2,3].map(() => `<div class="h-2.5 rounded-full mb-2" style="background:#f1f5f9"></div>`).join('')}
+      </div>
+      <div class="rounded-xl p-4 shadow-sm" style="background:#fff">
+        <div class="grid grid-cols-2 gap-2">
+          ${[1,2,3,4].map(i => `
+          <div class="rounded-lg p-3" style="background:${theme.tint}">
+            <div class="h-2.5 rounded-full mb-1.5" style="background:${theme.primary}33;width:80%"></div>
+            <div class="h-2 rounded-full" style="background:${theme.primary}22;width:55%"></div>
+          </div>`).join('')}
+        </div>
+      </div>`}
+    </div>
+
+    ${renderBottomNav(1, theme)}
+  </div>`;
+}
+
+function renderProfileScreen(appName, theme) {
+  return `
+  <div style="background:#f8fafc">
+    <!-- Header -->
+    <div class="px-4 pt-4 pb-8" style="background:linear-gradient(135deg,${theme.primary},${theme.secondary})">
+      <p class="text-sm font-bold text-white mb-4">Profile</p>
+      <div class="flex flex-col items-center">
+        <div class="w-16 h-16 rounded-full flex items-center justify-center text-2xl font-bold text-white mb-2" style="background:rgba(255,255,255,0.2)">U</div>
+        <p class="text-sm font-bold text-white">John Doe</p>
+        <p class="text-xs" style="color:rgba(255,255,255,0.7)">john@example.com</p>
+      </div>
+    </div>
+
+    <!-- Menu items -->
+    <div class="px-4 -mt-4 space-y-2 pb-4">
+      ${[
+        { icon: 'fas fa-user', label: 'Edit Profile' },
+        { icon: 'fas fa-bell', label: 'Notifications' },
+        { icon: 'fas fa-shield-halved', label: 'Privacy &amp; Security' },
+        { icon: 'fas fa-circle-question', label: 'Help &amp; Support' },
+        { icon: 'fas fa-gear', label: 'Settings' },
+      ].map(item => `
+      <div class="flex items-center gap-3 p-3.5 rounded-xl shadow-sm" style="background:#fff">
+        <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style="background:${theme.tint}">
+          <i class="${item.icon} text-xs" style="color:${theme.primary}"></i>
+        </div>
+        <p class="text-sm text-gray-700 flex-1">${item.label}</p>
+        <i class="fas fa-chevron-right text-gray-300" style="font-size:10px"></i>
+      </div>`).join('')}
+
+      <button class="w-full py-3 rounded-xl text-sm font-semibold text-red-500 border border-red-100 mt-2" style="background:#fff">
+        <i class="fas fa-right-from-bracket mr-2"></i>Sign Out
+      </button>
+    </div>
+
+    ${renderBottomNav(3, theme)}
+  </div>`;
+}
+
+function renderBottomNav(activeIndex, theme) {
+  const items = [
+    { icon: 'fas fa-house', label: 'Home' },
+    { icon: 'fas fa-magnifying-glass', label: 'Explore' },
+    { icon: 'fas fa-plus-circle', label: 'Add' },
+    { icon: 'fas fa-bell', label: 'Alerts' },
+    { icon: 'fas fa-user', label: 'Profile' },
+  ];
+  return `
+  <div class="flex items-center justify-around px-2 py-2 border-t" style="background:#fff;border-color:#f1f5f9;position:sticky;bottom:0">
+    ${items.map((item, i) => `
+    <button class="flex flex-col items-center gap-0.5 py-1 px-2 rounded-xl transition-all" style="${i === activeIndex ? `color:${theme.primary}` : 'color:#94a3b8'}">
+      <i class="${item.icon}" style="font-size:${i === 2 ? '18px' : '14px'};${i === 2 ? `color:${theme.primary}` : ''}"></i>
+      <span style="font-size:9px;font-weight:${i===activeIndex?'700':'500'}">${item.label}</span>
+    </button>`).join('')}
+  </div>`;
+}
+
+// ── Category fallback screens ────────────────────────────────────────────────
+function getCategoryFallbackScreens(category, appName, spec, features, theme) {
+  const screens = [];
+  const labels = {
+    saas:      [['Dashboard', 'fas fa-chart-line'], ['Projects', 'fas fa-folder'], ['Analytics', 'fas fa-chart-bar']],
+    mobile:    [['Feed', 'fas fa-layer-group'], ['Discover', 'fas fa-compass'], ['Messages', 'fas fa-comment']],
+    ecommerce: [['Products', 'fas fa-store'], ['Cart', 'fas fa-cart-shopping'], ['Orders', 'fas fa-bag-shopping']],
+    dashboard: [['Analytics', 'fas fa-chart-bar'], ['Reports', 'fas fa-file-chart-line'], ['Settings', 'fas fa-sliders']],
+    api:       [['Endpoints', 'fas fa-code'], ['Docs', 'fas fa-book'], ['Keys', 'fas fa-key']],
+    other:     [['Browse', 'fas fa-compass'], ['Activity', 'fas fa-bolt'], ['Saved', 'fas fa-bookmark']],
+  };
+
+  const screenLabels = labels[category] || labels.other;
+  screenLabels.forEach(([label, icon], i) => {
+    screens.push({
+      id: `cat-${i}`,
+      label,
+      icon,
+      render: () => renderCategoryScreen(label, category, i, theme, appName, features)
+    });
+  });
+  return screens;
+}
+
+function renderCategoryScreen(screenName, category, index, theme, appName, features) {
+  const items = features.slice(index * 2, index * 2 + 3);
+  return `
+  <div style="background:#f8fafc">
+    <div class="px-4 pt-4 pb-4 flex items-center gap-3" style="background:linear-gradient(135deg,${theme.primary},${theme.secondary})">
+      <button class="w-7 h-7 rounded-full flex items-center justify-center" style="background:rgba(255,255,255,0.15)">
+        <i class="fas fa-arrow-left text-white" style="font-size:11px"></i>
+      </button>
+      <h2 class="text-base font-bold text-white">${screenName}</h2>
+    </div>
+
+    <div class="px-4 py-4 space-y-3">
+      <!-- Search bar -->
+      <div class="flex items-center gap-2 px-3 py-2.5 rounded-xl" style="background:#fff;border:1px solid #e2e8f0">
+        <i class="fas fa-magnifying-glass text-gray-400" style="font-size:12px"></i>
+        <span class="text-xs text-gray-400">Search ${screenName.toLowerCase()}…</span>
+      </div>
+
+      <!-- Content cards -->
+      ${[0,1,2].map(i => `
+      <div class="rounded-xl shadow-sm overflow-hidden" style="background:#fff">
+        <div class="h-20 flex items-center justify-center" style="background:linear-gradient(135deg,${theme.tint},${theme.tint2 || theme.tint})">
+          <i class="${getFeatureIcon(i+index)} text-xl" style="color:${theme.primary};opacity:0.5"></i>
+        </div>
+        <div class="p-3">
+          ${items[i] ? `<p class="text-xs font-semibold text-gray-700 mb-1">${escHtml(String(items[i]).substring(0,40))}</p>` : `<div class="h-2.5 rounded-full mb-2" style="background:#f1f5f9;width:70%"></div>`}
+          <div class="h-2 rounded-full" style="background:#f1f5f9;width:50%"></div>
+        </div>
+      </div>`).join('')}
+    </div>
+
+    ${renderBottomNav(index + 1, theme)}
+  </div>`;
+}
+
+// ── Navigation ───────────────────────────────────────────────────────────────
+function renderPrototype() {
+  const screens = VIEW_PROJECT.screens;
+  if (!screens.length) return;
+
+  // Build nav tabs
+  const navEl = document.getElementById('view-screen-nav');
+  if (navEl) {
+    navEl.innerHTML = screens.map((s, i) => `
+      <button onclick="viewGoToScreen(${i})" id="vsnav-${i}"
+        class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${i === 0 ? 'bg-cyan-500 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-700/50'}">
+        <i class="${s.icon}" style="font-size:10px"></i> ${escHtml(s.label)}
+      </button>`).join('');
+  }
+
+  viewGoToScreen(0);
+}
+
+function viewGoToScreen(index) {
+  const screens = VIEW_PROJECT.screens;
+  if (!screens.length) return;
+
+  index = Math.max(0, Math.min(screens.length - 1, index));
+  VIEW_PROJECT.currentScreen = index;
+
+  const screen = screens[index];
+
+  // Update screen content
+  const contentEl = document.getElementById('view-screen-content');
+  if (contentEl) {
+    contentEl.innerHTML = screen.render();
+    contentEl.scrollTop = 0;
+  }
+
+  // Update label + counter
+  const labelEl = document.getElementById('view-screen-label');
+  const counterEl = document.getElementById('view-screen-counter');
+  if (labelEl) labelEl.textContent = screen.label;
+  if (counterEl) counterEl.textContent = `${index + 1} / ${screens.length}`;
+
+  // Update nav tabs
+  screens.forEach((_, i) => {
+    const navBtn = document.getElementById(`vsnav-${i}`);
+    if (!navBtn) return;
+    if (i === index) {
+      navBtn.className = navBtn.className.replace('text-slate-400 hover:text-white hover:bg-slate-700/50', '');
+      navBtn.classList.add('bg-cyan-500', 'text-white');
+    } else {
+      navBtn.classList.remove('bg-cyan-500', 'text-white');
+      navBtn.classList.add('text-slate-400', 'hover:text-white', 'hover:bg-slate-700/50');
+    }
+    // Scroll nav tab into view
+    if (i === index) navBtn.scrollIntoView({ behavior: 'smooth', inline: 'nearest', block: 'nearest' });
+  });
+
+  // Update prev/next buttons
+  document.getElementById('view-prev-btn')?.classList.toggle('opacity-30', index === 0);
+  document.getElementById('view-next-btn')?.classList.toggle('opacity-30', index === screens.length - 1);
+}
+
+function viewNavigate(dir) {
+  viewGoToScreen(VIEW_PROJECT.currentScreen + dir);
+}
+
+// ── Spec tab renderer ────────────────────────────────────────────────────────
 function renderViewSpec(project, outputs, spec) {
   const el = document.getElementById('view-spec-content');
   if (!el) return;
@@ -3764,106 +4129,164 @@ function renderViewSpec(project, outputs, spec) {
   }
 
   const latest = outputs[0];
-  // spec is passed in from R2 (may be null)
-
-  if (!spec || Object.keys(spec).length === 0) {
-    el.innerHTML = `
-      <div class="glass rounded-xl p-5 border border-slate-700/40">
-        <div class="flex items-center gap-2 mb-2">
-          <i class="fas fa-file-alt text-cyan-400"></i>
-          <p class="text-sm font-semibold text-white">Build Output v${latest.version || 1}</p>
-        </div>
-        <p class="text-xs text-slate-400">Build completed successfully. Your app specification has been generated and stored.</p>
-        <p class="text-xs text-slate-500 mt-2">Use the AI Summary in the Testing tab for a detailed breakdown.</p>
-      </div>`;
-    return;
-  }
+  const p = project || {};
 
   const sections = [
+    { key: 'product_summary', label: 'Product Summary', icon: 'fas fa-align-left' },
     { key: 'app_name', label: 'App Name', icon: 'fas fa-tag' },
-    { key: 'app_description', label: 'Description', icon: 'fas fa-align-left' },
+    { key: 'app_description', label: 'Description', icon: 'fas fa-info-circle' },
     { key: 'target_audience', label: 'Target Audience', icon: 'fas fa-users' },
     { key: 'problem_statement', label: 'Problem Solved', icon: 'fas fa-lightbulb' },
     { key: 'monetization', label: 'Monetization', icon: 'fas fa-dollar-sign' },
     { key: 'platform', label: 'Platform', icon: 'fas fa-mobile-alt' },
     { key: 'tech_stack', label: 'Tech Stack', icon: 'fas fa-code' },
+    { key: 'deployment_plan', label: 'Deployment', icon: 'fas fa-cloud-upload-alt' },
   ];
 
-  el.innerHTML = `
-    <div class="space-y-3">
-      <div class="flex items-center gap-2 mb-1">
-        <span class="text-xs text-slate-500">Build v${latest.version || 1}</span>
-        <span class="text-xs text-slate-600">·</span>
-        <span class="text-xs text-slate-500">${latest.created_at ? new Date(latest.created_at).toLocaleDateString() : 'Recent'}</span>
-      </div>
-      ${sections.filter(s => spec[s.key]).map(s => `
-      <div class="glass rounded-xl p-4 border border-slate-700/50">
-        <div class="flex items-center gap-2 mb-1.5">
-          <i class="${s.icon} text-cyan-400 text-xs"></i>
-          <p class="text-xs font-semibold text-slate-400">${s.label}</p>
-        </div>
-        <p class="text-sm text-white leading-relaxed">${escHtml(typeof spec[s.key] === 'string' ? spec[s.key] : JSON.stringify(spec[s.key]))}</p>
-      </div>`).join('')}
-      ${spec.key_features?.length ? `
-      <div class="glass rounded-xl p-4 border border-slate-700/50">
-        <div class="flex items-center gap-2 mb-2">
-          <i class="fas fa-list-check text-cyan-400 text-xs"></i>
-          <p class="text-xs font-semibold text-slate-400">Key Features (${spec.key_features.length})</p>
-        </div>
-        <ul class="space-y-1.5">${spec.key_features.map((f,i) => `
-          <li class="flex items-start gap-2">
-            <span class="text-xs text-slate-600 font-mono w-4 flex-shrink-0">${i+1}.</span>
-            <span class="text-sm text-slate-300">${escHtml(typeof f==='string'?f:f.feature||f.name||JSON.stringify(f))}</span>
-          </li>`).join('')}
-        </ul>
-      </div>` : ''}
-    </div>`;
-}
+  const specObj = spec || {};
+  const filledSections = sections.filter(s => specObj[s.key]);
 
-function renderViewTimeline(project) {
-  const el = document.getElementById('view-timeline-content');
-  if (!el) return;
-
-  const p = project || {};
-  const created = p.created_at ? new Date(p.created_at) : null;
-  const updated = p.updated_at ? new Date(p.updated_at) : null;
-
-  const fmtDate = d => d ? d.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric', hour:'2-digit', minute:'2-digit' }) : 'Unknown';
-
-  const events = [
-    created && { icon:'fas fa-plus-circle', color:'text-cyan-400', bg:'bg-cyan-500/15', label:'Project Created', date: fmtDate(created), detail:'Project initialized in the DEPLOY platform.' },
-    p.build_count > 0 && { icon:'fas fa-hammer', color:'text-amber-400', bg:'bg-amber-500/15', label:`${p.build_count} Build${p.build_count>1?'s':''} Generated`, date: updated ? fmtDate(updated) : 'Recent', detail:'AI processed your prompt and generated a product specification.' },
-    ['built','deployed'].includes(p.status) && { icon:'fas fa-check-circle', color:'text-emerald-400', bg:'bg-emerald-500/15', label:'Build Complete', date: updated ? fmtDate(updated) : 'Recent', detail:'Your app spec is ready for testing, revision, and publishing.' },
-    p.status === 'deployed' && { icon:'fas fa-rocket', color:'text-indigo-400', bg:'bg-indigo-500/15', label:'App Deployed', date: updated ? fmtDate(updated) : 'Recent', detail:'Your app has been published and is live.' },
-  ].filter(Boolean);
-
-  if (events.length === 0) {
-    el.innerHTML = `<div class="glass rounded-xl p-6 text-center border border-slate-700/40">
-      <i class="fas fa-clock text-slate-600 text-2xl mb-2 block"></i>
-      <p class="text-slate-500 text-sm">No activity yet.</p>
-    </div>`;
-    return;
-  }
+  const readiness = p.readiness_score || p.completeness_score || 0;
 
   el.innerHTML = `
-    <div class="relative">
-      <div class="absolute left-5 top-4 bottom-4 w-0.5 bg-slate-700/60"></div>
-      <div class="space-y-4">
-        ${events.map((ev, i) => `
-        <div class="flex items-start gap-4 relative">
-          <div class="w-10 h-10 rounded-full ${ev.bg} flex items-center justify-center flex-shrink-0 z-10">
-            <i class="${ev.icon} ${ev.color} text-sm"></i>
-          </div>
-          <div class="flex-1 glass rounded-xl p-3.5 border border-slate-700/40">
-            <div class="flex items-start justify-between gap-2">
-              <p class="text-sm font-semibold text-white">${ev.label}</p>
-              <p class="text-xs text-slate-500 flex-shrink-0">${ev.date}</p>
-            </div>
-            <p class="text-xs text-slate-400 mt-1 leading-relaxed">${ev.detail}</p>
-          </div>
-        </div>`).join('')}
+  <div class="space-y-3">
+    <!-- Project header -->
+    <div class="glass rounded-xl p-4 border border-slate-700/50">
+      <div class="flex items-center gap-3 mb-3">
+        <div class="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${(typeof categoryIcon === 'function' ? categoryIcon(p.category)?.bg : null) || 'bg-slate-800'}">
+          <i class="${(typeof categoryIcon === 'function' ? categoryIcon(p.category)?.icon : null) || 'fas fa-cube'} text-sm"></i>
+        </div>
+        <div>
+          <p class="text-sm font-bold text-white">${escHtml(p.name || VIEW_PROJECT.name)}</p>
+          <p class="text-xs text-slate-400">${p.category ? capitalize(p.category) + ' App' : 'Application'} · Build v${latest.version || 1}</p>
+        </div>
       </div>
-    </div>`;
+      <div class="flex items-center justify-between mb-1.5">
+        <p class="text-xs text-slate-400">Readiness</p>
+        <p class="text-xs font-bold ${readiness >= 80 ? 'text-emerald-400' : readiness >= 50 ? 'text-amber-400' : 'text-slate-400'}">${readiness}%</p>
+      </div>
+      <div class="h-1.5 rounded-full overflow-hidden" style="background:rgba(255,255,255,0.06)">
+        <div class="progress-fill h-full rounded-full" style="width:${readiness}%"></div>
+      </div>
+    </div>
+
+    ${filledSections.length > 0 ? filledSections.map(s => `
+    <div class="glass rounded-xl p-4 border border-slate-700/50">
+      <div class="flex items-center gap-2 mb-1.5">
+        <i class="${s.icon} text-cyan-400 text-xs"></i>
+        <p class="text-xs font-semibold text-slate-400">${s.label}</p>
+      </div>
+      <p class="text-sm text-white leading-relaxed">${escHtml(typeof specObj[s.key] === 'string' ? specObj[s.key] : JSON.stringify(specObj[s.key]))}</p>
+    </div>`).join('') : `
+    <div class="glass rounded-xl p-5 border border-slate-700/50">
+      <div class="flex items-center gap-2 mb-2">
+        <i class="fas fa-file-alt text-cyan-400"></i>
+        <p class="text-sm font-semibold text-white">Build Complete</p>
+      </div>
+      <p class="text-xs text-slate-400">Your app specification was generated and stored. Use the AI Summary in the Testing &amp; Revisions screen for a full breakdown.</p>
+    </div>`}
+
+    ${specObj.key_features?.length ? `
+    <div class="glass rounded-xl p-4 border border-slate-700/50">
+      <div class="flex items-center gap-2 mb-2">
+        <i class="fas fa-list-check text-cyan-400 text-xs"></i>
+        <p class="text-xs font-semibold text-slate-400">Key Features (${specObj.key_features.length})</p>
+      </div>
+      <ul class="space-y-1.5">${specObj.key_features.map((f,i) => `
+        <li class="flex items-start gap-2">
+          <span class="text-xs text-slate-600 font-mono w-4 flex-shrink-0">${i+1}.</span>
+          <span class="text-sm text-slate-300">${escHtml(typeof f==='string'?f:f.feature||f.name||JSON.stringify(f))}</span>
+        </li>`).join('')}
+      </ul>
+    </div>` : ''}
+
+    <!-- Actions -->
+    <div class="grid grid-cols-2 gap-3 pt-1">
+      <button onclick="setViewMode('prototype')"
+        class="flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold border border-cyan-500/40 text-cyan-400 hover:bg-cyan-500/10 transition-colors">
+        <i class="fas fa-mobile-screen-button"></i> Preview
+      </button>
+      <button onclick="closeModal('modal-view'); openTestingModal(null,'${p.id || VIEW_PROJECT.id}','${escHtml(p.name || VIEW_PROJECT.name)}')"
+        class="flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold border border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 transition-colors">
+        <i class="fas fa-flask"></i> Revise
+      </button>
+    </div>
+  </div>`;
 }
 
+// ── Theme / icon helpers ─────────────────────────────────────────────────────
+function getCategoryTheme(category) {
+  const themes = {
+    saas:      { primary: '#6366f1', secondary: '#4f46e5', dark: '#1e1b4b', darker: '#0f0e2e', accent: '#a5b4fc', muted: 'rgba(165,180,252,0.7)', tint: '#eef2ff', tint2: '#e0e7ff' },
+    mobile:    { primary: '#0ea5e9', secondary: '#0284c7', dark: '#0c1a2e', darker: '#070d1a', accent: '#7dd3fc', muted: 'rgba(125,211,252,0.7)', tint: '#e0f2fe', tint2: '#bae6fd' },
+    ecommerce: { primary: '#f59e0b', secondary: '#d97706', dark: '#1c1409', darker: '#0f0a04', accent: '#fcd34d', muted: 'rgba(252,211,77,0.7)', tint: '#fffbeb', tint2: '#fef3c7' },
+    dashboard: { primary: '#10b981', secondary: '#059669', dark: '#022c22', darker: '#011a15', accent: '#6ee7b7', muted: 'rgba(110,231,183,0.7)', tint: '#ecfdf5', tint2: '#d1fae5' },
+    api:       { primary: '#8b5cf6', secondary: '#7c3aed', dark: '#1e1333', darker: '#100b1d', accent: '#c4b5fd', muted: 'rgba(196,181,253,0.7)', tint: '#f5f3ff', tint2: '#ede9fe' },
+    other:     { primary: '#ec4899', secondary: '#db2777', dark: '#1f0a16', darker: '#120608', accent: '#f9a8d4', muted: 'rgba(249,168,212,0.7)', tint: '#fdf2f8', tint2: '#fce7f3' },
+  };
+  return themes[category] || themes.other;
+}
 
+function getCategoryAppIcon(category) {
+  const icons = { saas: 'fas fa-cloud', mobile: 'fas fa-mobile-alt', ecommerce: 'fas fa-shopping-bag', dashboard: 'fas fa-chart-pie', api: 'fas fa-code', other: 'fas fa-star' };
+  return icons[category] || icons.other;
+}
+
+function getCategoryTagline(category) {
+  const taglines = {
+    saas: 'The smarter way to manage your workflow',
+    mobile: 'Connect, share, and discover',
+    ecommerce: 'Shop smarter, live better',
+    dashboard: 'Your data, beautifully organized',
+    api: 'Build powerful integrations',
+    other: 'A better way to get things done',
+  };
+  return taglines[category] || taglines.other;
+}
+
+function getCategoryStats(category) {
+  const stats = {
+    saas:      [{ value: '12', label: 'Projects' }, { value: '94%', label: 'Uptime' }, { value: '5', label: 'Team' }],
+    mobile:    [{ value: '248', label: 'Following' }, { value: '1.2k', label: 'Followers' }, { value: '48', label: 'Posts' }],
+    ecommerce: [{ value: '3', label: 'In Cart' }, { value: '12', label: 'Orders' }, { value: '$0', label: 'Saved' }],
+    dashboard: [{ value: '98%', label: 'Score' }, { value: '14', label: 'Reports' }, { value: '3', label: 'Alerts' }],
+    api:       [{ value: '4', label: 'APIs' }, { value: '1.4k', label: 'Calls' }, { value: '2', label: 'Keys' }],
+    other:     [{ value: '7', label: 'Items' }, { value: '3', label: 'Active' }, { value: '24', label: 'Total' }],
+  };
+  return stats[category] || stats.other;
+}
+
+function getCategoryQuickActions(category, theme) {
+  const all = {
+    saas:      [{ icon:'fas fa-plus', label:'New Project', bg:`${theme.tint}`, color:theme.primary }, { icon:'fas fa-users', label:'Invite Team', bg:`${theme.tint}`, color:theme.primary }, { icon:'fas fa-chart-line', label:'Analytics', bg:`${theme.tint}`, color:theme.primary }, { icon:'fas fa-gear', label:'Settings', bg:`${theme.tint}`, color:theme.primary }],
+    mobile:    [{ icon:'fas fa-camera', label:'Post Photo', bg:`${theme.tint}`, color:theme.primary }, { icon:'fas fa-comment', label:'Messages', bg:`${theme.tint}`, color:theme.primary }, { icon:'fas fa-compass', label:'Discover', bg:`${theme.tint}`, color:theme.primary }, { icon:'fas fa-bookmark', label:'Saved', bg:`${theme.tint}`, color:theme.primary }],
+    ecommerce: [{ icon:'fas fa-store', label:'Browse', bg:`${theme.tint}`, color:theme.primary }, { icon:'fas fa-cart-shopping', label:'My Cart', bg:`${theme.tint}`, color:theme.primary }, { icon:'fas fa-tag', label:'Deals', bg:`${theme.tint}`, color:theme.primary }, { icon:'fas fa-box', label:'Track Order', bg:`${theme.tint}`, color:theme.primary }],
+    dashboard: [{ icon:'fas fa-plus', label:'New Report', bg:`${theme.tint}`, color:theme.primary }, { icon:'fas fa-download', label:'Export', bg:`${theme.tint}`, color:theme.primary }, { icon:'fas fa-share', label:'Share', bg:`${theme.tint}`, color:theme.primary }, { icon:'fas fa-sliders', label:'Filters', bg:`${theme.tint}`, color:theme.primary }],
+    api:       [{ icon:'fas fa-key', label:'API Keys', bg:`${theme.tint}`, color:theme.primary }, { icon:'fas fa-book', label:'Docs', bg:`${theme.tint}`, color:theme.primary }, { icon:'fas fa-flask', label:'Playground', bg:`${theme.tint}`, color:theme.primary }, { icon:'fas fa-chart-bar', label:'Usage', bg:`${theme.tint}`, color:theme.primary }],
+    other:     [{ icon:'fas fa-plus', label:'Add New', bg:`${theme.tint}`, color:theme.primary }, { icon:'fas fa-star', label:'Favorites', bg:`${theme.tint}`, color:theme.primary }, { icon:'fas fa-clock', label:'Recent', bg:`${theme.tint}`, color:theme.primary }, { icon:'fas fa-share-nodes', label:'Share', bg:`${theme.tint}`, color:theme.primary }],
+  };
+  return (all[category] || all.other).slice(0,4);
+}
+
+function getScreenIcon(name) {
+  const n = (name || '').toLowerCase();
+  if (n.includes('home') || n.includes('dashboard')) return 'fas fa-house';
+  if (n.includes('profile') || n.includes('account') || n.includes('user')) return 'fas fa-user';
+  if (n.includes('search') || n.includes('find') || n.includes('discover')) return 'fas fa-magnifying-glass';
+  if (n.includes('setting') || n.includes('config') || n.includes('prefer')) return 'fas fa-gear';
+  if (n.includes('message') || n.includes('chat') || n.includes('inbox')) return 'fas fa-comment';
+  if (n.includes('notif') || n.includes('alert')) return 'fas fa-bell';
+  if (n.includes('cart') || n.includes('shop') || n.includes('store')) return 'fas fa-cart-shopping';
+  if (n.includes('payment') || n.includes('billing') || n.includes('checkout')) return 'fas fa-credit-card';
+  if (n.includes('map') || n.includes('location')) return 'fas fa-map-location-dot';
+  if (n.includes('analytic') || n.includes('stat') || n.includes('report')) return 'fas fa-chart-bar';
+  if (n.includes('calendar') || n.includes('schedule')) return 'fas fa-calendar';
+  if (n.includes('upload') || n.includes('file') || n.includes('document')) return 'fas fa-file';
+  if (n.includes('login') || n.includes('sign') || n.includes('auth')) return 'fas fa-lock';
+  return 'fas fa-layer-group';
+}
+
+function getFeatureIcon(index) {
+  const icons = ['fas fa-bolt','fas fa-star','fas fa-shield-halved','fas fa-chart-line','fas fa-users','fas fa-globe','fas fa-clock','fas fa-lock'];
+  return icons[index % icons.length];
+}

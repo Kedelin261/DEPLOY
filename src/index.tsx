@@ -1784,86 +1784,133 @@ function getAppHTML(): string {
 </div>
 
 <!-- ============================================================
-     VIEW PROJECT MODAL
+     VIEW PROJECT MODAL — Full-screen interactive prototype viewer
      ============================================================ -->
-<div id="modal-view" class="hidden fixed inset-0 z-50 flex items-end justify-center p-0">
-  <div class="modal-overlay absolute inset-0" onclick="closeModal('modal-view')"></div>
-  <div class="relative w-full max-w-2xl bg-slate-900 rounded-t-3xl flex flex-col overflow-hidden" style="max-height:95vh">
-    <!-- Handle + Header -->
-    <div class="flex-shrink-0 px-5 pt-4 pb-0">
-      <div class="w-10 h-1 bg-slate-700 rounded-full mx-auto mb-4"></div>
-      <div class="flex items-center justify-between mb-3">
-        <div class="flex items-center gap-2.5">
-          <div class="w-9 h-9 rounded-xl flex items-center justify-center" style="background:linear-gradient(135deg,#06b6d4,#0891b2)">
-            <i class="fas fa-eye text-white text-sm"></i>
-          </div>
-          <div>
-            <h3 class="text-base font-bold text-white" id="view-project-name">Your Project</h3>
-            <p class="text-xs text-slate-400">Project overview &amp; details</p>
-          </div>
+<div id="modal-view" class="hidden fixed inset-0 z-50 flex flex-col" style="background:#0a0f1e">
+  <!-- Top bar -->
+  <div class="flex-shrink-0 flex items-center justify-between px-4 py-3 border-b border-slate-800/80" style="background:#0d1424">
+    <div class="flex items-center gap-3">
+      <button onclick="closeModal('modal-view')" class="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors">
+        <i class="fas fa-arrow-left text-sm"></i>
+      </button>
+      <div class="flex items-center gap-2">
+        <div class="w-7 h-7 rounded-lg flex items-center justify-center" style="background:linear-gradient(135deg,#06b6d4,#0891b2)">
+          <i class="fas fa-eye text-white" style="font-size:10px"></i>
         </div>
-        <button onclick="closeModal('modal-view')" class="text-slate-500 hover:text-white w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-800">
-          <i class="fas fa-xmark"></i>
+        <div>
+          <p class="text-sm font-bold text-white leading-none" id="view-project-name">Your Project</p>
+          <p class="text-xs text-slate-500 leading-none mt-0.5">Interactive Preview</p>
+        </div>
+      </div>
+    </div>
+    <!-- View mode toggle -->
+    <div class="flex items-center gap-2">
+      <div class="flex gap-1 bg-slate-800/80 p-1 rounded-lg">
+        <button onclick="setViewMode('prototype')" id="vmode-prototype"
+          class="px-3 py-1 text-xs font-semibold rounded-md transition-all bg-cyan-500 text-white">
+          <i class="fas fa-mobile-screen-button mr-1"></i>Preview
+        </button>
+        <button onclick="setViewMode('spec')" id="vmode-spec"
+          class="px-3 py-1 text-xs font-semibold rounded-md transition-all text-slate-400 hover:text-white">
+          <i class="fas fa-file-code mr-1"></i>Spec
         </button>
       </div>
-      <!-- View Tabs -->
-      <div class="flex gap-1 bg-slate-800/60 p-1 rounded-xl mb-3">
-        <button onclick="setViewTab('overview')" id="vtab-overview"
-          class="flex-1 py-2 text-xs font-semibold rounded-lg transition-all bg-slate-700 text-white flex items-center justify-center gap-1.5">
-          <i class="fas fa-layer-group"></i> Overview
-        </button>
-        <button onclick="setViewTab('spec')" id="vtab-spec"
-          class="flex-1 py-2 text-xs font-semibold rounded-lg transition-all text-slate-400 flex items-center justify-center gap-1.5">
-          <i class="fas fa-file-code"></i> Spec
-        </button>
-        <button onclick="setViewTab('timeline')" id="vtab-timeline"
-          class="flex-1 py-2 text-xs font-semibold rounded-lg transition-all text-slate-400 flex items-center justify-center gap-1.5">
-          <i class="fas fa-timeline"></i> Timeline
-        </button>
+      <button onclick="closeModal('modal-view')" class="w-8 h-8 flex items-center justify-center rounded-lg text-slate-500 hover:text-white hover:bg-slate-800">
+        <i class="fas fa-xmark"></i>
+      </button>
+    </div>
+  </div>
+
+  <!-- Loading state -->
+  <div id="view-loading" class="flex-1 flex items-center justify-center">
+    <div class="text-center">
+      <div class="w-12 h-12 border-2 border-cyan-500/30 border-t-cyan-400 rounded-full animate-spin mx-auto mb-4"></div>
+      <p class="text-slate-300 font-semibold">Building preview…</p>
+      <p class="text-slate-500 text-sm mt-1">Generating your app screens</p>
+    </div>
+  </div>
+
+  <!-- Main content area -->
+  <div id="view-content" class="hidden flex-1 flex overflow-hidden">
+
+    <!-- PROTOTYPE MODE -->
+    <div id="view-mode-prototype" class="flex-1 flex flex-col overflow-hidden">
+      <!-- Screen nav bar -->
+      <div class="flex-shrink-0 overflow-x-auto" style="background:#0d1424;border-bottom:1px solid rgba(255,255,255,0.06)">
+        <div id="view-screen-nav" class="flex gap-1 px-4 py-2 min-w-max">
+          <!-- Screen tabs injected by JS -->
+        </div>
+      </div>
+
+      <!-- Phone + screen content -->
+      <div class="flex-1 flex items-start justify-center overflow-y-auto py-6 px-4" style="background:radial-gradient(ellipse at 50% 0%,rgba(6,182,212,0.06) 0%,transparent 60%)">
+        <div class="w-full max-w-sm">
+          <!-- Phone frame -->
+          <div class="relative mx-auto" style="width:100%;max-width:320px">
+            <!-- Phone bezel -->
+            <div class="relative rounded-3xl overflow-hidden shadow-2xl" style="background:#111827;border:2px solid rgba(255,255,255,0.12);box-shadow:0 0 0 1px rgba(0,0,0,0.5),0 25px 60px rgba(0,0,0,0.6)">
+              <!-- Status bar -->
+              <div class="flex items-center justify-between px-5 pt-3 pb-1" style="background:#111827">
+                <span class="text-white text-xs font-semibold" id="view-time">9:41</span>
+                <div class="w-20 h-5 rounded-full" style="background:#000;position:absolute;left:50%;transform:translateX(-50%)"></div>
+                <div class="flex items-center gap-1">
+                  <i class="fas fa-signal text-white" style="font-size:9px"></i>
+                  <i class="fas fa-wifi text-white" style="font-size:9px"></i>
+                  <i class="fas fa-battery-full text-white" style="font-size:9px"></i>
+                </div>
+              </div>
+              <!-- Screen content area -->
+              <div id="view-screen-content" class="overflow-y-auto" style="min-height:560px;max-height:600px;background:#f8fafc">
+                <!-- Populated by JS -->
+              </div>
+              <!-- Home indicator -->
+              <div class="flex justify-center py-2" style="background:#111827">
+                <div class="w-24 h-1 rounded-full" style="background:rgba(255,255,255,0.3)"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Screen label + nav arrows -->
+          <div class="flex items-center justify-between mt-4 px-2">
+            <button id="view-prev-btn" onclick="viewNavigate(-1)"
+              class="w-9 h-9 rounded-full flex items-center justify-center transition-all border border-slate-700 text-slate-400 hover:border-cyan-500 hover:text-cyan-400">
+              <i class="fas fa-chevron-left text-xs"></i>
+            </button>
+            <div class="text-center">
+              <p class="text-sm font-semibold text-white" id="view-screen-label">Home</p>
+              <p class="text-xs text-slate-500" id="view-screen-counter">1 / 1</p>
+            </div>
+            <button id="view-next-btn" onclick="viewNavigate(1)"
+              class="w-9 h-9 rounded-full flex items-center justify-center transition-all border border-slate-700 text-slate-400 hover:border-cyan-500 hover:text-cyan-400">
+              <i class="fas fa-chevron-right text-xs"></i>
+            </button>
+          </div>
+
+          <!-- Action buttons -->
+          <div class="flex gap-3 mt-5">
+            <button onclick="closeModal('modal-view'); openTestingModal(null, VIEW_PROJECT.id, VIEW_PROJECT.name)"
+              class="flex-1 py-3 rounded-xl text-sm font-semibold border border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 transition-colors flex items-center justify-center gap-2">
+              <i class="fas fa-flask"></i> Revise
+            </button>
+            <button onclick="closeModal('modal-view'); openPublishModal(VIEW_PROJECT.id)"
+              class="flex-1 py-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-colors"
+              style="background:linear-gradient(135deg,#6366f1,#4f46e5);color:white">
+              <i class="fas fa-rocket"></i> Publish
+            </button>
+          </div>
+        </div>
       </div>
     </div>
 
-    <!-- Loading state -->
-    <div id="view-loading" class="hidden flex-1 flex items-center justify-center py-12">
-      <div class="text-center">
-        <div class="w-10 h-10 border-2 border-cyan-500/40 border-t-cyan-400 rounded-full animate-spin mx-auto mb-3"></div>
-        <p class="text-slate-400 text-sm">Loading project data…</p>
+    <!-- SPEC MODE -->
+    <div id="view-mode-spec" class="hidden flex-1 overflow-y-auto px-4 py-5 space-y-4">
+      <div id="view-spec-content">
+        <div class="glass rounded-xl p-6 text-center border border-slate-700/40">
+          <p class="text-slate-400 text-sm">Loading spec…</p>
+        </div>
       </div>
     </div>
 
-    <!-- Tab content scroll -->
-    <div id="view-content" class="flex-1 overflow-y-auto px-5 pb-6">
-
-      <!-- Overview Tab -->
-      <div id="view-tab-overview">
-        <div id="view-overview-content" class="space-y-3 pt-1">
-          <!-- Populated by JS -->
-          <div class="glass rounded-xl p-6 text-center border border-slate-700/40">
-            <div class="w-10 h-10 border-2 border-cyan-500/40 border-t-cyan-400 rounded-full animate-spin mx-auto mb-3"></div>
-            <p class="text-slate-400 text-sm">Loading overview…</p>
-          </div>
-        </div>
-      </div>
-
-      <!-- Spec Tab -->
-      <div id="view-tab-spec" class="hidden pt-1">
-        <div id="view-spec-content" class="space-y-3">
-          <div class="glass rounded-xl p-6 text-center border border-slate-700/40">
-            <p class="text-slate-400 text-sm">Loading spec…</p>
-          </div>
-        </div>
-      </div>
-
-      <!-- Timeline Tab -->
-      <div id="view-tab-timeline" class="hidden pt-1">
-        <div id="view-timeline-content" class="space-y-3">
-          <div class="glass rounded-xl p-6 text-center border border-slate-700/40">
-            <p class="text-slate-400 text-sm">Loading timeline…</p>
-          </div>
-        </div>
-      </div>
-
-    </div>
   </div>
 </div>
 

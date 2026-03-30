@@ -17,10 +17,15 @@ projects.get('/', authMiddleware(), async (c) => {
 
   const [items, count] = await Promise.all([
     c.env.DB.prepare(
-      `SELECT p.*, 
+      `SELECT p.*,
               COUNT(DISTINCT bj.id) as build_count,
               COUNT(DISTINCT d.id) as deployment_count,
-              (SELECT status FROM build_jobs WHERE project_id = p.id ORDER BY created_at DESC LIMIT 1) as latest_build_status
+              (SELECT status FROM build_jobs WHERE project_id = p.id ORDER BY created_at DESC LIMIT 1) as latest_build_status,
+              COALESCE(
+                NULLIF(p.readiness_score, 0),
+                (SELECT ps.completeness_score FROM prompt_sessions ps WHERE ps.project_id = p.id ORDER BY ps.updated_at DESC LIMIT 1),
+                0
+              ) as readiness_score
        FROM projects p
        LEFT JOIN build_jobs bj ON bj.project_id = p.id
        LEFT JOIN deployments d ON d.project_id = p.id
@@ -108,7 +113,8 @@ projects.get('/:id', authMiddleware(), async (c) => {
             (SELECT COUNT(*) FROM build_jobs WHERE project_id = p.id) as build_count,
             (SELECT COUNT(*) FROM deployments WHERE project_id = p.id) as deployment_count,
             (SELECT status FROM build_jobs WHERE project_id = p.id ORDER BY created_at DESC LIMIT 1) as latest_build_status,
-            am.display_name as model_name
+            am.display_name as model_name,
+            COALESCE(NULLIF(p.readiness_score, 0), ps.completeness_score, 0) as readiness_score
      FROM projects p
      LEFT JOIN prompt_sessions ps ON ps.project_id = p.id AND ps.status != 'submitted'
      LEFT JOIN ai_models am ON am.id = p.active_model_id
@@ -204,6 +210,75 @@ projects.get('/:id/spec', authMiddleware(), async (c) => {
     console.error('R2 fetch error', err);
     return c.json({ success: true, spec: null });
   }
+});
+
+// GET /api/projects/:id/preview  — all data needed to render the interactive app preview
+projects.get('/:id/preview', authMiddleware(), async (c) => {
+  const user = c.get('user')!;
+  const projectId = c.req.param('id');
+
+  // Fetch project + session + fields + latest build result in parallel
+  const [projectRow, fieldsRow, buildRow] = await Promise.all([
+    c.env.DB.prepare(
+      `SELECT p.*, ps.completeness_score,
+              COALESCE(NULLIF(p.readiness_score,0), ps.completeness_score, 0) as readiness_score,
+              (SELECT COUNT(*) FROM build_jobs WHERE project_id = p.id) as build_count
+       FROM projects p
+       LEFT JOIN prompt_sessions ps ON ps.project_id = p.id AND ps.status != 'submitted'
+       WHERE p.id = ? AND p.user_id = ?`
+    ).bind(projectId, user.id).first<Record<string, unknown>>(),
+
+    c.env.DB.prepare(
+      `SELECT pf.field_key, pf.value
+       FROM prompt_fields pf
+       JOIN prompt_sessions ps ON ps.id = pf.session_id
+       WHERE ps.project_id = ? AND ps.status != 'submitted'`
+    ).bind(projectId).all<{ field_key: string; value: string }>(),
+
+    c.env.DB.prepare(
+      `SELECT bj.result_summary, bj.completed_at, go.r2_key
+       FROM build_jobs bj
+       LEFT JOIN generated_outputs go ON go.job_id = bj.id AND go.is_current = 1
+       WHERE bj.project_id = ? AND bj.status = 'completed'
+       ORDER BY bj.completed_at DESC LIMIT 1`
+    ).bind(projectId).first<{ result_summary: string; completed_at: string; r2_key: string }>(),
+  ]);
+
+  if (!projectRow) return c.json({ success: false, error: 'Project not found' }, 404);
+
+  // Build fields map
+  const fields: Record<string, string> = {};
+  for (const f of (fieldsRow.results || [])) fields[f.field_key] = f.value;
+
+  // Try to parse the build result summary as JSON
+  let specJson: Record<string, unknown> | null = null;
+  if (buildRow?.result_summary) {
+    try { specJson = JSON.parse(buildRow.result_summary); } catch (_) {}
+  }
+
+  // Optionally fetch full spec from R2
+  let fullSpec: Record<string, unknown> | null = null;
+  if (buildRow?.r2_key) {
+    try {
+      const obj = await c.env.DEPLOY_R2.get(buildRow.r2_key);
+      if (obj) {
+        const txt = await obj.text();
+        try { fullSpec = JSON.parse(txt); } catch (_) {}
+      }
+    } catch (_) {}
+  }
+
+  const merged = fullSpec || specJson;
+
+  return c.json({
+    success: true,
+    data: {
+      project: projectRow,
+      fields,
+      spec: merged,
+      built_at: buildRow?.completed_at || null,
+    }
+  });
 });
 
 // POST /api/projects/:id/build
@@ -368,8 +443,8 @@ async function this_processBuildJob(
         ).bind(result.output.substring(0, 500), jobId),
 
         env.DB.prepare(
-          `UPDATE projects SET status = 'built', updated_at = CURRENT_TIMESTAMP WHERE id = ?`
-        ).bind(projectId),
+          `UPDATE projects SET status = 'built', readiness_score = COALESCE(NULLIF(readiness_score,0), (SELECT completeness_score FROM prompt_sessions WHERE project_id = ? ORDER BY updated_at DESC LIMIT 1), 75), updated_at = CURRENT_TIMESTAMP WHERE id = ?`
+        ).bind(projectId, projectId),
 
         env.DB.prepare(
           `INSERT INTO notifications (id, user_id, type, title, message, action_url)
