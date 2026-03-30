@@ -3809,8 +3809,49 @@ function s_col(extra)  { return `display:flex;flex-direction:column;${extra||''}
 function s_grid(cols, gap) { return `display:grid;grid-template-columns:repeat(${cols},1fr);gap:${gap||'12px'}`; }
 function s_card(t, extra) { return `background:${t.card};border:1px solid ${t.brd};border-radius:16px;${extra||''}`; }
 function s_card2(t, extra){ return `background:${t.card2};border:1px solid ${t.brd};border-radius:12px;${extra||''}`; }
-function s_btn_primary(t, extra) { return `background:linear-gradient(135deg,${t.acc},${t.acc2});color:white;border:none;border-radius:10px;padding:8px 16px;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px;${extra||''}`; }
-function s_btn_ghost(t, extra) { return `background:transparent;border:1px solid ${t.brd};color:${t.sub};border-radius:10px;padding:8px 16px;font-size:12px;font-weight:600;cursor:pointer;${extra||''}`; }
+function s_btn_primary(t, extra) { return `background:linear-gradient(135deg,${t.acc},${t.acc2});color:white;border:none;border-radius:10px;padding:8px 16px;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px;transition:opacity 0.15s;${extra||''}`; }
+function s_btn_ghost(t, extra) { return `background:transparent;border:1px solid ${t.brd};color:${t.sub};border-radius:10px;padding:8px 16px;font-size:12px;font-weight:600;cursor:pointer;transition:background 0.15s;${extra||''}`; }
+
+// ── View-modal toast (mock feedback for all preview buttons) ──────────────
+function vToast(msg, type) {
+  // type: 'success' | 'info' | 'warning'
+  const colors = { success:'#22c55e', info:'#06b6d4', warning:'#f59e0b' };
+  const icons  = { success:'fas fa-check-circle', info:'fas fa-circle-info', warning:'fas fa-triangle-exclamation' };
+  const color  = colors[type||'info'];
+  const icon   = icons[type||'info'];
+  const el = document.createElement('div');
+  el.style.cssText = `position:fixed;top:20px;right:20px;z-index:99999;background:rgba(10,14,26,0.97);border:1px solid ${color}44;border-radius:12px;padding:12px 18px;display:flex;align-items:center;gap:10px;font-family:'Inter',sans-serif;font-size:13px;color:#f0f9ff;box-shadow:0 8px 32px rgba(0,0,0,0.5);min-width:220px;max-width:320px;animation:fadeInRight 0.25s ease`;
+  el.innerHTML = `<i class="${icon}" style="color:${color};font-size:15px;flex-shrink:0"></i><span>${msg}</span>`;
+  // Add animation keyframe if not present
+  if (!document.getElementById('_vtanim')) {
+    const s = document.createElement('style');
+    s.id = '_vtanim';
+    s.textContent = '@keyframes fadeInRight{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:translateX(0)}}';
+    document.head.appendChild(s);
+  }
+  document.body.appendChild(el);
+  setTimeout(() => { el.style.opacity='0'; el.style.transition='opacity 0.3s'; setTimeout(()=>el.remove(),320); }, 2400);
+}
+
+// ── Sidebar nav switcher (mock navigation inside view modal) ──────────────
+// Called by sidebar items via onclick="vNav(this,N,ITEMS_ARRAY)"
+// Just highlights clicked item and shows a toast — preserves the main content
+function vNavClick(el, idx, label) {
+  // Un-highlight all siblings
+  const parent = el.parentNode;
+  if (parent) {
+    Array.from(parent.children).forEach((c, i) => {
+      if (i === idx) {
+        c.style.background = 'rgba(255,255,255,0.08)';
+        c.querySelector('i') && (c.querySelector('i').style.opacity = '1');
+        c.querySelector('span') && (c.querySelector('span').style.opacity = '1');
+      } else {
+        c.style.background = 'transparent';
+      }
+    });
+  }
+  vToast(`Navigated to ${label}`, 'info');
+}
 
 // ── Shared top-bar ────────────────────────────────────────────────────────
 function vTopBar(t, appName, appIcon, pid) {
@@ -3846,9 +3887,9 @@ function vTopBar(t, appName, appIcon, pid) {
 function vSidebar(t, items, w) {
   w = w || '200px';
   return `<div style="width:${w};flex-shrink:0;background:${t.sb};border-right:1px solid ${t.brd};overflow-y:auto;display:flex;flex-direction:column">
-    <div style="padding:12px;display:flex;flex-direction:column;gap:2px">
+    <div id="vsidebar-nav" style="padding:12px;display:flex;flex-direction:column;gap:2px">
       ${items.map((item, i) => `
-      <div style="${i===0 ? `background:${t.badge};` : ''}border-radius:10px;padding:8px 10px;display:flex;align-items:center;gap:10px;cursor:pointer" onmouseover="if(${i}!==0)this.style.background='${t.card2}'" onmouseout="if(${i}!==0)this.style.background='transparent'">
+      <div data-nav-idx="${i}" onclick="vNavClick(this,${i},'${escHtml(item.label)}')" style="${i===0 ? `background:${t.badge};` : ''}border-radius:10px;padding:8px 10px;display:flex;align-items:center;gap:10px;cursor:pointer;transition:background 0.15s" onmouseover="if(!this.style.background||this.style.background==='transparent')this.style.background='${t.card2}'" onmouseout="if(this.dataset.navIdx!='0'&&!this.classList.contains('active-nav'))this.style.background='transparent'">
         <i class="${item.icon}" style="font-size:13px;color:${i===0 ? t.acc : t.sub};width:16px;text-align:center"></i>
         <span style="font-size:12px;font-weight:${i===0?700:500};color:${i===0 ? t.acc : t.sub};flex:1">${escHtml(item.label)}</span>
         ${item.badge ? `<span style="background:${t.badge};color:${t.badgeTxt};border-radius:10px;padding:1px 6px;font-size:10px;font-weight:700">${item.badge}</span>` : ''}
@@ -3859,7 +3900,7 @@ function vSidebar(t, items, w) {
 
 // ── KPI card ──────────────────────────────────────────────────────────────
 function vKpi(t, icon, label, value, note, change) {
-  return `<div style="${s_card(t,'padding:16px;display:flex;flex-direction:column;gap:10px')}">
+  return `<div onclick="vToast('${label}: ${value}','info')" style="${s_card(t,'padding:16px;display:flex;flex-direction:column;gap:10px;cursor:pointer')}" onmouseover="this.style.borderColor='${t.acc}'" onmouseout="this.style.borderColor='${t.brd}'">
     <div style="display:flex;align-items:center;justify-content:space-between">
       <div style="width:36px;height:36px;border-radius:10px;background:${t.badge};display:flex;align-items:center;justify-content:center">
         <i class="${icon}" style="font-size:14px;color:${t.acc}"></i>
@@ -3966,7 +4007,7 @@ function renderFilm(t, appName, appIcon, features, wfItems, audience, problem, f
             <h1 style="font-size:20px;font-weight:900;color:${t.text};margin:0 0 4px">Film Dashboard</h1>
             <p style="font-size:12px;color:${t.sub};margin:0">${escHtml(truncate(problem||`AI-powered analysis for ${audience}`,70))}</p>
           </div>
-          <button style="${s_btn_primary(t)}"><i class="fas fa-cloud-arrow-up"></i> Upload Film</button>
+          <button onclick="vToast('Upload Film — select a video file to analyze','info')" style="${s_btn_primary(t)}"><i class="fas fa-cloud-arrow-up"></i> Upload Film</button>
         </div>
         <!-- KPIs -->
         <div style="${s_grid(4,'12px')}">
@@ -3981,7 +4022,7 @@ function renderFilm(t, appName, appIcon, features, wfItems, audience, problem, f
             <h3 style="font-size:13px;font-weight:700;color:${t.text};margin:0">Film Library</h3>
             <div style="${s_grid(2,'12px')}">
               ${filmCards.map(fc => `
-              <div style="${s_card(t,'overflow:hidden')}">
+              <div onclick="vToast('Opening: '+escHtml(fc.title),'info')" style="${s_card(t,'overflow:hidden;cursor:pointer')}" onmouseover="this.style.borderColor='${t.acc}'" onmouseout="this.style.borderColor='${t.brd}'">
                 <div style="height:100px;display:flex;align-items:center;justify-content:center;position:relative;background:linear-gradient(135deg,${t.card2},${t.bg})">
                   <i class="fas fa-film" style="font-size:30px;color:${fc.color};opacity:0.3"></i>
                   <div style="position:absolute;top:8px;right:8px">
@@ -4019,7 +4060,7 @@ function renderFilm(t, appName, appIcon, features, wfItems, audience, problem, f
               </div>
               <span style="font-size:12px;font-weight:700;color:${t.text}">${v}</span>
             </div>`).join('')}
-            <button style="${s_btn_primary(t,'width:100%;justify-content:center;margin-top:4px')}">
+            <button onclick="vToast('AI Analysis queued — results ready in production','success')" style="${s_btn_primary(t,'width:100%;justify-content:center;margin-top:4px')}">
               <i class="fas fa-brain"></i> Run Analysis
             </button>
           </div>
@@ -4083,24 +4124,24 @@ function renderMusic(t, appName, appIcon, features, wfItems, audience, problem, 
               </div>
               <!-- Controls -->
               <div style="display:flex;align-items:center;gap:16px">
-                <button style="background:none;border:none;color:${t.sub};cursor:pointer;font-size:16px;padding:4px" title="Previous"><i class="fas fa-backward-step"></i></button>
-                <button style="width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,${t.acc},${t.acc2});border:none;cursor:pointer;color:white;font-size:14px;display:flex;align-items:center;justify-content:center" title="Play/Pause"><i class="fas fa-play"></i></button>
-                <button style="background:none;border:none;color:${t.sub};cursor:pointer;font-size:16px;padding:4px" title="Next"><i class="fas fa-forward-step"></i></button>
-                <button style="background:none;border:none;color:${t.sub};cursor:pointer;font-size:14px;padding:4px;margin-left:8px" title="Like"><i class="fas fa-heart"></i></button>
+                <button onclick="vToast('Previous track','info')" style="background:none;border:none;color:${t.sub};cursor:pointer;font-size:16px;padding:4px" title="Previous"><i class="fas fa-backward-step"></i></button>
+                <button id="vplay-btn" onclick="(function(btn){var ic=btn.querySelector('i');if(ic.className.includes('play')){ic.className='fas fa-pause';vToast('Now playing…','success');}else{ic.className='fas fa-play';vToast('Paused','info');}}).call(null,this)" style="width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,${t.acc},${t.acc2});border:none;cursor:pointer;color:white;font-size:14px;display:flex;align-items:center;justify-content:center" title="Play/Pause"><i class="fas fa-play"></i></button>
+                <button onclick="vToast('Next track','info')" style="background:none;border:none;color:${t.sub};cursor:pointer;font-size:16px;padding:4px" title="Next"><i class="fas fa-forward-step"></i></button>
+                <button onclick="(function(btn){var ic=btn.querySelector('i');if(ic.style.color===''||ic.style.color==='inherit'){ic.style.color='#ef4444';vToast('Added to Favorites ❤️','success');}else{ic.style.color='';vToast('Removed from Favorites','info');}}).call(null,this)" style="background:none;border:none;color:${t.sub};cursor:pointer;font-size:14px;padding:4px;margin-left:8px" title="Like"><i class="fas fa-heart"></i></button>
               </div>
             </div>
           </div>
         </div>
         <!-- Genres row -->
         <div style="display:flex;gap:8px;flex-wrap:wrap">
-          ${genres.map((g,i)=>`<button style="border-radius:20px;padding:6px 14px;font-size:12px;font-weight:600;background:${i===0?`linear-gradient(135deg,${t.acc},${t.acc2})`:`${t.card2}`};color:${i===0?'white':t.sub};border:1px solid ${t.brd};cursor:pointer">${g}</button>`).join('')}
+          ${genres.map((g,i)=>`<button onclick="vToast('Browsing ${g} music','info')" style="border-radius:20px;padding:6px 14px;font-size:12px;font-weight:600;background:${i===0?`linear-gradient(135deg,${t.acc},${t.acc2})`:`${t.card2}`};color:${i===0?'white':t.sub};border:1px solid ${t.brd};cursor:pointer">${g}</button>`).join('')}
         </div>
         <!-- Track list + stats -->
         <div style="display:grid;grid-template-columns:3fr 2fr;gap:16px">
           <div style="${s_card(t,'padding:16px;display:flex;flex-direction:column;gap:4px')}">
             <div style="font-size:13px;font-weight:700;color:${t.text};margin-bottom:10px">Trending Tracks</div>
             ${tracks.map((tr,i)=>`
-            <div style="display:flex;align-items:center;gap:12px;padding:8px;border-radius:10px;cursor:pointer" onmouseover="this.style.background='${t.card2}'" onmouseout="this.style.background='transparent'">
+            <div onclick="vToast('Now playing: '+escHtml(truncate(tr.title,25)),'success')" style="display:flex;align-items:center;gap:12px;padding:8px;border-radius:10px;cursor:pointer" onmouseover="this.style.background='${t.card2}'" onmouseout="this.style.background='transparent'">
               <span style="font-size:12px;color:${t.muted};width:14px;text-align:center">${i+1}</span>
               <div style="width:36px;height:36px;border-radius:8px;background:linear-gradient(135deg,${t.acc}${30+i*10},${t.acc2});display:flex;align-items:center;justify-content:center;flex-shrink:0">
                 <i class="fas fa-music" style="font-size:12px;color:white"></i>
@@ -4156,7 +4197,7 @@ function renderHealth(t, appName, appIcon, features, wfItems, audience, problem,
             <h1 style="font-size:20px;font-weight:900;color:${t.text};margin:0 0 4px">${escHtml(appName)}</h1>
             <p style="font-size:12px;color:${t.sub};margin:0">${escHtml(truncate(problem||`Healthcare platform for ${audience}`,70))}</p>
           </div>
-          <button style="${s_btn_primary(t)}"><i class="fas fa-calendar-plus"></i> New Appointment</button>
+          <button onclick="vToast('New Appointment form — opens in production','info')" style="${s_btn_primary(t)}"><i class="fas fa-calendar-plus"></i> New Appointment</button>
         </div>
         <div style="${s_grid(4,'12px')}">
           ${vKpi(t,'fas fa-calendar-days','Appointments','0','This week',0)}
@@ -4184,7 +4225,7 @@ function renderHealth(t, appName, appIcon, features, wfItems, audience, problem,
               ${vBadge(t,'3 Total',t.acc)}
             </div>
             ${appointments.map(a=>`
-            <div style="display:flex;align-items:center;gap:10px;padding:8px;border-radius:10px;margin-bottom:6px;background:${t.card2}">
+            <div onclick="vToast('Appointment: '+escHtml(a.name)+' at '+a.time,'info')" style="display:flex;align-items:center;gap:10px;padding:8px;border-radius:10px;margin-bottom:6px;background:${t.card2};cursor:pointer" onmouseover="this.style.background='${t.card}'" onmouseout="this.style.background='${t.card2}'">
               <div style="width:36px;height:36px;border-radius:50%;background:${t.badge};display:flex;align-items:center;justify-content:center;flex-shrink:0">
                 <i class="fas fa-user" style="font-size:13px;color:${t.acc}"></i>
               </div>
@@ -4201,7 +4242,7 @@ function renderHealth(t, appName, appIcon, features, wfItems, audience, problem,
           <div style="font-size:13px;font-weight:700;color:${t.text};margin-bottom:12px">Quick Actions</div>
           <div style="display:flex;gap:10px;flex-wrap:wrap">
             ${[['fas fa-calendar-plus','Schedule Appointment'],['fas fa-file-medical','New Record'],['fas fa-pills','Add Prescription'],['fas fa-message','Send Message']].map(([ic,l])=>`
-            <button style="${s_btn_ghost(t,'display:flex;align-items:center;gap:6px')}">${'<i class="'+ic+'"></i>'} ${l}</button>`).join('')}
+            <button onclick="vToast('${l} — opens in production','info')" style="${s_btn_ghost(t,'display:flex;align-items:center;gap:6px')}">${'<i class="'+ic+'"></i>'} ${l}</button>`).join('')}
           </div>
         </div>
       </div>
@@ -4243,7 +4284,7 @@ function renderFinance(t, appName, appIcon, features, wfItems, audience, problem
             <h1 style="font-size:20px;font-weight:900;color:${t.text};margin:0 0 4px">${escHtml(appName)}</h1>
             <p style="font-size:12px;color:${t.sub};margin:0">${escHtml(truncate(problem||`Financial platform for ${audience}`,70))}</p>
           </div>
-          <button style="${s_btn_primary(t)}"><i class="fas fa-plus"></i> New Trade</button>
+          <button onclick="vToast('New Trade — open order form in production','info')" style="${s_btn_primary(t)}"><i class="fas fa-plus"></i> New Trade</button>
         </div>
         <!-- Portfolio value hero -->
         <div style="border-radius:20px;padding:24px;position:relative;overflow:hidden;background:linear-gradient(135deg,${t.acc}18,${t.acc2}28);border:1px solid ${t.brd}">
@@ -4253,7 +4294,7 @@ function renderFinance(t, appName, appIcon, features, wfItems, audience, problem
               <div style="font-size:36px;font-weight:900;color:${t.text}">$0.00</div>
               <div style="font-size:13px;color:#22c55e;margin-top:4px"><i class="fas fa-arrow-trend-up"></i> +0.00% Today</div>
             </div>
-            <button style="${s_btn_primary(t)}"><i class="fas fa-download"></i> Export</button>
+            <button onclick="vToast('Exporting portfolio data…','success')" style="${s_btn_primary(t)}"><i class="fas fa-download"></i> Export</button>
           </div>
           ${chartSVG}
         </div>
@@ -4267,7 +4308,7 @@ function renderFinance(t, appName, appIcon, features, wfItems, audience, problem
         <div style="${s_card(t,'padding:16px')}">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
             <div style="font-size:13px;font-weight:700;color:${t.text}">Positions</div>
-            <button style="${s_btn_ghost(t,'font-size:11px;padding:4px 10px')}">View All</button>
+            <button onclick="vToast('Viewing all positions','info')" style="${s_btn_ghost(t,'font-size:11px;padding:4px 10px')}">View All</button>
           </div>
           <table style="width:100%;border-collapse:collapse;font-size:12px">
             <thead>
@@ -4280,7 +4321,7 @@ function renderFinance(t, appName, appIcon, features, wfItems, audience, problem
             </thead>
             <tbody>
               ${positions.map(p=>`
-              <tr style="border-bottom:1px solid ${t.brd}">
+              <tr onclick="vToast('Viewing '+p.sym+': '+p.name,'info')" style="border-bottom:1px solid ${t.brd};cursor:pointer" onmouseover="this.style.background='${t.card2}'" onmouseout="this.style.background='transparent'">
                 <td style="padding:10px 8px">
                   <div style="display:flex;align-items:center;gap:8px">
                     <div style="width:30px;height:30px;border-radius:8px;background:${t.badge};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:${t.acc}">${p.sym.slice(0,2)}</div>
@@ -4331,8 +4372,8 @@ function renderStore(t, appName, appIcon, features, wfItems, audience, problem, 
             <p style="font-size:12px;color:${t.sub};margin:0">${escHtml(truncate(problem||`Storefront for ${audience}`,70))}</p>
           </div>
           <div style="display:flex;gap:8px">
-            <button style="${s_btn_ghost(t,'display:flex;align-items:center;gap:6px')}"><i class="fas fa-download"></i> Export</button>
-            <button style="${s_btn_primary(t)}"><i class="fas fa-plus"></i> Add Product</button>
+            <button onclick="vToast('Exporting store data…','success')" style="${s_btn_ghost(t,'display:flex;align-items:center;gap:6px')}"><i class="fas fa-download"></i> Export</button>
+            <button onclick="vToast('New Product form — opens in production','info')" style="${s_btn_primary(t)}"><i class="fas fa-plus"></i> Add Product</button>
           </div>
         </div>
         <div style="${s_grid(4,'12px')}">
@@ -4346,13 +4387,13 @@ function renderStore(t, appName, appIcon, features, wfItems, audience, problem, 
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
             <div style="font-size:13px;font-weight:700;color:${t.text}">Product Catalog</div>
             <div style="display:flex;gap:8px">
-              <input placeholder="Search products..." style="background:${t.card2};border:1px solid ${t.brd};border-radius:8px;padding:6px 12px;font-size:12px;color:${t.text};outline:none;width:160px">
+              <input placeholder="Search products..." onkeydown="if(event.key==='Enter'&&this.value.trim())vToast('Searching products: '+this.value.trim().slice(0,25),'info')" style="background:${t.card2};border:1px solid ${t.brd};border-radius:8px;padding:6px 12px;font-size:12px;color:${t.text};outline:none;width:160px">
               ${vBadge(t,'4 items',t.acc)}
             </div>
           </div>
           <div style="${s_grid(2,'10px')}">
             ${products.map(p=>`
-            <div style="${s_card2(t,'padding:14px;cursor:pointer')}" onmouseover="this.style.borderColor='${t.acc}'" onmouseout="this.style.borderColor='${t.brd}'">
+            <div onclick="vToast('Viewing: '+escHtml(truncate(p.name,22)),'info')" style="${s_card2(t,'padding:14px;cursor:pointer')}" onmouseover="this.style.borderColor='${t.acc}'" onmouseout="this.style.borderColor='${t.brd}'">
               <div style="width:100%;height:80px;background:linear-gradient(135deg,${t.card},${t.muted}22);border-radius:10px;display:flex;align-items:center;justify-content:center;margin-bottom:10px">
                 <i class="fas fa-box" style="font-size:24px;color:${t.acc};opacity:0.5"></i>
               </div>
@@ -4368,7 +4409,7 @@ function renderStore(t, appName, appIcon, features, wfItems, audience, problem, 
         <div style="${s_card(t,'padding:16px')}">
           <div style="font-size:13px;font-weight:700;color:${t.text};margin-bottom:12px">Recent Orders</div>
           ${['#001','#002','#003'].map((o,i)=>`
-          <div style="display:flex;align-items:center;gap:12px;padding:8px;border-radius:10px;margin-bottom:4px" onmouseover="this.style.background='${t.card2}'" onmouseout="this.style.background='transparent'">
+          <div onclick="vToast('Order '+o+' details — opens in production','info')" style="display:flex;align-items:center;gap:12px;padding:8px;border-radius:10px;margin-bottom:4px;cursor:pointer" onmouseover="this.style.background='${t.card2}'" onmouseout="this.style.background='transparent'">
             <div style="width:32px;height:32px;border-radius:8px;background:${t.badge};display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:11px;font-weight:800;color:${t.acc}">${o}</div>
             <div style="flex:1">
               <div style="font-size:12px;font-weight:600;color:${t.text}">Order ${o}</div>
@@ -4410,7 +4451,7 @@ function renderLMS(t, appName, appIcon, features, wfItems, audience, problem, fe
             <h1 style="font-size:20px;font-weight:900;color:${t.text};margin:0 0 4px">${escHtml(appName)}</h1>
             <p style="font-size:12px;color:${t.sub};margin:0">${escHtml(truncate(problem||`Learning platform for ${audience}`,70))}</p>
           </div>
-          <button style="${s_btn_primary(t)}"><i class="fas fa-plus"></i> New Course</button>
+          <button onclick="vToast('New Course — form opens in production','info')" style="${s_btn_primary(t)}"><i class="fas fa-plus"></i> New Course</button>
         </div>
         <div style="${s_grid(4,'12px')}">
           ${vKpi(t,'fas fa-graduation-cap','Courses','0','Published',0)}
@@ -4423,7 +4464,7 @@ function renderLMS(t, appName, appIcon, features, wfItems, audience, problem, fe
           <div style="font-size:13px;font-weight:700;color:${t.text};margin-bottom:14px">Course Catalog</div>
           <div style="display:flex;flex-direction:column;gap:12px">
             ${courses.map(c=>`
-            <div style="background:${t.card2};border:1px solid ${t.brd};border-radius:14px;padding:14px;cursor:pointer" onmouseover="this.style.borderColor='${c.color}'" onmouseout="this.style.borderColor='${t.brd}'">
+            <div onclick="vToast('Opening course: '+escHtml(truncate(c.title,25)),'info')" style="background:${t.card2};border:1px solid ${t.brd};border-radius:14px;padding:14px;cursor:pointer" onmouseover="this.style.borderColor='${c.color}'" onmouseout="this.style.borderColor='${t.brd}'">
               <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
                 <div style="font-size:13px;font-weight:700;color:${t.text}">${escHtml(c.title)}</div>
                 ${vBadge(t,c.students+' Students',c.color)}
@@ -4475,7 +4516,7 @@ function renderLegal(t, appName, appIcon, features, wfItems, audience, problem, 
             <h1 style="font-size:20px;font-weight:900;color:${t.text};margin:0 0 4px">${escHtml(appName)}</h1>
             <p style="font-size:12px;color:${t.sub};margin:0">${escHtml(truncate(problem||`Legal management for ${audience}`,70))}</p>
           </div>
-          <button style="${s_btn_primary(t)}"><i class="fas fa-folder-plus"></i> New Case</button>
+          <button onclick="vToast('New Case — form opens in production','info')" style="${s_btn_primary(t)}"><i class="fas fa-folder-plus"></i> New Case</button>
         </div>
         <div style="${s_grid(4,'12px')}">
           ${vKpi(t,'fas fa-folder-open','Open Cases','0','Active',0)}
@@ -4487,10 +4528,10 @@ function renderLegal(t, appName, appIcon, features, wfItems, audience, problem, 
         <div style="${s_card(t,'padding:16px')}">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
             <div style="font-size:13px;font-weight:700;color:${t.text}">Case Management</div>
-            <button style="${s_btn_ghost(t,'font-size:11px;padding:4px 10px')}">View All</button>
+            <button onclick="vToast('Viewing all cases','info')" style="${s_btn_ghost(t,'font-size:11px;padding:4px 10px')}">View All</button>
           </div>
           ${cases.map(c=>`
-          <div style="display:flex;align-items:center;gap:12px;padding:10px;border-radius:12px;margin-bottom:6px;background:${t.card2}">
+          <div onclick="vToast('Opening case: '+escHtml(c.id)+' — '+escHtml(truncate(c.name,22)),'info')" style="display:flex;align-items:center;gap:12px;padding:10px;border-radius:12px;margin-bottom:6px;background:${t.card2};cursor:pointer" onmouseover="this.style.background='${t.card}'" onmouseout="this.style.background='${t.card2}'">
             <div style="width:36px;height:36px;border-radius:10px;background:${t.badge};display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:11px;font-weight:800;color:${t.acc}">${c.id}</div>
             <div style="flex:1;min-width:0">
               <div style="font-size:12px;font-weight:700;color:${t.text};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(c.name)}</div>
@@ -4503,7 +4544,7 @@ function renderLegal(t, appName, appIcon, features, wfItems, audience, problem, 
         <div style="${s_card(t,'padding:16px')}">
           <div style="font-size:13px;font-weight:700;color:${t.text};margin-bottom:12px">Upcoming Hearings</div>
           ${wfItems.slice(0,3).map((w,i)=>`
-          <div style="display:flex;align-items:center;gap:12px;padding:8px;border-radius:10px;margin-bottom:4px;background:${t.card2}">
+          <div onclick="vToast('Hearing: '+escHtml(truncate(w,30)),'info')" style="display:flex;align-items:center;gap:12px;padding:8px;border-radius:10px;margin-bottom:4px;background:${t.card2};cursor:pointer" onmouseover="this.style.background='${t.card}'" onmouseout="this.style.background='${t.card2}'">
             <div style="min-width:48px;text-align:center;background:${t.acc}22;border-radius:8px;padding:6px">
               <div style="font-size:14px;font-weight:900;color:${t.acc}">${28+i}</div>
               <div style="font-size:9px;color:${t.sub}">MAR</div>
@@ -4542,7 +4583,7 @@ function renderAI(t, appName, appIcon, features, wfItems, audience, problem, api
             <h1 style="font-size:20px;font-weight:900;color:${t.text};margin:0 0 4px">${escHtml(appName)}</h1>
             <p style="font-size:12px;color:${t.sub};margin:0">${escHtml(truncate(problem||`AI automation platform for ${audience}`,70))}</p>
           </div>
-          <button style="${s_btn_primary(t)}"><i class="fas fa-play"></i> Run Pipeline</button>
+          <button onclick="vToast('Pipeline started — running workflows…','success')" style="${s_btn_primary(t)}"><i class="fas fa-play"></i> Run Pipeline</button>
         </div>
         <div style="${s_grid(4,'12px')}">
           ${vKpi(t,'fas fa-bolt','API Calls','0','Today',0)}
@@ -4570,8 +4611,8 @@ function renderAI(t, appName, appIcon, features, wfItems, audience, problem, api
             </div>
           </div>
           <div style="padding:10px 14px;border-top:1px solid ${t.brd};display:flex;gap:8px">
-            <input placeholder="Enter prompt or command..." style="flex:1;background:transparent;border:none;color:${t.text};font-size:12px;font-family:monospace;outline:none" />
-            <button style="${s_btn_primary(t,'padding:6px 12px')}">&gt; Run</button>
+            <input id="vconsole-input" placeholder="Enter prompt or command..." style="flex:1;background:transparent;border:none;color:${t.text};font-size:12px;font-family:monospace;outline:none" onkeydown="if(event.key==='Enter'){var v=this.value.trim();if(v){vToast('Running: '+v.slice(0,40),'success');this.value='';}}" />
+            <button onclick="(function(){var inp=document.getElementById('vconsole-input');var v=inp?inp.value.trim():'';if(v){vToast('Running: '+v.slice(0,40),'success');inp.value='';}else{vToast('Enter a prompt first','warning');}})()" style="${s_btn_primary(t,'padding:6px 12px')}">&gt; Run</button>
           </div>
         </div>
         <!-- Models + workflows -->
@@ -4579,7 +4620,7 @@ function renderAI(t, appName, appIcon, features, wfItems, audience, problem, api
           <div style="${s_card(t,'padding:16px')}">
             <div style="font-size:13px;font-weight:700;color:${t.text};margin-bottom:12px">Connected Models</div>
             ${modelItems.map((m,i)=>`
-            <div style="display:flex;align-items:center;gap:10px;padding:8px;border-radius:10px;margin-bottom:4px;background:${t.card2}">
+            <div onclick="vToast((i===0?'Active model: ':'Activating: ')+escHtml(truncate(m,22)),'success')" style="display:flex;align-items:center;gap:10px;padding:8px;border-radius:10px;margin-bottom:4px;background:${t.card2};cursor:pointer" onmouseover="this.style.background='${t.card}'" onmouseout="this.style.background='${t.card2}'">
               <div style="width:8px;height:8px;border-radius:50%;background:${i===0?'#22c55e':'#64748b'}"></div>
               <span style="font-size:12px;font-weight:600;color:${t.text};flex:1">${escHtml(truncate(m,22))}</span>
               ${vBadge(t,i===0?'Active':'Standby',i===0?'#22c55e':'#64748b')}
@@ -4622,8 +4663,8 @@ function renderSaaS(t, appName, appIcon, features, wfItems, audience, problem, f
             <p style="font-size:12px;color:${t.sub};margin:0">${escHtml(truncate(problem||`SaaS platform for ${audience}`,70))}</p>
           </div>
           <div style="display:flex;gap:8px">
-            <button style="${s_btn_ghost(t,'display:flex;align-items:center;gap:6px')}"><i class="fas fa-download"></i> Report</button>
-            <button style="${s_btn_primary(t)}"><i class="fas fa-plus"></i> New ${escHtml(truncate(feat0,12))}</button>
+            <button onclick="vToast('Generating report…','success')" style="${s_btn_ghost(t,'display:flex;align-items:center;gap:6px')}"><i class="fas fa-download"></i> Report</button>
+            <button onclick="vToast('New '+escHtml(truncate(feat0,14))+' — form opens in production','info')" style="${s_btn_primary(t)}"><i class="fas fa-plus"></i> New ${escHtml(truncate(feat0,12))}</button>
           </div>
         </div>
         <!-- Metric strip -->
@@ -4646,7 +4687,7 @@ function renderSaaS(t, appName, appIcon, features, wfItems, audience, problem, f
             <div style="font-size:13px;font-weight:700;color:${t.text};margin-bottom:12px">Quick Actions</div>
             <div style="display:flex;flex-direction:column;gap:8px">
               ${[['fas fa-user-plus','Add Customer'],['fas fa-file-invoice','New Invoice'],['fas fa-envelope','Send Email'],['fas fa-chart-pie','View Report']].map(([ic,l])=>`
-              <button style="${s_btn_ghost(t,'width:100%;display:flex;align-items:center;gap:8px;justify-content:flex-start')}">${'<i class="'+ic+'" style="color:'+t.acc+'"></i>'} <span style="font-size:12px">${l}</span></button>`).join('')}
+              <button onclick="vToast('${l} — opens in production','info')" style="${s_btn_ghost(t,'width:100%;display:flex;align-items:center;gap:8px;justify-content:flex-start')}">${'<i class="'+ic+'" style="color:'+t.acc+'"></i>'} <span style="font-size:12px">${l}</span></button>`).join('')}
             </div>
           </div>
         </div>
@@ -4662,7 +4703,7 @@ function renderSaaS(t, appName, appIcon, features, wfItems, audience, problem, f
             </tr></thead>
             <tbody>
               ${['Acme Corp','Beta Inc','Gamma LLC','Delta Ltd'].map((n,i)=>`
-              <tr style="border-bottom:1px solid ${t.brd}">
+              <tr onclick="vToast('Viewing customer: '+n,'info')" style="border-bottom:1px solid ${t.brd};cursor:pointer" onmouseover="this.style.background='${t.card2}'" onmouseout="this.style.background='transparent'">
                 <td style="padding:8px;color:${t.text};font-weight:600">${n}</td>
                 <td style="padding:8px;color:${t.sub}">${['Pro','Starter','Enterprise','Pro'][i]}</td>
                 <td style="padding:8px;text-align:right;color:${t.text};font-weight:700">$0</td>
@@ -4698,7 +4739,7 @@ function renderDispatch(t, appName, appIcon, features, wfItems, audience, proble
             <h1 style="font-size:20px;font-weight:900;color:${t.text};margin:0 0 4px">${escHtml(appName)}</h1>
             <p style="font-size:12px;color:${t.sub};margin:0">${escHtml(truncate(problem||`Dispatch management for ${audience}`,70))}</p>
           </div>
-          <button style="${s_btn_primary(t)}"><i class="fas fa-plus"></i> New Route</button>
+          <button onclick="vToast('New Route — form opens in production','info')" style="${s_btn_primary(t)}"><i class="fas fa-plus"></i> New Route</button>
         </div>
         <div style="${s_grid(4,'12px')}">
           ${vKpi(t,'fas fa-truck','Active Routes','0','Now',0)}
@@ -4726,7 +4767,7 @@ function renderDispatch(t, appName, appIcon, features, wfItems, audience, proble
           <div style="${s_card(t,'padding:16px;display:flex;flex-direction:column;gap:10px')}">
             <div style="font-size:13px;font-weight:700;color:${t.text}">Active Drivers</div>
             ${['Driver A','Driver B','Driver C'].map((d,i)=>`
-            <div style="display:flex;align-items:center;gap:10px;padding:8px;border-radius:10px;background:${t.card2}">
+            <div onclick="vToast('Tracking '+d+' on Route '+(i+1),'info')" style="display:flex;align-items:center;gap:10px;padding:8px;border-radius:10px;background:${t.card2};cursor:pointer" onmouseover="this.style.background='${t.card}'" onmouseout="this.style.background='${t.card2}'">
               <div style="width:32px;height:32px;border-radius:50%;background:${t.badge};display:flex;align-items:center;justify-content:center;flex-shrink:0">
                 <i class="fas fa-user" style="font-size:12px;color:${t.acc}"></i>
               </div>
@@ -4773,7 +4814,7 @@ function renderSocial(t, appName, appIcon, features, wfItems, audience, problem,
         <!-- Search bar -->
         <div style="position:relative">
           <i class="fas fa-magnifying-glass" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:${t.muted};font-size:13px"></i>
-          <input placeholder="Search ${escHtml(truncate(appName,20))}..." style="width:100%;background:${t.card};border:1px solid ${t.brd};border-radius:12px;padding:10px 12px 10px 36px;font-size:13px;color:${t.text};outline:none;box-sizing:border-box">
+          <input placeholder="Search ${escHtml(truncate(appName,20))}..." onkeydown="if(event.key==='Enter'&&this.value.trim())vToast('Searching for: '+this.value.trim().slice(0,30),'info')" style="width:100%;background:${t.card};border:1px solid ${t.brd};border-radius:12px;padding:10px 12px 10px 36px;font-size:13px;color:${t.text};outline:none;box-sizing:border-box">
         </div>
         <!-- KPIs -->
         <div style="${s_grid(3,'12px')}">
@@ -4787,8 +4828,8 @@ function renderSocial(t, appName, appIcon, features, wfItems, audience, problem,
           <div style="${s_card(t,'padding:14px')}">
             <div style="display:flex;align-items:center;gap:10px">
               <div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,${t.acc},${t.acc2});flex-shrink:0"></div>
-              <input placeholder="What's on your mind?" style="flex:1;background:${t.card2};border:1px solid ${t.brd};border-radius:20px;padding:8px 14px;font-size:13px;color:${t.text};outline:none">
-              <button style="${s_btn_primary(t,'padding:8px 14px')}">Post</button>
+              <input id="vpost-input" placeholder="What's on your mind?" style="flex:1;background:${t.card2};border:1px solid ${t.brd};border-radius:20px;padding:8px 14px;font-size:13px;color:${t.text};outline:none">
+              <button onclick="(function(){var inp=document.getElementById('vpost-input');var v=inp?inp.value.trim():'';if(v){vToast('Post published!','success');inp.value='';}else{vToast('Write something first','warning');}})()" style="${s_btn_primary(t,'padding:8px 14px')}">Post</button>
             </div>
           </div>
           ${posts.map(p=>`
@@ -4802,9 +4843,9 @@ function renderSocial(t, appName, appIcon, features, wfItems, audience, problem,
             </div>
             <p style="font-size:13px;color:${t.sub};margin:0 0 12px;line-height:1.5">${escHtml(p.content)}</p>
             <div style="display:flex;gap:16px;padding-top:10px;border-top:1px solid ${t.brd}">
-              <button style="background:none;border:none;color:${t.muted};cursor:pointer;font-size:12px;display:flex;align-items:center;gap:4px" onmouseover="this.style.color='${t.acc}'" onmouseout="this.style.color='${t.muted}'"><i class="fas fa-heart"></i> ${p.likes}</button>
-              <button style="background:none;border:none;color:${t.muted};cursor:pointer;font-size:12px;display:flex;align-items:center;gap:4px" onmouseover="this.style.color='${t.acc}'" onmouseout="this.style.color='${t.muted}'"><i class="fas fa-comment"></i> ${p.comments}</button>
-              <button style="background:none;border:none;color:${t.muted};cursor:pointer;font-size:12px;display:flex;align-items:center;gap:4px" onmouseover="this.style.color='${t.acc}'" onmouseout="this.style.color='${t.muted}'"><i class="fas fa-share"></i> Share</button>
+              <button onclick="(function(btn){var cnt=btn.querySelector('span');var n=(parseInt(cnt.textContent)||0)+1;cnt.textContent=n;btn.style.color='#ef4444';vToast('Liked!','success');})(this)" style="background:none;border:none;color:${t.muted};cursor:pointer;font-size:12px;display:flex;align-items:center;gap:4px" onmouseover="this.style.color='${t.acc}'" onmouseout="if(!this.querySelector('span')||parseInt(this.querySelector('span').textContent)===0)this.style.color='${t.muted}'"><i class="fas fa-heart"></i> <span>${p.likes}</span></button>
+              <button onclick="vToast('Comments — opens in production','info')" style="background:none;border:none;color:${t.muted};cursor:pointer;font-size:12px;display:flex;align-items:center;gap:4px" onmouseover="this.style.color='${t.acc}'" onmouseout="this.style.color='${t.muted}'"><i class="fas fa-comment"></i> <span>${p.comments}</span></button>
+              <button onclick="vToast('Link copied to clipboard!','success')" style="background:none;border:none;color:${t.muted};cursor:pointer;font-size:12px;display:flex;align-items:center;gap:4px" onmouseover="this.style.color='${t.acc}'" onmouseout="this.style.color='${t.muted}'"><i class="fas fa-share"></i> Share</button>
             </div>
           </div>`).join('')}
         </div>
@@ -4841,7 +4882,7 @@ function renderFood(t, appName, appIcon, features, wfItems, audience, problem, f
             <h1 style="font-size:20px;font-weight:900;color:${t.text};margin:0 0 4px">${escHtml(appName)}</h1>
             <p style="font-size:12px;color:${t.sub};margin:0">${escHtml(truncate(problem||`Food platform for ${audience}`,70))}</p>
           </div>
-          <button style="${s_btn_primary(t)}"><i class="fas fa-plus"></i> Add Item</button>
+          <button onclick="vToast('New Menu Item — form opens in production','info')" style="${s_btn_primary(t)}"><i class="fas fa-plus"></i> Add Item</button>
         </div>
         <div style="${s_grid(4,'12px')}">
           ${vKpi(t,'fas fa-utensils','Menu Items',''+menuItems.length,'Available',0)}
@@ -4854,7 +4895,7 @@ function renderFood(t, appName, appIcon, features, wfItems, audience, problem, f
           <div style="font-size:13px;font-weight:700;color:${t.text};margin-bottom:14px">Menu Items</div>
           <div style="${s_grid(2,'10px')}">
             ${menuItems.map(m=>`
-            <div style="${s_card2(t,'padding:14px;cursor:pointer')}" onmouseover="this.style.borderColor='${t.acc}'" onmouseout="this.style.borderColor='${t.brd}'">
+            <div onclick="vToast('Viewing menu item: '+escHtml(truncate(m.name,20)),'info')" style="${s_card2(t,'padding:14px;cursor:pointer')}" onmouseover="this.style.borderColor='${t.acc}'" onmouseout="this.style.borderColor='${t.brd}'">
               <div style="width:100%;height:72px;background:linear-gradient(135deg,${t.acc}18,${t.acc2}28);border-radius:10px;display:flex;align-items:center;justify-content:center;margin-bottom:10px">
                 <i class="${appIcon}" style="font-size:24px;color:${t.acc};opacity:0.5"></i>
               </div>
@@ -4870,7 +4911,7 @@ function renderFood(t, appName, appIcon, features, wfItems, audience, problem, f
         <div style="${s_card(t,'padding:16px')}">
           <div style="font-size:13px;font-weight:700;color:${t.text};margin-bottom:12px">Recent Orders</div>
           ${['#T01','#T02','#T03'].map((o,i)=>`
-          <div style="display:flex;align-items:center;gap:12px;padding:8px;border-radius:10px;margin-bottom:4px" onmouseover="this.style.background='${t.card2}'" onmouseout="this.style.background='transparent'">
+          <div onclick="vToast('Table '+(i+1)+' order details','info')" style="display:flex;align-items:center;gap:12px;padding:8px;border-radius:10px;margin-bottom:4px;cursor:pointer" onmouseover="this.style.background='${t.card2}'" onmouseout="this.style.background='transparent'">
             <div style="width:32px;height:32px;border-radius:8px;background:${t.badge};display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:10px;font-weight:800;color:${t.acc}">${o}</div>
             <div style="flex:1">
               <div style="font-size:12px;font-weight:600;color:${t.text}">Table ${i+1} Order</div>
@@ -4907,8 +4948,8 @@ function renderGeneric(t, appName, appIcon, features, wfItems, audience, problem
             <p style="font-size:12px;color:${t.sub};margin:0">${escHtml(truncate(problem||`Platform for ${audience}`,70))}</p>
           </div>
           <div style="display:flex;gap:8px">
-            <input placeholder="Search…" style="background:${t.card};border:1px solid ${t.brd};border-radius:8px;padding:8px 12px;font-size:12px;color:${t.text};outline:none;width:150px">
-            <button style="${s_btn_primary(t)}"><i class="${resolveIcon(feat0)}"></i> New ${escHtml(truncate(feat0,12))}</button>
+            <input placeholder="Search…" onkeydown="if(event.key==='Enter'&&this.value.trim())vToast('Searching for: '+this.value.trim().slice(0,30),'info')" style="background:${t.card};border:1px solid ${t.brd};border-radius:8px;padding:8px 12px;font-size:12px;color:${t.text};outline:none;width:150px">
+            <button onclick="vToast('New '+escHtml(truncate(feat0,16))+' — opens in production','info')" style="${s_btn_primary(t)}"><i class="${resolveIcon(feat0)}"></i> New ${escHtml(truncate(feat0,12))}</button>
           </div>
         </div>
         <div style="${s_grid(4,'12px')}">
@@ -4935,8 +4976,8 @@ function renderGeneric(t, appName, appIcon, features, wfItems, audience, problem
               <div style="font-size:14px;font-weight:800;color:${t.text};margin-bottom:4px">${escHtml(truncate(feat0||appName,36))}</div>
               <div style="font-size:12px;color:${t.sub};margin-bottom:12px">${escHtml(truncate(problem||`Core feature for ${audience}`,80))}</div>
               <div style="display:flex;gap:8px">
-                <button style="${s_btn_primary(t,'padding:6px 14px')}">Get Started</button>
-                <button style="${s_btn_ghost(t,'padding:6px 14px')}">Learn More</button>
+                <button onclick="vToast('Getting started with '+escHtml(truncate(feat0||appName,20))+'…','success')" style="${s_btn_primary(t,'padding:6px 14px')}">Get Started</button>
+                <button onclick="vToast('Documentation — opens in production','info')" style="${s_btn_ghost(t,'padding:6px 14px')}">Learn More</button>
               </div>
             </div>
             <!-- Feature items -->
