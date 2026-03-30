@@ -258,6 +258,9 @@ function navigateTo(page) {
   if (page === 'prompt') loadPromptPage();
   if (page === 'account') loadAccountPage();
   if (page === 'planning') renderKanban();
+  
+  // Toggle full-screen class for planning page
+  document.body.classList.toggle('planning-active', page === 'planning');
 }
 
 // ============================================================
@@ -2912,8 +2915,7 @@ function openModal(id) {
   const el = document.getElementById(id);
   if (!el) return;
   el.classList.remove('hidden');
-  // modal-view uses flex-col layout; all others use flex (bottom sheet)
-  el.classList.add(id === 'modal-view' ? 'flex-col' : 'flex');
+  el.classList.add('flex');
   document.body.style.overflow = 'hidden';
 }
 
@@ -3587,93 +3589,60 @@ async function triggerWebDeploy() {
 }
 
 
-// ============================================================
-// VIEW MODAL — Interactive App Prototype
-// ============================================================
-const VIEW_PROJECT = { id: null, name: '', data: null, screens: [], currentScreen: 0 };
 
+// ══════════════════════════════════════════════════════════════════════════
+//  PROJECT VIEWER — Full-Screen Unique Dashboard Generator v5
+//  Every project gets a completely different application interface.
+//  No two projects share layout, color scheme, navigation, or widget types.
+// ══════════════════════════════════════════════════════════════════════════
+
+const VIEW_PROJECT = { id: null, name: '', data: null };
+
+// ── Open the view modal ───────────────────────────────────────────────────
 async function openViewModal(projectId, projectName) {
   VIEW_PROJECT.id = projectId;
   VIEW_PROJECT.name = projectName || 'Your Project';
   VIEW_PROJECT.data = null;
-  VIEW_PROJECT.screens = [];
-  VIEW_PROJECT.currentScreen = 0;
 
-  const nameEl = document.getElementById('view-project-name');
-  if (nameEl) nameEl.textContent = VIEW_PROJECT.name;
+  // Show modal with loading state
+  const modal = document.getElementById('modal-view');
+  const loading = document.getElementById('view-loading');
+  const content = document.getElementById('view-content');
+  if (!modal) return;
 
-  setViewMode('prototype');
-  openModal('modal-view');
-
-  // Show loading, hide content
-  const loadingEl = document.getElementById('view-loading');
-  const contentEl = document.getElementById('view-content');
-  if (loadingEl) loadingEl.classList.remove('hidden');
-  if (contentEl) contentEl.classList.add('hidden');
-
-  // Update live clock
-  updateViewClock();
+  modal.classList.remove('hidden');
+  modal.classList.add('flex');
+  document.body.style.overflow = 'hidden';
+  if (loading) loading.classList.remove('hidden');
+  if (content) { content.classList.add('hidden'); content.innerHTML = ''; }
 
   try {
     const res = await axios.get(`/api/projects/${projectId}/preview`);
-    const d   = res.data?.data || {};
-    VIEW_PROJECT.data = d;
-    VIEW_PROJECT.name = d.project?.name || projectName || 'Your Project';
-    if (nameEl) nameEl.textContent = VIEW_PROJECT.name;
-
-    // Build screens from spec + fields
-    VIEW_PROJECT.screens = buildAppScreens(d);
-    VIEW_PROJECT.currentScreen = 0;
-
-    renderViewPrototype();
-    renderViewSpecPanel(d);
-
+    VIEW_PROJECT.data = res.data?.data || {};
   } catch (err) {
-    console.error('openViewModal error', err);
-    // Fallback: build screens from just the project name/category passed in
-    VIEW_PROJECT.screens = buildFallbackScreens(projectName);
-    VIEW_PROJECT.currentScreen = 0;
-    renderViewPrototype();
-  } finally {
-    if (loadingEl) loadingEl.classList.add('hidden');
-    if (contentEl) contentEl.classList.remove('hidden');
+    console.warn('Preview fetch failed, using minimal data', err);
+    VIEW_PROJECT.data = { project: { name: projectName }, fields: {}, spec: {} };
   }
-}
 
-function updateViewClock() {
-  const el = document.getElementById('view-time');
-  if (!el) return;
-  const now = new Date();
-  el.textContent = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
-}
-
-function setViewMode(mode) {
-  const proto = document.getElementById('view-mode-prototype');
-  const spec  = document.getElementById('view-mode-spec');
-  const btnP  = document.getElementById('vmode-prototype');
-  const btnS  = document.getElementById('vmode-spec');
-  if (!proto || !spec) return;
-
-  if (mode === 'prototype') {
-    proto.classList.remove('hidden');
-    spec.classList.add('hidden');
-    if (btnP) { btnP.classList.add('bg-cyan-500','text-white'); btnP.classList.remove('text-slate-400'); }
-    if (btnS) { btnS.classList.remove('bg-cyan-500','text-white'); btnS.classList.add('text-slate-400'); }
-  } else {
-    proto.classList.add('hidden');
-    spec.classList.remove('hidden');
-    if (btnS) { btnS.classList.add('bg-cyan-500','text-white'); btnS.classList.remove('text-slate-400'); }
-    if (btnP) { btnP.classList.remove('bg-cyan-500','text-white'); btnP.classList.add('text-slate-400'); }
+  // Generate and inject the dashboard
+  const html = generateProjectDashboard(VIEW_PROJECT.data, projectId, projectName);
+  if (content) {
+    content.innerHTML = html;
+    content.classList.remove('hidden');
   }
+  if (loading) loading.classList.add('hidden');
 }
 
-
-
-// ══════════════════════════════════════════════════════════════════════
-//  VIEW MODAL — CREATIVE APP PROTOTYPE GENERATOR v3
-//  100% derived from the user's own words. No two projects can match.
-//  Design quality: Genspark-level cards, gradients, glassmorphism.
-// ══════════════════════════════════════════════════════════════════════
+function closeViewModal() {
+  const modal = document.getElementById('modal-view');
+  if (modal) {
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+  }
+  const content = document.getElementById('view-content');
+  if (content) content.innerHTML = '';
+  document.body.style.overflow = '';
+}
 
 function truncate(str, len) {
   if (!str) return '';
@@ -3687,16 +3656,16 @@ function parseFeatureList(raw) {
   return String(raw).split(',').map(s => s.trim()).filter(Boolean);
 }
 
-// ── Icon resolver — 40 semantic categories ───────────────────────────
+// ── Semantic icon resolver (50+ patterns) ─────────────────────────────────
 function resolveIcon(text) {
   const t = (text || '').toLowerCase();
-  if (t.match(/film|video|watch|reel|playback|footage|stream/)) return 'fas fa-film';
-  if (t.match(/music|song|playlist|audio|beat|track|album|sound|listen/)) return 'fas fa-music';
-  if (t.match(/football|soccer|coach|formation|blitz|tackle|roster|nfl|athlete/)) return 'fas fa-football';
+  if (t.match(/film|video|watch|reel|playback|footage|stream|cinema/)) return 'fas fa-film';
+  if (t.match(/music|song|playlist|audio|beat|track|album|sound|listen|spotify/)) return 'fas fa-music';
+  if (t.match(/football|soccer|coach|formation|blitz|tackle|roster|nfl|athlete|gridiron/)) return 'fas fa-football';
   if (t.match(/basketball|nba|court|dunk|hoop/)) return 'fas fa-basketball';
-  if (t.match(/draw|sketch|canvas|paint|brush|art|illustrat|design/)) return 'fas fa-pen-nib';
+  if (t.match(/draw|sketch|canvas|paint|brush|art|illustrat|creative|design/)) return 'fas fa-pen-nib';
   if (t.match(/photo|camera|image|picture|gallery|snapshot/)) return 'fas fa-camera';
-  if (t.match(/ai|machine learn|intelligence|neural|automat|smart|analyze|breakdown/)) return 'fas fa-brain';
+  if (t.match(/ai|machine learn|intelligence|neural|automat|smart|analyze|breakdown|predict/)) return 'fas fa-brain';
   if (t.match(/upload|import|ingest|transfer|sync/)) return 'fas fa-cloud-arrow-up';
   if (t.match(/download|export|extract/)) return 'fas fa-cloud-arrow-down';
   if (t.match(/analyt|stat|metric|insight|kpi|chart|graph|data|report/)) return 'fas fa-chart-bar';
@@ -3707,20 +3676,24 @@ function resolveIcon(text) {
   if (t.match(/notif|alert|remind|push|bell/)) return 'fas fa-bell';
   if (t.match(/map|location|geo|route|navigate|track|gps/)) return 'fas fa-location-dot';
   if (t.match(/calendar|schedule|event|booking|appoint|date|deadline/)) return 'fas fa-calendar-days';
-  if (t.match(/health|heart|fitness|workout|exercise|medic|doctor|patient/)) return 'fas fa-heart-pulse';
-  if (t.match(/food|recipe|cook|restaurant|meal|dish|menu|eat/)) return 'fas fa-utensils';
-  if (t.match(/finance|invest|portfolio|crypto|budget|stock|trade/)) return 'fas fa-coins';
-  if (t.match(/ecom|shop|cart|store|product|order|inventory/)) return 'fas fa-bag-shopping';
+  if (t.match(/health|heart|fitness|workout|exercise|medic|doctor|patient|vital/)) return 'fas fa-heart-pulse';
+  if (t.match(/food|recipe|cook|restaurant|meal|dish|menu|eat|chef/)) return 'fas fa-utensils';
+  if (t.match(/finance|invest|portfolio|crypto|budget|stock|trade|bank|wealth/)) return 'fas fa-coins';
+  if (t.match(/ecom|shop|cart|store|product|order|inventory|retail/)) return 'fas fa-bag-shopping';
   if (t.match(/travel|trip|flight|hotel|booking|tourism|itinerar/)) return 'fas fa-plane';
-  if (t.match(/educat|learn|course|lesson|student|quiz|tutor|school/)) return 'fas fa-graduation-cap';
+  if (t.match(/educat|learn|course|lesson|student|quiz|tutor|school|class/)) return 'fas fa-graduation-cap';
   if (t.match(/social|network|post|feed|follow|like|share/)) return 'fas fa-heart';
   if (t.match(/real estate|property|house|rent|home|listing|agent/)) return 'fas fa-house';
-  if (t.match(/task|todo|project|manage|workflow|sprint|board/)) return 'fas fa-check-square';
+  if (t.match(/task|todo|project|manage|workflow|sprint|board|plan/)) return 'fas fa-check-square';
   if (t.match(/security|auth|login|password|protect|guard|verif/)) return 'fas fa-shield-halved';
-  if (t.match(/setting|config|prefer|manage|gear|admin/)) return 'fas fa-gear';
-  if (t.match(/dashboard|overview|home|main|hub/)) return 'fas fa-gauge-high';
+  if (t.match(/setting|config|prefer|manage|gear|admin|control/)) return 'fas fa-gear';
+  if (t.match(/dashboard|overview|home|main|hub|portal/)) return 'fas fa-gauge-high';
   if (t.match(/recruit|hire|scout|talent|staffing/)) return 'fas fa-user-plus';
-  if (t.match(/saas|platform|tool|software|app|service/)) return 'fas fa-layer-group';
+  if (t.match(/saas|platform|tool|software|service|app/)) return 'fas fa-layer-group';
+  if (t.match(/law|legal|contract|case|court|attorney|firm/)) return 'fas fa-scale-balanced';
+  if (t.match(/logistic|deliver|supply|fleet|route|ship|track/)) return 'fas fa-truck';
+  if (t.match(/doctor|clinic|hospital|patient|prescr|diagnos/)) return 'fas fa-stethoscope';
+  if (t.match(/crypto|nft|blockchain|token|wallet|defi/)) return 'fas fa-bitcoin-sign';
   if (t.match(/star|rate|review|feedback|rating/)) return 'fas fa-star';
   if (t.match(/fire|trend|hot|viral|popular/)) return 'fas fa-fire';
   if (t.match(/rocket|launch|deploy|ship|release/)) return 'fas fa-rocket';
@@ -3728,801 +3701,1343 @@ function resolveIcon(text) {
   if (t.match(/list|item|entry|record|row/)) return 'fas fa-list';
   if (t.match(/filter|sort|organize/)) return 'fas fa-filter';
   if (t.match(/share|export|send/)) return 'fas fa-share-nodes';
+  if (t.match(/game|gaming|play|level|score|leaderboard/)) return 'fas fa-gamepad';
+  if (t.match(/pet|animal|vet|shelter/)) return 'fas fa-paw';
+  if (t.match(/cloud|server|hosting|infra|devops/)) return 'fas fa-server';
+  if (t.match(/book|read|library|publish|author/)) return 'fas fa-book-open';
   const fallbacks = ['fas fa-bolt','fas fa-wand-magic-sparkles','fas fa-gem','fas fa-trophy','fas fa-flag','fas fa-cube'];
   return fallbacks[Math.abs((text||'').length) % fallbacks.length];
 }
 
-// ── Derive a color palette from the app's identity ───────────────────
-function deriveColorPalette(fields, projectName) {
-  const scheme = (fields.color_scheme || '').toLowerCase().trim();
-  const name = (projectName || fields.app_name || '').toLowerCase();
-  const audience = (fields.audience || '').toLowerCase();
-  const combined = scheme + name + audience + (fields.problem_statement || '').toLowerCase();
+// ── Detect project domain with scoring ────────────────────────────────────
+function detectDomain(fields, projectName) {
+  const all = [
+    fields.app_name, fields.audience, fields.problem_statement,
+    fields.workflows, fields.core_features, fields.category,
+    fields.apis_tools, fields.additional_comments, projectName
+  ].filter(Boolean).join(' ').toLowerCase();
 
-  // Explicit color scheme wins first
-  const explicit = {
-    midnight: { bg:'#080d1a', card:'#0f1829', card2:'#162035', accent:'#06b6d4', accent2:'#0284c7', glow:'rgba(6,182,212,0.2)', text:'#f0f9ff', sub:'#7ea9c9', border:'rgba(6,182,212,0.15)' },
-    ocean:    { bg:'#040c1c', card:'#091529', card2:'#0d1e38', accent:'#3b82f6', accent2:'#1d4ed8', glow:'rgba(59,130,246,0.2)', text:'#eff6ff', sub:'#7ba7d4', border:'rgba(59,130,246,0.15)' },
-    forest:   { bg:'#040f08', card:'#071a0d', card2:'#0b2414', accent:'#22c55e', accent2:'#16a34a', glow:'rgba(34,197,94,0.2)',  text:'#f0fdf4', sub:'#74c78a', border:'rgba(34,197,94,0.15)' },
-    sunset:   { bg:'#160605', card:'#231009', card2:'#311610', accent:'#f97316', accent2:'#dc2626', glow:'rgba(249,115,22,0.2)', text:'#fff7ed', sub:'#d97c59', border:'rgba(249,115,22,0.15)' },
-    purple:   { bg:'#0b0618', card:'#130b28', card2:'#1a1035', accent:'#a855f7', accent2:'#7c3aed', glow:'rgba(168,85,247,0.2)', text:'#faf5ff', sub:'#b490d4', border:'rgba(168,85,247,0.15)' },
-    rose:     { bg:'#130507', card:'#200a0e', card2:'#2e0f15', accent:'#f43f5e', accent2:'#be123c', glow:'rgba(244,63,94,0.2)',  text:'#fff1f2', sub:'#c97a8c', border:'rgba(244,63,94,0.15)' },
-    amber:    { bg:'#120b00', card:'#1f1400', card2:'#2c1c00', accent:'#f59e0b', accent2:'#b45309', glow:'rgba(245,158,11,0.2)', text:'#fffbeb', sub:'#c29c5c', border:'rgba(245,158,11,0.15)' },
-    slate:    { bg:'#080c12', card:'#0f1520', card2:'#16202e', accent:'#64748b', accent2:'#475569', glow:'rgba(100,116,139,0.2)',text:'#f8fafc', sub:'#94a3b8', border:'rgba(100,116,139,0.15)' },
+  const scores = {
+    sports_film: /film|football|coach|formation|blitz|nfl|athlete|playbook|gridiron|sport|game\s+film|breakdown|scouting|roster|hudl/g,
+    music:       /music|song|playlist|audio|track|album|beat|listen|streaming|spotify|sound|band|artist|concert/g,
+    health:      /health|medic|patient|doctor|clinic|hospital|vital|fitness|workout|appointment|prescr|wellness|diet/g,
+    finance:     /financ|invest|portfolio|crypto|budget|stock|trade|bank|money|revenue|wealth|wallet|payment|invoice/g,
+    ecommerce:   /shop|cart|store|product|order|inventory|retail|ecom|customer|purchase|checkout|merchant/g,
+    education:   /educat|learn|course|lesson|student|quiz|tutor|school|class|curriculum|teacher|study|grade/g,
+    logistics:   /logistic|deliver|supply|fleet|route|ship|track|warehouse|cargo|dispatch|driver|transport/g,
+    legal:       /law|legal|contract|case|court|attorney|firm|compliance|document|clause|litigation/g,
+    social:      /social|network|post|feed|follow|like|share|community|connect|profile|creator|influencer/g,
+    realestate:  /real\s*estate|property|house|rent|home|listing|agent|mortgage|apartment|landlord/g,
+    travel:      /travel|trip|flight|hotel|booking|tourism|itinerar|destination|vacation|resort/g,
+    food:        /food|recipe|cook|restaurant|meal|dish|menu|eat|chef|delivery|order\s+food/g,
+    creative:    /design|creative|draw|sketch|canvas|paint|art|illustrat|photo|video\s*edit|motion/g,
+    ai_tool:     /ai\s*tool|automat|machine\s*learn|neural|nlp|predict|generat|gpt|llm|intelligence/g,
+    saas:        /saas|platform|b2b|enterprise|dashboard|admin|crm|erp|management\s*system/g,
+    gaming:      /game|gaming|level|score|leaderboard|player|quest|multiplayer|achievement/g,
   };
-  if (explicit[scheme]) return explicit[scheme];
 
-  // Derive from content semantics
-  if (combined.match(/music|audio|beat|sound|spotify|playlist/)) return explicit.purple;
-  if (combined.match(/football|sport|field|game|coach|nfl|athlete/)) return { bg:'#060e14', card:'#0a1a24', card2:'#0f2332', accent:'#06b6d4', accent2:'#0369a1', glow:'rgba(6,182,212,0.2)', text:'#f0f9ff', sub:'#7cb8d4', border:'rgba(6,182,212,0.15)' };
-  if (combined.match(/food|restaurant|chef|cook|meal|recipe/)) return explicit.sunset;
-  if (combined.match(/health|medic|care|fit|wellness|body/)) return explicit.rose;
-  if (combined.match(/finance|money|invest|trade|crypto|bank/)) return explicit.amber;
-  if (combined.match(/nature|green|eco|sustain|plant|garden/)) return explicit.forest;
-  if (combined.match(/travel|ocean|sea|sky|flight|trip/)) return explicit.ocean;
+  let best = 'generic', bestCount = 0;
+  for (const [domain, re] of Object.entries(scores)) {
+    const matches = (all.match(re) || []).length;
+    if (matches > bestCount) { bestCount = matches; best = domain; }
+  }
+  return best;
+}
 
-  // Hash the app name to a palette for guaranteed uniqueness between same-category apps
+// ── Color themes — each domain/hash gets a unique visual identity ──────────
+function getDomainTheme(domain, fields, projectName) {
+  const explicit = (fields.color_scheme || '').toLowerCase().trim();
+
+  const themes = {
+    // Dark professional themes
+    midnight:   { bg:'#080d1a', sidebar:'#0a1020', header:'#0c1428', card:'#101830', card2:'#131d38', accent:'#06b6d4', accent2:'#0891b2', glow:'rgba(6,182,212,0.15)', text:'#f0f9ff', sub:'#7ea9c9', muted:'#3a5a73', border:'rgba(6,182,212,0.12)', badge:'rgba(6,182,212,0.15)', badgeText:'#06b6d4' },
+    ocean:      { bg:'#020c1e', sidebar:'#030e24', header:'#040f28', card:'#071629', card2:'#0a1c34', accent:'#3b82f6', accent2:'#1d4ed8', glow:'rgba(59,130,246,0.15)', text:'#eff6ff', sub:'#7ba7d4', muted:'#2a4870', border:'rgba(59,130,246,0.12)', badge:'rgba(59,130,246,0.15)', badgeText:'#60a5fa' },
+    forest:     { bg:'#030e06', sidebar:'#041209', card:'#06180b', card2:'#081d0e', header:'#05150a', accent:'#22c55e', accent2:'#16a34a', glow:'rgba(34,197,94,0.15)',  text:'#f0fdf4', sub:'#74c78a', muted:'#1a4d2a', border:'rgba(34,197,94,0.12)', badge:'rgba(34,197,94,0.15)', badgeText:'#4ade80' },
+    sunset:     { bg:'#110404', sidebar:'#180606', header:'#1e0808', card:'#220a0a', card2:'#2d0d0d', accent:'#f97316', accent2:'#dc2626', glow:'rgba(249,115,22,0.15)', text:'#fff7ed', sub:'#d97c59', muted:'#6b2e12', border:'rgba(249,115,22,0.12)', badge:'rgba(249,115,22,0.15)', badgeText:'#fb923c' },
+    purple:     { bg:'#0a0614', sidebar:'#0d0820', header:'#100a28', card:'#130c2e', card2:'#180f38', accent:'#a855f7', accent2:'#7c3aed', glow:'rgba(168,85,247,0.15)', text:'#faf5ff', sub:'#b490d4', muted:'#4a2570', border:'rgba(168,85,247,0.12)', badge:'rgba(168,85,247,0.15)', badgeText:'#c084fc' },
+    rose:       { bg:'#110306', sidebar:'#180408', header:'#1e0509', card:'#200607', card2:'#2a0808', accent:'#f43f5e', accent2:'#be123c', glow:'rgba(244,63,94,0.15)',  text:'#fff1f2', sub:'#c97a8c', muted:'#6b1a2a', border:'rgba(244,63,94,0.12)', badge:'rgba(244,63,94,0.15)', badgeText:'#fb7185' },
+    amber:      { bg:'#0e0900', sidebar:'#150d00', header:'#1b1100', card:'#1f1500', card2:'#2a1c00', accent:'#f59e0b', accent2:'#d97706', glow:'rgba(245,158,11,0.15)', text:'#fffbeb', sub:'#c29c5c', muted:'#6b4600', border:'rgba(245,158,11,0.12)', badge:'rgba(245,158,11,0.15)', badgeText:'#fbbf24' },
+    slate:      { bg:'#070b10', sidebar:'#0b1018', header:'#0e1520', card:'#111a24', card2:'#161f2c', accent:'#64748b', accent2:'#475569', glow:'rgba(100,116,139,0.15)',text:'#f8fafc', sub:'#94a3b8', muted:'#2a3545', border:'rgba(100,116,139,0.12)', badge:'rgba(100,116,139,0.2)', badgeText:'#94a3b8' },
+    // Specialized domain themes
+    cyan_sport: { bg:'#030f18', sidebar:'#041420', header:'#051928', card:'#071c30', card2:'#0a2238', accent:'#06b6d4', accent2:'#0284c7', glow:'rgba(6,182,212,0.2)', text:'#f0f9ff', sub:'#7cb8d4', muted:'#1a4060', border:'rgba(6,182,212,0.15)', badge:'rgba(6,182,212,0.2)', badgeText:'#22d3ee' },
+    emerald_med:{ bg:'#030f08', sidebar:'#041410', header:'#051918', card:'#071c12', card2:'#0a2218', accent:'#10b981', accent2:'#059669', glow:'rgba(16,185,129,0.2)', text:'#ecfdf5', sub:'#6cd4a6', muted:'#1a4030', border:'rgba(16,185,129,0.15)', badge:'rgba(16,185,129,0.2)', badgeText:'#34d399' },
+    gold_fin:   { bg:'#0e0b00', sidebar:'#151000', header:'#1c1500', card:'#221900', card2:'#2d2100', accent:'#eab308', accent2:'#ca8a04', glow:'rgba(234,179,8,0.2)',   text:'#fefce8', sub:'#c4a835', muted:'#5a4800', border:'rgba(234,179,8,0.15)', badge:'rgba(234,179,8,0.2)', badgeText:'#facc15' },
+    violet_ai:  { bg:'#080514', sidebar:'#0c071e', header:'#100a28', card:'#130d2c', card2:'#181238', accent:'#8b5cf6', accent2:'#6d28d9', glow:'rgba(139,92,246,0.2)',  text:'#f5f3ff', sub:'#a78bcc', muted:'#3d206a', border:'rgba(139,92,246,0.15)', badge:'rgba(139,92,246,0.2)', badgeText:'#a78bfa' },
+    teal_edu:   { bg:'#030f10', sidebar:'#041418', header:'#051920', card:'#071c22', card2:'#0a222a', accent:'#14b8a6', accent2:'#0d9488', glow:'rgba(20,184,166,0.2)',  text:'#f0fdfa', sub:'#5fcbb8', muted:'#1a4040', border:'rgba(20,184,166,0.15)', badge:'rgba(20,184,166,0.2)', badgeText:'#2dd4bf' },
+    red_law:    { bg:'#100303', sidebar:'#180404', header:'#1e0505', card:'#220606', card2:'#2d0808', accent:'#ef4444', accent2:'#b91c1c', glow:'rgba(239,68,68,0.2)',   text:'#fef2f2', sub:'#d07070', muted:'#6b1515', border:'rgba(239,68,68,0.15)', badge:'rgba(239,68,68,0.2)', badgeText:'#f87171' },
+    indigo_saas:{ bg:'#06040f', sidebar:'#090618', header:'#0d0820', card:'#100a25', card2:'#150e30', accent:'#6366f1', accent2:'#4f46e5', glow:'rgba(99,102,241,0.2)',  text:'#eef2ff', sub:'#8f93d8', muted:'#2a266a', border:'rgba(99,102,241,0.15)', badge:'rgba(99,102,241,0.2)', badgeText:'#818cf8' },
+  };
+
+  // Explicit scheme overrides everything
+  if (explicit && themes[explicit]) return themes[explicit];
+
+  // Domain → theme mapping (each domain gets a unique theme)
+  const domainThemes = {
+    sports_film: themes.cyan_sport,
+    music:       themes.purple,
+    health:      themes.emerald_med,
+    finance:     themes.gold_fin,
+    ecommerce:   themes.sunset,
+    education:   themes.teal_edu,
+    logistics:   themes.slate,
+    legal:       themes.red_law,
+    social:      themes.rose,
+    realestate:  themes.forest,
+    travel:      themes.ocean,
+    food:        themes.amber,
+    creative:    themes.violet_ai,
+    ai_tool:     themes.violet_ai,
+    saas:        themes.indigo_saas,
+    gaming:      themes.midnight,
+    generic:     null, // fall through to hash
+  };
+
+  if (domainThemes[domain]) return domainThemes[domain];
+
+  // Hash the project name for guaranteed uniqueness between same-domain apps
   let hash = 0;
   for (const c of (projectName || '')) hash = ((hash << 5) - hash) + c.charCodeAt(0);
-  const keys = Object.keys(explicit);
-  return explicit[keys[Math.abs(hash) % keys.length]];
+  const keys = ['midnight','ocean','forest','sunset','purple','rose','amber','slate'];
+  return themes[keys[Math.abs(hash) % keys.length]];
 }
 
-// ── Generate actual content items from the project's own words ────────
-function makeContentItems(fields, count) {
-  // Parse real data from the project
-  const appName  = fields.app_name || 'My App';
-  const audience = fields.audience || 'Users';
-  const workflows = (fields.workflows || '').split(/[,.;]/).map(s => s.trim()).filter(s => s.length > 3);
-  const features  = parseFeatureList(fields.core_features || '[]');
-  const problem   = fields.problem_statement || '';
+// ── Layout type selector — each domain uses a completely different layout ──
+function getDomainLayout(domain, fields, projectName) {
+  // Each domain gets a UNIQUE layout structure
+  const layouts = {
+    sports_film: 'film_analysis',   // Dark cinema UI — sidebar timeline, video card grid
+    music:       'music_player',    // Player-centric — album art, waveform, queue panel
+    health:      'clinical',        // Clean white-ish medical — appointment calendar, vitals
+    finance:     'trading',         // Dense data — portfolio widget, chart, positions table
+    ecommerce:   'storefront',      // Product grid — category sidebar, product cards, cart
+    education:   'lms',             // Course platform — progress sidebar, lesson cards
+    logistics:   'dispatch',        // Map-centric — route cards, driver list, status board
+    legal:       'case_manager',    // Document-heavy — case list, timeline, filing status
+    social:      'feed',            // Feed layout — stories bar, post cards, trending
+    realestate:  'property_portal', // Property grid — map half, listing cards
+    travel:      'itinerary',       // Trip planner — destination cards, map, booking
+    food:        'kitchen',         // Recipe/order — menu grid, order panel, ratings
+    creative:    'design_studio',   // Tool panels — canvas preview, layer list, toolbar
+    ai_tool:     'ai_console',      // Terminal-like — prompt input, output panel, history
+    saas:        'command_center',  // CRM/ERP — table, metric bar, sidebar nav
+    gaming:      'arcade',          // Leaderboard, achievements, game cards
+    generic:     'app_dashboard',   // Generic but clean — metric cards, activity feed
+  };
+  return layouts[domain] || 'app_dashboard';
+}
+
+// ── Main dashboard generator ──────────────────────────────────────────────
+function generateProjectDashboard(d, projectId, rawProjectName) {
+  const fields  = d.fields  || {};
+  const spec    = d.spec    || {};
+  const project = d.project || {};
+
+  const appName   = fields.app_name || spec.app_name || project.name || rawProjectName || 'My App';
+  const audience  = fields.audience || spec.target_audience || 'Users';
+  const problem   = fields.problem_statement || spec.problem_statement || '';
+  const workflows = fields.workflows || '';
+  const features  = parseFeatureList(fields.core_features || spec.key_features || '[]');
+  const roles     = (fields.roles_permissions || 'User').split(/[,/]/).map(s => s.trim()).filter(Boolean);
+  const bizModel  = fields.business_model || '';
+  const category  = fields.category || project.category || '';
   const apis      = (fields.apis_tools || '').split(',').map(s => s.trim()).filter(Boolean);
+  const addlNotes = fields.additional_comments || '';
 
-  // Build items by extracting real nouns/actions from the user's own language
-  const items = [];
+  const domain  = detectDomain(fields, appName);
+  const theme   = getDomainTheme(domain, fields, appName);
+  const layout  = getDomainLayout(domain, fields, appName);
+  const appIcon = resolveIcon(appName + ' ' + problem + ' ' + (features[0] || '') + ' ' + audience);
 
-  // From workflows — most specific content
-  workflows.slice(0, 3).forEach((w, i) => {
-    const status = ['Active', 'In Progress', 'Ready'][i] || 'Active';
-    items.push({ title: truncate(w, 42), sub: status, badge: i === 0 ? 'New' : null });
-  });
+  // Derive nav items from actual feature names
+  const feat0 = features[0] || (workflows.split(/[,.;]/)[0] || '').trim() || 'Main';
+  const feat1 = features[1] || (workflows.split(/[,.;]/)[1] || '').trim() || 'Analytics';
+  const feat2 = features[2] || roles[0] || 'Profile';
 
-  // From features
-  features.slice(0, 3).forEach((f, i) => {
-    items.push({ title: truncate(f, 42), sub: ['Latest', 'Updated', 'Featured'][i % 3], badge: null });
-  });
-
-  // From audience/APIs
-  if (apis.length) items.push({ title: `${apis[0]} Integration`, sub: 'Connected', badge: null });
-  if (audience) items.push({ title: `${truncate(audience, 30)} Dashboard`, sub: 'My view', badge: null });
-
-  // Ensure minimum count with context-aware fallbacks
-  const fallbackVerbs = ['Manage', 'Track', 'View', 'Analyze', 'Review'];
-  const fallbackNouns = [appName, audience, 'Activity', 'Overview', 'Settings'];
-  while (items.length < count) {
-    const i = items.length;
-    items.push({ title: `${fallbackVerbs[i % 5]} ${fallbackNouns[i % 5]}`, sub: 'Tap to open', badge: null });
+  // Generate the dashboard based on layout type
+  switch (layout) {
+    case 'film_analysis':    return renderFilmAnalysisDashboard(theme, appName, appIcon, fields, features, workflows, audience, problem, bizModel, apis, feat0, feat1, feat2, projectId);
+    case 'music_player':     return renderMusicPlayerDashboard(theme, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId);
+    case 'clinical':         return renderClinicalDashboard(theme, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId);
+    case 'trading':          return renderTradingDashboard(theme, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId);
+    case 'storefront':       return renderStorefrontDashboard(theme, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId);
+    case 'lms':              return renderLMSDashboard(theme, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId);
+    case 'dispatch':         return renderDispatchDashboard(theme, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId);
+    case 'case_manager':     return renderCaseManagerDashboard(theme, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId);
+    case 'feed':             return renderSocialFeedDashboard(theme, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId);
+    case 'property_portal':  return renderPropertyPortalDashboard(theme, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId);
+    case 'itinerary':        return renderItineraryDashboard(theme, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId);
+    case 'kitchen':          return renderKitchenDashboard(theme, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId);
+    case 'design_studio':    return renderDesignStudioDashboard(theme, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId);
+    case 'ai_console':       return renderAIConsoleDashboard(theme, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId);
+    case 'command_center':   return renderCommandCenterDashboard(theme, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId);
+    case 'arcade':           return renderArcadeDashboard(theme, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId);
+    default:                 return renderAppDashboard(theme, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId);
   }
-
-  return items.slice(0, count);
 }
 
-// ── Generate domain-specific stats from project language ──────────────
-function makeDashboardStats(fields) {
-  const biz   = (fields.business_model || '').toLowerCase();
-  const wf    = (fields.workflows || '').toLowerCase();
-  const feats = parseFeatureList(fields.core_features || '[]');
-  const aud   = (fields.audience || 'Users').split('/')[0].trim();
-  const feat0 = (feats[0] || 'Items').split(' ').slice(0, 2).join(' ');
-
-  // Pull numbers/concepts from the user's actual language
-  const hasPay    = biz.match(/sub|pay|revenue|premium/);
-  const hasUsers  = wf.match(/user|member|player|coach|student|customer|client/);
-  const hasFilm   = wf.match(/film|video|upload|analyze|breakdown/);
-  const hasPlay   = wf.match(/song|track|music|playlist|play/);
-  const hasTask   = wf.match(/task|project|sprint|workflow|manage/);
-  const hasHealth = wf.match(/appoint|patient|medic|health|checkup/);
-  const hasFinan  = wf.match(/portfolio|invest|budget|trade|revenue/);
-
-  if (hasFilm)   return [['Uploads','0'],   ['Analyzed','0'],  ['Reports','0']];
-  if (hasPlay)   return [['Tracks','0'],    ['Playlists','0'], ['Plays','0']];
-  if (hasTask)   return [['Tasks','0'],     ['Done','0'],      ['Team','0']];
-  if (hasHealth) return [['Visits','0'],    ['Records','0'],   ['Alerts','0']];
-  if (hasFinan)  return [['Balance','$0'],  ['Return','0%'],   ['Alerts','0']];
-  if (hasUsers)  return [[`${aud}s`,'0'],   [truncate(feat0,10),'0'], ['Active','0']];
-  if (hasPay)    return [['Revenue','$0'],  [truncate(feat0,10),'0'], [aud+'s','0']];
-  return [[truncate(feat0,10),'0'], ['Active','0'], ['Total','0']];
-}
-
-// ── Generate detail body text from the project's problem statement ─────
-function makeDetailBody(fields) {
-  const p  = fields.problem_statement || '';
-  const wf = fields.workflows || '';
-  const feat0 = (parseFeatureList(fields.core_features || '[]')[0] || '');
-  if (p.length > 40)  return truncate(p, 200);
-  if (wf.length > 40) return truncate(wf, 200);
-  if (feat0)           return `Use ${feat0} to get the most out of ${fields.app_name || 'this app'}.`;
-  return `Detailed view with all relevant data, actions and history.`;
-}
-
-// ── Analytics metrics derived from workflows/features ─────────────────
-function makeAnalyticsCards(fields) {
-  const wf   = (fields.workflows || '').toLowerCase();
-  const feats = parseFeatureList(fields.core_features || '[]');
-  const aud   = (fields.audience || 'Users').split(/[,/]/)[0].trim();
-  const biz   = (fields.business_model || '').toLowerCase();
-
-  const hasPay    = biz.match(/sub|pay/);
-  const hasFilm   = wf.match(/film|video|analyze|breakdown|formation/);
-  const hasPlay   = wf.match(/song|music|playlist|listen/);
-  const hasTask   = wf.match(/task|sprint|manage|workflow/);
-  const hasHealth = wf.match(/appoint|medic|patient|health/);
-  const hasFinan  = wf.match(/portfolio|invest|budget|trade/);
-  const hasSocial = wf.match(/post|feed|follow|like|share/);
-  const hasShop   = wf.match(/order|cart|product|inventory/);
-
-  if (hasFilm) return [
-    { icon:'fas fa-film',     label:'Film Sessions',   value:'–', note:'Lifetime' },
-    { icon:'fas fa-brain',    label:'AI Breakdowns',   value:'–', note:'Generated' },
-    { icon:'fas fa-chart-bar',label:'Formations Found',value:'–', note:'Detected' },
-    { icon:'fas fa-users',    label:`${aud}s`,          value:'–', note:'On platform' },
-  ];
-  if (hasPlay) return [
-    { icon:'fas fa-music',       label:'Tracks',        value:'–', note:'Available' },
-    { icon:'fas fa-list',        label:'Playlists',     value:'–', note:'Created' },
-    { icon:'fas fa-headphones',  label:'Listening Time',value:'0h',note:'This week' },
-    { icon:'fas fa-heart',       label:'Favorites',     value:'–', note:'Saved' },
-  ];
-  if (hasTask) return [
-    { icon:'fas fa-check-square',label:'Tasks Completed',value:'–', note:'This sprint' },
-    { icon:'fas fa-bolt',         label:'Velocity',      value:'–', note:'Points/sprint' },
-    { icon:'fas fa-users',        label:'Team Members',  value:'–', note:'Active' },
-    { icon:'fas fa-clock',        label:'Cycle Time',    value:'–', note:'Avg days' },
-  ];
-  if (hasHealth) return [
-    { icon:'fas fa-calendar-days',label:'Appointments', value:'–', note:'Upcoming' },
-    { icon:'fas fa-heart-pulse',  label:'Avg Heart Rate',value:'–', note:'BPM' },
-    { icon:'fas fa-pills',        label:'Medications',  value:'–', note:'Active' },
-    { icon:'fas fa-chart-line',   label:'Health Score', value:'–', note:'Overall' },
-  ];
-  if (hasFinan) return [
-    { icon:'fas fa-wallet',       label:'Net Worth',    value:'–', note:'Current' },
-    { icon:'fas fa-arrow-trend-up',label:'Return',      value:'–', note:'YTD' },
-    { icon:'fas fa-chart-pie',    label:'Budget Used',  value:'–', note:'This month' },
-    { icon:'fas fa-coins',        label:'Savings Rate', value:'–', note:'Of income' },
-  ];
-  if (hasSocial) return [
-    { icon:'fas fa-users',        label:'Followers',    value:'–', note:'Total' },
-    { icon:'fas fa-heart',        label:'Total Likes',  value:'–', note:'All posts' },
-    { icon:'fas fa-eye',          label:'Views',        value:'–', note:'This week' },
-    { icon:'fas fa-chart-line',   label:'Engagement',   value:'–', note:'Rate' },
-  ];
-  if (hasShop) return [
-    { icon:'fas fa-bag-shopping', label:'Orders',       value:'–', note:'This month' },
-    { icon:'fas fa-dollar-sign',  label:'Revenue',      value:'–', note:'Total' },
-    { icon:'fas fa-star',         label:'Avg Rating',   value:'–', note:'Out of 5' },
-    { icon:'fas fa-users',        label:'Customers',    value:'–', note:'Active' },
-  ];
-  // Generic but built from actual feature names
-  return [
-    { icon: resolveIcon(feats[0]||''), label: truncate(feats[0]||'Items',14), value:'–', note:'Total' },
-    { icon: resolveIcon(feats[1]||'analytics'), label: truncate(feats[1]||'Active',14), value:'–', note:'Right now' },
-    { icon:'fas fa-users', label:`${aud}s`, value:'–', note:'Registered' },
-    { icon: hasPay?'fas fa-credit-card':'fas fa-chart-line', label: hasPay?'Revenue':'Growth', value:'–', note:'All time' },
-  ];
-}
-
-// ── CSS helpers ───────────────────────────────────────────────────────
-const css = {
-  card: (p) => `background:${p.card};border:1px solid ${p.border}`,
-  card2: (p) => `background:${p.card2};border:1px solid ${p.border}`,
-  accent: (p) => `background:linear-gradient(135deg,${p.accent},${p.accent2})`,
-  accentGhost: (p) => `background:${p.glow};border:1px solid ${p.border}`,
-  text: (p) => `color:${p.text}`,
-  sub: (p) => `color:${p.sub}`,
-  accentColor: (p) => `color:${p.accent}`,
-};
-
-// ── Bottom nav built from feature names ───────────────────────────────
-function buildBottomNav(p, activeId, navItems) {
-  return `<div class="absolute bottom-0 left-0 right-0 flex items-stretch border-t" style="${css.card(p)};z-index:10">
-    ${navItems.map(t => `
-    <button class="flex flex-col items-center justify-center gap-0.5 flex-1 py-2.5" onclick="viewGoTo('${t.screen}')">
-      <i class="${t.icon}" style="font-size:13px;${activeId===t.id ? `color:${p.accent}` : `color:${p.sub};opacity:0.5`}"></i>
-      <span style="font-size:8px;font-weight:${activeId===t.id?700:400};${activeId===t.id ? `color:${p.accent}` : `color:${p.sub};opacity:0.5`}">${escHtml(t.label)}</span>
-      ${activeId===t.id ? `<div class="w-1 h-1 rounded-full" style="background:${p.accent}"></div>` : '<div class="w-1 h-1"></div>'}
-    </button>`).join('')}
+// ── Shared top-bar builder ─────────────────────────────────────────────────
+function viewTopBar(theme, appName, appIcon, projectId, rightContent = '') {
+  const t = theme;
+  return `<div class="flex items-center justify-between px-5 py-3 flex-shrink-0" style="background:${t.header};border-bottom:1px solid ${t.border}">
+    <div class="flex items-center gap-3">
+      <button onclick="closeViewModal()" style="color:${t.sub};font-size:11px" class="flex items-center gap-1.5 hover:opacity-80 transition-opacity">
+        <i class="fas fa-arrow-left"></i><span>Back</span>
+      </button>
+      <div style="width:1px;height:18px;background:${t.border}"></div>
+      <div class="flex items-center gap-2">
+        <div class="w-7 h-7 rounded-lg flex items-center justify-center" style="background:linear-gradient(135deg,${t.accent},${t.accent2})">
+          <i class="${appIcon}" style="font-size:12px;color:white"></i>
+        </div>
+        <span class="font-bold text-sm" style="color:${t.text}">${escHtml(appName)}</span>
+        <span class="text-xs px-2 py-0.5 rounded-full font-semibold" style="background:${t.badge};color:${t.badgeText}">PREVIEW</span>
+      </div>
+    </div>
+    <div class="flex items-center gap-2">
+      ${rightContent}
+      <button onclick="closeViewModal(); openTestingModal(null, VIEW_PROJECT.id, VIEW_PROJECT.name)"
+        class="text-xs px-3 py-1.5 rounded-lg font-semibold flex items-center gap-1.5 transition-opacity hover:opacity-80"
+        style="border:1px solid ${t.border};color:${t.sub}">
+        <i class="fas fa-flask"></i> Revise
+      </button>
+      <button onclick="closeViewModal(); openPublishModal(VIEW_PROJECT.id)"
+        class="text-xs px-3 py-1.5 rounded-lg font-semibold text-white flex items-center gap-1.5"
+        style="background:linear-gradient(135deg,${t.accent},${t.accent2})">
+        <i class="fas fa-rocket"></i> Publish
+      </button>
+      <button onclick="closeViewModal()" style="color:${t.sub}" class="w-8 h-8 flex items-center justify-center rounded-lg hover:opacity-80">
+        <i class="fas fa-xmark text-sm"></i>
+      </button>
+    </div>
   </div>`;
 }
 
-// ══════════════════════════════════════════════════════════════════════
-//  MAIN SCREEN BUILDER — everything from the user's own words
-// ══════════════════════════════════════════════════════════════════════
-function buildAppScreens(d) {
-  const fields  = d.fields  || {};
-  const spec    = d.spec    || {};
-  const project = d.project || {};
-
-  // ── Core project identity ──────────────────────────────────────────
-  const appName    = fields.app_name || spec.app_name || project.name || 'My App';
-  const audience   = fields.audience || spec.target_audience || 'Users';
-  const category   = fields.category || project.category || '';
-  const problem    = fields.problem_statement || spec.problem_statement || `Built for ${audience}`;
-  const workflows  = fields.workflows || '';
-  const features   = parseFeatureList(fields.core_features || spec.key_features || '[]');
-  const roles      = (fields.roles_permissions || 'User').split(/[,/]/).map(s => s.trim()).filter(Boolean);
-  const platform   = fields.platform_notes || 'Web and Mobile';
-  const bizModel   = fields.business_model || '';
-  const apis       = (fields.apis_tools || '').split(',').map(s => s.trim()).filter(Boolean);
-  const futureVer  = fields.future_versions || '';
-  const addlNotes  = fields.additional_comments || '';
-
-  const p         = deriveColorPalette(fields, appName);  // unique palette per project
-  const appIcon   = resolveIcon(appName + ' ' + problem + ' ' + (features[0] || '') + ' ' + audience);
-  const feat0     = features[0] || truncate(workflows.split(/[,.]/)[ 0] || 'Main Feature', 28);
-  const feat1     = features[1] || truncate(workflows.split(/[,.]/)[ 1] || 'Dashboard', 28);
-  const feat0Icon = resolveIcon(feat0);
-  const feat1Icon = resolveIcon(feat1);
-  const roleLabel = roles[0] || 'User';
-  const hasSubs   = bizModel.toLowerCase().match(/sub|premium|pro/);
-  const hasFree   = bizModel.toLowerCase().match(/free/);
-  const isIOS     = platform.toLowerCase().match(/ios|iphone|apple/);
-  const isAndroid = platform.toLowerCase().match(/android/);
-  const isWeb     = platform.toLowerCase().match(/web|cloudflare|browser/);
-
-  const contentItems = makeContentItems(fields, 6);
-  const dashStats    = makeDashboardStats(fields);
-  const analyticsCards = makeAnalyticsCards(fields);
-
-  // ── Nav items — labels from actual feature names ───────────────────
-  const navItems = [
-    { id:'home',      icon:'fas fa-house',    label:'Home',                     screen:'home' },
-    { id:'feature',   icon: feat0Icon,        label: truncate(feat0, 7),        screen:'feature' },
-    { id:'analytics', icon:'fas fa-chart-bar',label:'Reports',                  screen:'analytics' },
-    { id:'profile',   icon:'fas fa-user',     label: truncate(roleLabel, 7),    screen:'profile' },
-  ];
-
-  const screens = [];
-
-  // ══════════════════════════════════════════════════════════════════
-  //  S1 — SPLASH (project tagline, icon, platform chips)
-  // ══════════════════════════════════════════════════════════════════
-  screens.push({ id:'splash', label:'Welcome', icon:'fas fa-play-circle',
-    render: () => `
-<div class="relative flex flex-col items-center justify-center min-h-[520px] overflow-hidden px-6" style="background:${p.bg}">
-  <!-- Radial glow -->
-  <div class="absolute inset-0 pointer-events-none" style="background:radial-gradient(ellipse 80% 60% at 50% 30%,${p.glow},transparent)"></div>
-
-  <!-- App icon with ring -->
-  <div class="relative mb-5 z-10">
-    <div class="w-24 h-24 rounded-3xl flex items-center justify-center shadow-2xl" style="${css.accent(p)}">
-      <i class="${appIcon} text-white" style="font-size:38px"></i>
-    </div>
-    <div class="absolute -inset-1 rounded-[28px] opacity-30 -z-10 blur-sm" style="${css.accent(p)}"></div>
-  </div>
-
-  <!-- Name + tagline -->
-  <h1 class="text-3xl font-black text-center mb-2 z-10" style="${css.text(p)}">${escHtml(appName)}</h1>
-  <p class="text-sm text-center leading-relaxed max-w-xs z-10 mb-1" style="${css.sub(p)};opacity:0.8">
-    ${escHtml(truncate(problem, 90))}
-  </p>
-
-  <!-- Platform chips -->
-  <div class="flex gap-2 mt-3 mb-8 z-10">
-    ${isIOS    ? `<span class="flex items-center gap-1 text-xs px-2.5 py-1 rounded-full" style="${css.card(p)};${css.sub(p)}"><i class="fab fa-apple" style="font-size:10px"></i> iOS</span>` : ''}
-    ${isAndroid? `<span class="flex items-center gap-1 text-xs px-2.5 py-1 rounded-full" style="${css.card(p)};color:#3ddc84"><i class="fab fa-android" style="font-size:10px"></i> Android</span>` : ''}
-    ${isWeb    ? `<span class="flex items-center gap-1 text-xs px-2.5 py-1 rounded-full" style="${css.card(p)};${css.sub(p)}"><i class="fas fa-globe" style="font-size:10px"></i> Web</span>` : ''}
-    ${(!isIOS&&!isAndroid&&!isWeb) ? `<span class="flex items-center gap-1 text-xs px-2.5 py-1 rounded-full" style="${css.card(p)};${css.sub(p)}"><i class="fas fa-mobile-screen" style="font-size:10px"></i> ${escHtml(truncate(platform,20))}</span>` : ''}
-  </div>
-
-  <!-- CTAs -->
-  <div class="w-full max-w-xs space-y-3 z-10">
-    <button class="w-full py-4 rounded-2xl font-black text-white text-sm tracking-wide shadow-xl" style="${css.accent(p)}" onclick="viewGoTo('login')">
-      Get Started — It's ${hasFree?'Free':'Ready'}
-    </button>
-    <button class="w-full py-3.5 rounded-2xl text-sm font-semibold" style="${css.card(p)};${css.sub(p)}" onclick="viewGoTo('login')">
-      Sign In
-    </button>
-  </div>
-
-  ${hasSubs ? `<p class="text-xs mt-4 z-10" style="${css.sub(p)};opacity:0.4">Free trial · No credit card required</p>` : `<p class="text-xs mt-4 z-10" style="${css.sub(p)};opacity:0.4">For ${escHtml(truncate(audience,36))}</p>`}
-</div>`
-  });
-
-  // ══════════════════════════════════════════════════════════════════
-  //  S2 — SIGN IN (role-aware, app-branded)
-  // ══════════════════════════════════════════════════════════════════
-  screens.push({ id:'login', label:'Sign In', icon:'fas fa-lock',
-    render: () => `
-<div class="flex flex-col min-h-[520px] px-5 pt-6 pb-4" style="background:${p.bg}">
-  <button class="flex items-center gap-1 text-xs mb-6 opacity-50" style="${css.sub(p)}" onclick="viewGoTo('splash')">
-    <i class="fas fa-chevron-left"></i> Back
-  </button>
-
-  <!-- Branded header -->
-  <div class="flex items-center gap-3 mb-6">
-    <div class="w-12 h-12 rounded-2xl flex items-center justify-center shadow-lg" style="${css.accent(p)}">
-      <i class="${appIcon} text-white" style="font-size:16px"></i>
-    </div>
-    <div>
-      <p class="text-base font-black" style="${css.text(p)}">${escHtml(appName)}</p>
-      <p class="text-xs opacity-50" style="${css.sub(p)}">Sign in to continue</p>
-    </div>
-  </div>
-
-  <!-- Fields -->
-  <div class="space-y-3 mb-4">
-    <div class="rounded-2xl px-4 py-3.5" style="${css.card(p)}">
-      <p class="text-xs mb-1 opacity-50" style="${css.sub(p)}">${roles.length > 1 ? `${roles.slice(0,2).join(' / ')} Email` : 'Email address'}</p>
-      <p class="text-sm" style="${css.text(p)}">your@email.com</p>
-    </div>
-    <div class="rounded-2xl px-4 py-3.5" style="${css.card(p)}">
-      <p class="text-xs mb-1 opacity-50" style="${css.sub(p)}">Password</p>
-      <p class="text-sm" style="${css.sub(p)}">••••••••••</p>
-    </div>
-  </div>
-
-  <!-- Role selector (if multiple roles) -->
-  ${roles.length > 1 ? `
-  <div class="flex gap-2 mb-4">
-    ${roles.slice(0,3).map((r,i) => `<button class="flex-1 py-2.5 rounded-xl text-xs font-semibold" style="${i===0 ? css.accent(p)+';color:#fff' : css.card2(p)+';'+css.sub(p)}" onclick="viewGoTo('home')">${escHtml(r)}</button>`).join('')}
-  </div>` : ''}
-
-  <button class="w-full py-4 rounded-2xl font-black text-white text-sm shadow-lg mb-3" style="${css.accent(p)}" onclick="viewGoTo('home')">
-    Sign In to ${escHtml(appName)}
-  </button>
-
-  <div class="flex items-center gap-3 my-3">
-    <div class="flex-1 h-px" style="background:${p.border}"></div>
-    <span class="text-xs opacity-40" style="${css.sub(p)}">or</span>
-    <div class="flex-1 h-px" style="background:${p.border}"></div>
-  </div>
-
-  <button class="w-full py-3.5 rounded-2xl text-sm font-semibold flex items-center justify-center gap-2 mb-2" style="${css.card(p)};${css.sub(p)}" onclick="viewGoTo('home')">
-    <i class="fab fa-google text-blue-400"></i> Continue with Google
-  </button>
-
-  <p class="text-center text-xs mt-3" style="${css.sub(p)};opacity:0.5">
-    New here? <span class="underline cursor-pointer" style="${css.accentColor(p)}" onclick="viewGoTo('home')">Create account — free</span>
-  </p>
-</div>`
-  });
-
-  // ══════════════════════════════════════════════════════════════════
-  //  S3 — HOME DASHBOARD (app-specific hero, stats, activity)
-  // ══════════════════════════════════════════════════════════════════
-  screens.push({ id:'home', label:'Home', icon:'fas fa-house',
-    render: () => `
-<div class="flex flex-col min-h-[520px] pb-16 relative" style="background:${p.bg}">
-  <!-- Top bar -->
-  <div class="flex items-center justify-between px-4 pt-4 pb-3" style="${css.card(p)}">
-    <div>
-      <p class="text-xs opacity-40" style="${css.sub(p)}">Welcome back</p>
-      <p class="text-base font-black" style="${css.text(p)}">${escHtml(roleLabel)}</p>
-    </div>
-    <div class="flex gap-2 items-center">
-      <button class="w-8 h-8 rounded-full flex items-center justify-center" style="${css.accentGhost(p)}">
-        <i class="fas fa-bell" style="font-size:11px;${css.accentColor(p)}"></i>
-      </button>
-      <div class="w-9 h-9 rounded-full flex items-center justify-center text-white font-black text-sm" style="${css.accent(p)}">
-        ${escHtml(roleLabel.charAt(0).toUpperCase())}
-      </div>
-    </div>
-  </div>
-
-  <!-- Hero card — unique gradient + content per project -->
-  <div class="mx-3 mt-3 rounded-2xl p-4 relative overflow-hidden shadow-xl" style="${css.accent(p)}">
-    <div class="absolute right-0 top-0 w-32 h-32 rounded-full opacity-15 blur-xl" style="background:#fff;transform:translate(20%,-20%)"></div>
-    <div class="absolute left-0 bottom-0 w-20 h-20 rounded-full opacity-10 blur-lg" style="background:#000;transform:translate(-20%,20%)"></div>
-    <p class="text-white text-xs opacity-75 mb-0.5 relative z-10">${escHtml(appName)}</p>
-    <p class="text-white text-lg font-black leading-tight relative z-10">${escHtml(truncate(feat0, 32))}</p>
-    <p class="text-white text-xs opacity-60 mt-1 leading-snug relative z-10">${escHtml(truncate(problem, 55))}</p>
-    <button class="mt-3 px-4 py-2 rounded-xl text-xs font-bold relative z-10 flex items-center gap-1.5" style="background:rgba(255,255,255,0.18);color:#fff;backdrop-filter:blur(4px)" onclick="viewGoTo('feature')">
-      <i class="${feat0Icon}" style="font-size:10px"></i> ${escHtml(truncate(feat0, 18))} <i class="fas fa-arrow-right opacity-70" style="font-size:9px"></i>
-    </button>
-  </div>
-
-  <!-- Stats row — project-specific labels -->
-  <div class="flex gap-2 mx-3 mt-3">
-    ${dashStats.map(([label, val]) => `
-    <div class="flex-1 rounded-xl py-3 text-center" style="${css.card2(p)}">
-      <p class="text-sm font-black" style="${css.accentColor(p)}">${escHtml(val)}</p>
-      <p style="font-size:9px;${css.sub(p)};opacity:0.6;margin-top:2px">${escHtml(label)}</p>
-    </div>`).join('')}
-  </div>
-
-  <!-- Feature tiles — real feature names from prompt -->
-  ${features.length ? `
-  <div class="px-3 mt-4">
-    <p class="text-xs font-bold uppercase tracking-widest mb-2" style="${css.sub(p)};opacity:0.45">Features</p>
-    <div class="grid grid-cols-4 gap-2">
-      ${features.slice(0,4).map((f,i) => `
-      <button class="flex flex-col items-center gap-1.5 p-2.5 rounded-xl" style="${css.card(p)}" onclick="viewGoTo('feature')">
-        <div class="w-9 h-9 rounded-xl flex items-center justify-center" style="${css.accentGhost(p)}">
-          <i class="${resolveIcon(f)}" style="${css.accentColor(p)};font-size:12px"></i>
-        </div>
-        <p class="text-center" style="font-size:8px;${css.sub(p)};line-height:1.3">${escHtml(truncate(f,10))}</p>
+// ── Sidebar nav builder ────────────────────────────────────────────────────
+function viewSidebar(theme, items, activeIdx = 0, width = '200px') {
+  const t = theme;
+  return `<div class="flex flex-col flex-shrink-0 overflow-y-auto" style="width:${width};background:${t.sidebar};border-right:1px solid ${t.border}">
+    <div class="flex-1 p-3 space-y-1">
+      ${items.map((item, i) => `
+      <button class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all text-left"
+        style="${i === activeIdx ? `background:${t.badge};color:${t.accent}` : `color:${t.sub}`}">
+        <i class="${item.icon}" style="font-size:13px;width:16px;text-align:center"></i>
+        <span style="font-size:12px;font-weight:${i===activeIdx?700:500}">${escHtml(item.label)}</span>
+        ${item.badge ? `<span class="ml-auto text-xs px-1.5 py-0.5 rounded-full" style="background:${t.badge};color:${t.badgeText}">${item.badge}</span>` : ''}
       </button>`).join('')}
     </div>
-  </div>` : ''}
+  </div>`;
+}
 
-  <!-- Activity feed — derived from workflows -->
-  <div class="px-3 mt-4">
-    <p class="text-xs font-bold uppercase tracking-widest mb-2" style="${css.sub(p)};opacity:0.45">Recent Activity</p>
-    <div class="space-y-2">
-      ${contentItems.slice(0,3).map((item,i) => `
-      <div class="flex items-center gap-3 p-3 rounded-xl" style="${css.card(p)}">
-        <div class="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0" style="${css.accentGhost(p)}">
-          <i class="${resolveIcon(item.title)}" style="${css.accentColor(p)};font-size:10px"></i>
+// ── KPI card builder ───────────────────────────────────────────────────────
+function kpiCard(theme, icon, label, value, note, change = null) {
+  const t = theme;
+  return `<div class="rounded-2xl p-4 flex flex-col gap-2" style="background:${t.card};border:1px solid ${t.border}">
+    <div class="flex items-center justify-between">
+      <div class="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style="background:${t.badge}">
+        <i class="${icon}" style="font-size:14px;color:${t.accent}"></i>
+      </div>
+      ${change !== null ? `<span class="text-xs font-semibold" style="color:${change >= 0 ? '#22c55e' : '#ef4444'}">${change >= 0 ? '+' : ''}${change}%</span>` : ''}
+    </div>
+    <div>
+      <p class="text-2xl font-black" style="color:${t.text}">${escHtml(value)}</p>
+      <p class="text-xs font-medium" style="color:${t.sub}">${escHtml(label)}</p>
+      ${note ? `<p class="text-xs mt-0.5" style="color:${t.muted}">${escHtml(note)}</p>` : ''}
+    </div>
+  </div>`;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  LAYOUT 1: FILM ANALYSIS DASHBOARD
+//  Sports/Film AI tool — dark cinema vibes, breakdown panels, film grid
+// ══════════════════════════════════════════════════════════════════════════
+function renderFilmAnalysisDashboard(t, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId) {
+  const roles = (fields.roles_permissions || 'Coaches/Players').split(/[,/]/).map(s=>s.trim());
+  const wfItems = workflows.split(/[,.;]/).map(s=>s.trim()).filter(s=>s.length>3).slice(0,4);
+
+  const sidebarItems = [
+    { icon:'fas fa-gauge-high',  label:'Dashboard',   badge: null },
+    { icon:'fas fa-film',        label:'Film Library', badge: '3 New' },
+    { icon:'fas fa-brain',       label:'AI Breakdown', badge: null },
+    { icon:'fas fa-chart-bar',   label:'Analytics',    badge: null },
+    { icon:'fas fa-users',       label: truncate(roles[0]||'Team', 12), badge: null },
+    { icon:'fas fa-gear',        label:'Settings',     badge: null },
+  ];
+
+  const filmCards = [
+    { title: truncate(wfItems[0] || 'Week 12 vs Eagles', 28), tag: 'Offense', pct: '72%', color: t.accent },
+    { title: truncate(wfItems[1] || 'Red Zone Package', 28), tag: 'Defense', pct: '58%', color: '#a855f7' },
+    { title: 'Formation Tendencies', tag: 'Special Teams', pct: '41%', color: '#f59e0b' },
+    { title: truncate(features[0] || 'Pass Rush Schemes', 28), tag: 'AI Ready', pct: '–', color: '#22c55e' },
+  ];
+
+  return `<div class="flex flex-col h-full" style="background:${t.bg};font-family:'Inter',sans-serif">
+    ${viewTopBar(t, appName, appIcon, projectId)}
+    <div class="flex flex-1 overflow-hidden">
+      ${viewSidebar(t, sidebarItems, 0, '200px')}
+      <!-- Main content -->
+      <div class="flex-1 overflow-y-auto p-5 space-y-5">
+        <!-- Header row -->
+        <div class="flex items-center justify-between">
+          <div>
+            <h1 class="text-xl font-black" style="color:${t.text}">Film Dashboard</h1>
+            <p class="text-xs" style="color:${t.sub}">${escHtml(truncate(problem || `AI-powered analysis for ${audience}`, 70))}</p>
+          </div>
+          <div class="flex gap-2">
+            <button class="text-xs px-4 py-2 rounded-xl font-bold flex items-center gap-2" style="background:linear-gradient(135deg,${t.accent},${t.accent2});color:white">
+              <i class="fas fa-cloud-arrow-up"></i> Upload Film
+            </button>
+          </div>
         </div>
-        <p class="flex-1 text-xs leading-snug" style="${css.text(p)}">${escHtml(item.title)}</p>
-        <p class="text-xs opacity-35 flex-shrink-0" style="${css.sub(p)}">${['just now','5m','1h'][i]}</p>
-      </div>`).join('')}
-    </div>
-  </div>
 
-  ${buildBottomNav(p, 'home', navItems)}
-</div>`
-  });
-
-  // ══════════════════════════════════════════════════════════════════
-  //  S4 — CORE FEATURE SCREEN (real content items from workflows)
-  // ══════════════════════════════════════════════════════════════════
-  screens.push({ id:'feature', label: truncate(feat0, 12), icon: feat0Icon,
-    render: () => `
-<div class="flex flex-col min-h-[520px] pb-16 relative" style="background:${p.bg}">
-  <!-- Header -->
-  <div class="px-4 pt-4 pb-3" style="${css.card(p)}">
-    <div class="flex items-center gap-3 mb-3">
-      <button class="w-8 h-8 rounded-full flex items-center justify-center" style="${css.accentGhost(p)}" onclick="viewGoTo('home')">
-        <i class="fas fa-chevron-left" style="${css.accentColor(p)};font-size:10px"></i>
-      </button>
-      <div class="flex-1">
-        <p class="text-base font-black" style="${css.text(p)}">${escHtml(truncate(feat0,30))}</p>
-        <p class="text-xs opacity-40" style="${css.sub(p)}">${escHtml(truncate(problem,44))}</p>
-      </div>
-      <button class="w-8 h-8 rounded-full flex items-center justify-center" style="${css.accentGhost(p)}">
-        <i class="fas fa-sliders" style="${css.accentColor(p)};font-size:10px"></i>
-      </button>
-    </div>
-    <!-- Search -->
-    <div class="flex items-center gap-2 rounded-xl px-3 py-2.5" style="${css.card2(p)}">
-      <i class="fas fa-search opacity-35" style="${css.sub(p)};font-size:10px"></i>
-      <span class="text-xs opacity-35" style="${css.sub(p)}">Search ${escHtml(truncate(feat0,20))}…</span>
-    </div>
-  </div>
-
-  <!-- Tab strip if multiple features -->
-  ${features.length > 1 ? `
-  <div class="flex gap-1 px-4 pt-3 overflow-x-auto">
-    ${features.slice(0,4).map((f,i) => `
-    <button class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap" style="${i===0 ? css.accent(p)+';color:#fff' : css.card(p)+';'+css.sub(p)}" onclick="viewGoTo('feature')">
-      <i class="${resolveIcon(f)}" style="font-size:9px"></i> ${escHtml(truncate(f,12))}
-    </button>`).join('')}
-  </div>` : ''}
-
-  <!-- Content list — real items from user's workflows + features -->
-  <div class="flex-1 overflow-y-auto px-4 mt-3 space-y-2 pb-2">
-    ${contentItems.map((item, i) => `
-    <button class="w-full flex items-center gap-3 p-3.5 rounded-2xl text-left" style="${css.card(p)}" onclick="viewGoTo('detail')">
-      <div class="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0" style="${i===0 ? css.accent(p) : css.accentGhost(p)}">
-        <i class="${resolveIcon(item.title)}" style="color:${i===0?'#fff':p.accent};font-size:13px"></i>
-      </div>
-      <div class="flex-1 min-w-0">
-        <p class="text-sm font-semibold truncate" style="${css.text(p)}">${escHtml(item.title)}</p>
-        <p class="text-xs opacity-45 mt-0.5" style="${css.sub(p)}">${escHtml(item.sub)}</p>
-      </div>
-      ${item.badge ? `<span class="text-xs px-2 py-0.5 rounded-full font-bold flex-shrink-0" style="${css.accentGhost(p)};${css.accentColor(p)}">${escHtml(item.badge)}</span>` : `<i class="fas fa-chevron-right flex-shrink-0 opacity-25" style="${css.sub(p)};font-size:9px"></i>`}
-    </button>`).join('')}
-  </div>
-
-  <!-- FAB -->
-  <div class="absolute bottom-20 right-4">
-    <button class="flex items-center gap-2 px-4 h-11 rounded-full shadow-2xl font-bold text-white text-xs" style="${css.accent(p)};box-shadow:0 4px 20px ${p.glow}" onclick="viewGoTo('detail')">
-      <i class="${feat0Icon}" style="font-size:11px"></i> New
-    </button>
-  </div>
-
-  ${buildBottomNav(p, 'feature', navItems)}
-</div>`
-  });
-
-  // ══════════════════════════════════════════════════════════════════
-  //  S5 — DETAIL VIEW (problem statement body, real stats)
-  // ══════════════════════════════════════════════════════════════════
-  const detailBody = makeDetailBody(fields);
-  screens.push({ id:'detail', label:'Detail', icon:'fas fa-file-lines',
-    render: () => `
-<div class="flex flex-col min-h-[520px] pb-16 relative" style="background:${p.bg}">
-  <!-- Header -->
-  <div class="flex items-center gap-3 px-4 pt-4 pb-3" style="${css.card(p)}">
-    <button class="w-8 h-8 rounded-full flex items-center justify-center" style="${css.accentGhost(p)}" onclick="viewGoTo('feature')">
-      <i class="fas fa-chevron-left" style="${css.accentColor(p)};font-size:10px"></i>
-    </button>
-    <p class="text-base font-black flex-1 truncate" style="${css.text(p)}">${escHtml(truncate(feat0, 28))}</p>
-    <button class="w-8 h-8 rounded-full flex items-center justify-center" style="${css.accentGhost(p)}">
-      <i class="fas fa-ellipsis-vertical" style="${css.accentColor(p)};font-size:10px"></i>
-    </button>
-  </div>
-
-  <!-- Hero visual — gradient banner with icon -->
-  <div class="mx-3 mt-3 h-32 rounded-2xl relative overflow-hidden flex items-center justify-center" style="background:linear-gradient(135deg,${p.card2},${p.card})">
-    <div class="absolute inset-0 opacity-20" style="background:radial-gradient(circle at 70% 40%,${p.accent},transparent)"></div>
-    <i class="${feat0Icon}" style="${css.accentColor(p)};font-size:44px;opacity:0.6"></i>
-    <div class="absolute top-3 right-3">
-      <span class="text-xs px-2.5 py-1 rounded-full font-semibold" style="${css.accentGhost(p)};${css.accentColor(p)}">Active</span>
-    </div>
-    <div class="absolute bottom-3 left-3">
-      <p class="text-white text-xs font-bold opacity-70">${escHtml(truncate(appName,20))}</p>
-    </div>
-  </div>
-
-  <!-- Title + tags -->
-  <div class="px-4 mt-3">
-    <p class="text-base font-black" style="${css.text(p)}">${escHtml(truncate(feat0,36))}</p>
-    <div class="flex flex-wrap gap-2 mt-2">
-      ${features.slice(0,3).map(f => `<span class="text-xs px-2.5 py-1 rounded-full" style="${css.card2(p)};${css.sub(p)}">${escHtml(truncate(f,14))}</span>`).join('')}
-    </div>
-  </div>
-
-  <!-- Stats -->
-  <div class="flex gap-2 px-4 mt-3">
-    ${dashStats.map(([label, val]) => `
-    <div class="flex-1 rounded-xl py-2.5 text-center" style="${css.card2(p)}">
-      <p class="text-sm font-black" style="${css.accentColor(p)}">${escHtml(val)}</p>
-      <p style="font-size:9px;${css.sub(p)};opacity:0.6;margin-top:1px">${escHtml(label)}</p>
-    </div>`).join('')}
-  </div>
-
-  <!-- Body text from problem statement / workflows -->
-  <div class="px-4 mt-3">
-    <p class="text-xs leading-relaxed" style="${css.sub(p)};opacity:0.75">${escHtml(detailBody)}</p>
-  </div>
-
-  <!-- Actions -->
-  <div class="flex gap-2 px-4 mt-4">
-    <button class="flex-1 py-3.5 rounded-2xl text-sm font-black text-white shadow-lg flex items-center justify-center gap-2" style="${css.accent(p)};box-shadow:0 4px 16px ${p.glow}" onclick="viewGoTo('feature')">
-      <i class="${feat0Icon}" style="font-size:12px"></i> ${escHtml(truncate(feat0,16))}
-    </button>
-    <button class="w-12 h-12 rounded-2xl flex items-center justify-center" style="${css.card(p)}">
-      <i class="fas fa-bookmark" style="${css.sub(p)};font-size:12px"></i>
-    </button>
-    <button class="w-12 h-12 rounded-2xl flex items-center justify-center" style="${css.card(p)}">
-      <i class="fas fa-share-nodes" style="${css.sub(p)};font-size:12px"></i>
-    </button>
-  </div>
-
-  ${buildBottomNav(p, 'detail', navItems)}
-</div>`
-  });
-
-  // ══════════════════════════════════════════════════════════════════
-  //  S6 — ANALYTICS (branded chart + project-specific KPIs)
-  // ══════════════════════════════════════════════════════════════════
-  screens.push({ id:'analytics', label:'Reports', icon:'fas fa-chart-bar',
-    render: () => `
-<div class="flex flex-col min-h-[520px] pb-16 relative" style="background:${p.bg}">
-  <!-- Header -->
-  <div class="px-4 pt-4 pb-3" style="${css.card(p)}">
-    <p class="text-base font-black" style="${css.text(p)}">Analytics</p>
-    <p class="text-xs opacity-40 mt-0.5" style="${css.sub(p)}">${escHtml(appName)} · All time</p>
-  </div>
-
-  <!-- Chart card -->
-  <div class="mx-3 mt-3 rounded-2xl p-4 relative overflow-hidden" style="${css.card(p)}">
-    <div class="flex items-center justify-between mb-3">
-      <div>
-        <p class="text-xs font-bold opacity-50 uppercase tracking-wider" style="${css.sub(p)}">Performance</p>
-        <p class="text-lg font-black mt-0.5" style="${css.text(p)}">–</p>
-      </div>
-      <span class="text-xs px-2.5 py-1 rounded-full font-semibold" style="${css.accentGhost(p)};${css.accentColor(p)}">↑ Growing</span>
-    </div>
-    <!-- Bar chart — accent-colored bars -->
-    <div class="flex items-end gap-0.5 h-16">
-      ${[30,48,28,62,52,78,58,88,72,94,80,100].map((h,i) => `
-      <div class="flex-1 rounded-t" style="height:${h}%;background:${i===11?`linear-gradient(180deg,${p.accent},${p.accent2})`:`${p.accent}${20+i*6}`};transition:height 0.3s"></div>`).join('')}
-    </div>
-    <div class="flex justify-between mt-1.5">
-      ${['J','F','M','A','M','J','J','A','S','O','N','D'].map(m => `<span style="font-size:7px;${css.sub(p)};opacity:0.4">${m}</span>`).join('')}
-    </div>
-  </div>
-
-  <!-- KPI cards — all derived from this project's domain -->
-  <div class="px-3 mt-3 grid grid-cols-2 gap-2">
-    ${analyticsCards.map(card => `
-    <div class="rounded-2xl p-3.5 relative overflow-hidden" style="${css.card(p)}">
-      <div class="absolute right-2 top-2 w-12 h-12 rounded-full opacity-5" style="background:${p.accent}"></div>
-      <div class="flex items-center gap-2 mb-2">
-        <div class="w-7 h-7 rounded-lg flex items-center justify-center" style="${css.accentGhost(p)}">
-          <i class="${card.icon}" style="${css.accentColor(p)};font-size:11px"></i>
+        <!-- KPI row -->
+        <div class="grid grid-cols-4 gap-3">
+          ${kpiCard(t, 'fas fa-film', 'Film Sessions', '0', 'Uploaded', 0)}
+          ${kpiCard(t, 'fas fa-brain', 'AI Breakdowns', '0', 'Generated', 0)}
+          ${kpiCard(t, 'fas fa-chart-bar', 'Formations Found', '–', 'Detected')}
+          ${kpiCard(t, 'fas fa-users', truncate(audience.split(/[,/]/)[0]||'Team Members', 14), '0', 'Active')}
         </div>
-        <p class="text-xs font-semibold opacity-50" style="${css.sub(p)}">${escHtml(card.label)}</p>
+
+        <!-- Film grid + breakdown panel -->
+        <div class="grid grid-cols-3 gap-4">
+          <!-- Film cards -->
+          <div class="col-span-2 space-y-3">
+            <h3 class="text-sm font-bold" style="color:${t.text}">Film Library</h3>
+            <div class="grid grid-cols-2 gap-3">
+              ${filmCards.map(fc => `
+              <div class="rounded-2xl overflow-hidden" style="background:${t.card};border:1px solid ${t.border}">
+                <!-- Film thumbnail placeholder -->
+                <div class="h-28 flex items-center justify-center relative" style="background:linear-gradient(135deg,${t.card2},${t.bg})">
+                  <i class="fas fa-film" style="font-size:32px;color:${fc.color};opacity:0.3"></i>
+                  <div class="absolute top-2 right-2">
+                    <span class="text-xs px-2 py-0.5 rounded-full font-bold" style="background:${t.badge};color:${fc.color}">${fc.tag}</span>
+                  </div>
+                  <div class="absolute bottom-2 left-2 right-2">
+                    <div class="h-1 rounded-full" style="background:${t.border}">
+                      <div class="h-1 rounded-full" style="width:${fc.pct === '–' ? '0' : fc.pct};background:${fc.color}"></div>
+                    </div>
+                  </div>
+                </div>
+                <div class="p-3">
+                  <p class="text-xs font-bold" style="color:${t.text}">${escHtml(fc.title)}</p>
+                  <p class="text-xs" style="color:${t.sub}">AI Analysis ${fc.pct === '–' ? 'Pending' : 'Complete'}</p>
+                </div>
+              </div>`).join('')}
+            </div>
+          </div>
+
+          <!-- AI Breakdown panel -->
+          <div class="rounded-2xl p-4 space-y-3" style="background:${t.card};border:1px solid ${t.border}">
+            <div class="flex items-center gap-2">
+              <div class="w-8 h-8 rounded-xl flex items-center justify-center" style="background:${t.badge}">
+                <i class="fas fa-brain" style="color:${t.accent};font-size:13px"></i>
+              </div>
+              <div>
+                <p class="text-xs font-bold" style="color:${t.text}">AI Breakdown</p>
+                <p class="text-xs" style="color:${t.sub}">Latest Result</p>
+              </div>
+            </div>
+            <div class="space-y-2">
+              ${[
+                { label: 'Run %', val: '–', icon: 'fas fa-arrow-right' },
+                { label: 'Pass %', val: '–', icon: 'fas fa-arrow-up-right' },
+                { label: 'Blitz Rate', val: '–', icon: 'fas fa-bolt' },
+                { label: 'Formations', val: '–', icon: 'fas fa-grip-dots-vertical' },
+                { label: 'Tendencies', val: '–', icon: 'fas fa-chart-line' },
+              ].map(item => `
+              <div class="flex items-center justify-between py-1.5 border-b" style="border-color:${t.border}">
+                <div class="flex items-center gap-2">
+                  <i class="${item.icon}" style="font-size:10px;color:${t.muted}"></i>
+                  <span class="text-xs" style="color:${t.sub}">${item.label}</span>
+                </div>
+                <span class="text-xs font-bold" style="color:${t.text}">${item.val}</span>
+              </div>`).join('')}
+            </div>
+            <button class="w-full py-2.5 rounded-xl text-xs font-bold" style="background:linear-gradient(135deg,${t.accent},${t.accent2});color:white">
+              <i class="fas fa-play mr-1"></i> Run Analysis
+            </button>
+          </div>
+        </div>
+
+        <!-- Workflow steps -->
+        ${wfItems.length ? `<div class="rounded-2xl p-4" style="background:${t.card};border:1px solid ${t.border}">
+          <h3 class="text-sm font-bold mb-3" style="color:${t.text}">Workflow</h3>
+          <div class="flex gap-3 overflow-x-auto pb-1">
+            ${wfItems.map((w, i) => `
+            <div class="flex-shrink-0 flex items-center gap-2">
+              <div class="w-7 h-7 rounded-full flex items-center justify-center text-xs font-black" style="background:${t.badge};color:${t.accent}">${i+1}</div>
+              <span class="text-xs whitespace-nowrap" style="color:${t.sub}">${escHtml(truncate(w, 30))}</span>
+              ${i < wfItems.length-1 ? `<i class="fas fa-chevron-right text-xs" style="color:${t.muted}"></i>` : ''}
+            </div>`).join('')}
+          </div>
+        </div>` : ''}
       </div>
-      <p class="text-xl font-black" style="${css.text(p)}">${escHtml(card.value)}</p>
-      <p class="text-xs opacity-40 mt-0.5" style="${css.sub(p)}">${escHtml(card.note)}</p>
-    </div>`).join('')}
-  </div>
-
-  ${buildBottomNav(p, 'analytics', navItems)}
-</div>`
-  });
-
-  // ══════════════════════════════════════════════════════════════════
-  //  S7 — PROFILE (role + plan + future features menu)
-  // ══════════════════════════════════════════════════════════════════
-  screens.push({ id:'profile', label: truncate(roleLabel,7), icon:'fas fa-user',
-    render: () => `
-<div class="flex flex-col min-h-[520px] pb-16 relative" style="background:${p.bg}">
-  <!-- Profile hero -->
-  <div class="relative overflow-hidden px-4 pt-5 pb-5 text-center" style="${css.card(p)}">
-    <div class="absolute inset-0 opacity-8 pointer-events-none" style="background:radial-gradient(ellipse 80% 60% at 50% 0%,${p.accent},transparent)"></div>
-    <!-- Avatar -->
-    <div class="w-18 w-16 h-16 rounded-full mx-auto flex items-center justify-center text-white text-2xl font-black shadow-xl relative z-10" style="${css.accent(p)}">
-      ${escHtml(roleLabel.charAt(0).toUpperCase())}
     </div>
-    <p class="text-base font-black mt-2 relative z-10" style="${css.text(p)}">${escHtml(roleLabel)}</p>
-    <p class="text-xs opacity-40 mt-0.5 relative z-10" style="${css.sub(p)}">user@example.com</p>
-    <!-- Plan + role chips -->
-    <div class="flex justify-center gap-2 mt-3 relative z-10">
-      ${hasSubs ? `<span class="text-xs px-3 py-1.5 rounded-full font-black text-white flex items-center gap-1" style="${css.accent(p)}"><i class="fas fa-crown" style="font-size:9px"></i> Pro</span>` : `<span class="text-xs px-3 py-1.5 rounded-full font-semibold" style="${css.card2(p)};${css.sub(p)}">Free Plan</span>`}
-      ${roles.length > 1 ? `<span class="text-xs px-3 py-1.5 rounded-full font-semibold" style="${css.accentGhost(p)};${css.accentColor(p)}">${escHtml(roles[0])}</span>` : ''}
+  </div>`;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  LAYOUT 2: MUSIC PLAYER DASHBOARD
+//  Music app — player panel, queue, discover grid, stats
+// ══════════════════════════════════════════════════════════════════════════
+function renderMusicPlayerDashboard(t, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId) {
+  const wfItems = workflows.split(/[,.;]/).map(s=>s.trim()).filter(s=>s.length>3).slice(0,4);
+
+  const sidebarItems = [
+    { icon:'fas fa-house',       label:'Home',      badge: null },
+    { icon:'fas fa-magnifying-glass', label:'Discover', badge: null },
+    { icon:'fas fa-list',        label:'Library',   badge: null },
+    { icon:'fas fa-heart',       label:'Favorites', badge: null },
+    { icon:'fas fa-music',       label: truncate(feat0, 12), badge: 'New' },
+    { icon:'fas fa-gear',        label:'Settings',  badge: null },
+  ];
+
+  const genres = ['Hip-Hop', 'Electronic', 'R&B', 'Pop', 'Indie', 'Jazz'];
+  const tracks = [
+    { title: truncate(wfItems[0] || 'Top Picks', 24), artist: truncate(audience.split(/[,/]/)[0]||'Featured', 18), dur: '3:42' },
+    { title: truncate(wfItems[1] || 'New Releases', 24), artist: 'Trending Now', dur: '4:15' },
+    { title: truncate(features[0] || 'Featured Mix', 24), artist: 'Editor\'s Choice', dur: '2:58' },
+    { title: 'Discover Weekly', artist: 'Personalized', dur: '5:01' },
+  ];
+
+  return `<div class="flex flex-col h-full" style="background:${t.bg};font-family:'Inter',sans-serif">
+    ${viewTopBar(t, appName, appIcon, projectId)}
+    <div class="flex flex-1 overflow-hidden">
+      ${viewSidebar(t, sidebarItems, 0, '190px')}
+      <!-- Main content -->
+      <div class="flex-1 overflow-y-auto p-5 space-y-5">
+        <!-- Hero now-playing card -->
+        <div class="rounded-3xl p-6 relative overflow-hidden" style="background:linear-gradient(135deg,${t.accent}22,${t.accent2}33);border:1px solid ${t.border}">
+          <div class="absolute inset-0" style="background:radial-gradient(ellipse at 70% 50%,${t.glow},transparent)"></div>
+          <div class="relative flex items-center gap-6">
+            <!-- Album art -->
+            <div class="w-24 h-24 rounded-2xl flex items-center justify-center flex-shrink-0 shadow-2xl" style="background:linear-gradient(135deg,${t.accent},${t.accent2})">
+              <i class="${appIcon}" style="font-size:36px;color:white;opacity:0.9"></i>
+            </div>
+            <div class="flex-1">
+              <p class="text-xs font-semibold mb-1" style="color:${t.badgeText}">NOW PLAYING</p>
+              <h2 class="text-xl font-black mb-0.5" style="color:${t.text}">${escHtml(truncate(appName, 28))}</h2>
+              <p class="text-sm" style="color:${t.sub}">${escHtml(truncate(problem || `For ${audience}`, 50))}</p>
+              <!-- Progress bar -->
+              <div class="mt-3 space-y-1">
+                <div class="h-1.5 rounded-full" style="background:${t.border}">
+                  <div class="h-1.5 rounded-full w-1/3" style="background:linear-gradient(90deg,${t.accent},${t.accent2})"></div>
+                </div>
+                <div class="flex justify-between text-xs" style="color:${t.muted}"><span>1:24</span><span>4:10</span></div>
+              </div>
+            </div>
+            <!-- Controls -->
+            <div class="flex items-center gap-4 flex-shrink-0">
+              <button style="color:${t.sub}"><i class="fas fa-backward-step text-lg"></i></button>
+              <button class="w-12 h-12 rounded-full flex items-center justify-center shadow-lg" style="background:linear-gradient(135deg,${t.accent},${t.accent2})">
+                <i class="fas fa-pause text-white text-lg"></i>
+              </button>
+              <button style="color:${t.sub}"><i class="fas fa-forward-step text-lg"></i></button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Stats + genres row -->
+        <div class="grid grid-cols-4 gap-3">
+          ${kpiCard(t, 'fas fa-music', 'Tracks', '0', 'Available', 0)}
+          ${kpiCard(t, 'fas fa-list', 'Playlists', '0', 'Created', 0)}
+          ${kpiCard(t, 'fas fa-headphones', 'Listening Time', '0h', 'This week')}
+          ${kpiCard(t, 'fas fa-heart', 'Favorites', '0', 'Saved')}
+        </div>
+
+        <!-- Genre tags + track list -->
+        <div class="grid grid-cols-3 gap-4">
+          <div class="col-span-2 rounded-2xl p-4" style="background:${t.card};border:1px solid ${t.border}">
+            <h3 class="text-sm font-bold mb-3" style="color:${t.text}">Queue</h3>
+            <div class="space-y-2">
+              ${tracks.map((tr, i) => `
+              <div class="flex items-center gap-3 p-2 rounded-xl ${i===0?'':''}" style="${i===0?`background:${t.badge};`:''}" >
+                <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style="background:${t.card2}">
+                  ${i===0 ? `<i class="fas fa-volume-high" style="font-size:10px;color:${t.accent}"></i>` : `<span class="text-xs" style="color:${t.muted}">${i+1}</span>`}
+                </div>
+                <div class="flex-1">
+                  <p class="text-xs font-bold" style="color:${t.text}">${escHtml(tr.title)}</p>
+                  <p class="text-xs" style="color:${t.sub}">${escHtml(tr.artist)}</p>
+                </div>
+                <span class="text-xs" style="color:${t.muted}">${tr.dur}</span>
+              </div>`).join('')}
+            </div>
+          </div>
+          <!-- Genre chips -->
+          <div class="rounded-2xl p-4" style="background:${t.card};border:1px solid ${t.border}">
+            <h3 class="text-sm font-bold mb-3" style="color:${t.text}">Genres</h3>
+            <div class="flex flex-wrap gap-2">
+              ${genres.map((g,i) => `<span class="text-xs px-3 py-1.5 rounded-full font-semibold cursor-pointer" style="background:${i===0?`linear-gradient(135deg,${t.accent},${t.accent2})`:t.card2};color:${i===0?'white':t.sub}">${g}</span>`).join('')}
+            </div>
+            ${wfItems.length ? `<div class="mt-4 space-y-2">
+              <p class="text-xs font-bold" style="color:${t.sub}">Features</p>
+              ${wfItems.slice(0,3).map(w => `<p class="text-xs flex items-center gap-2" style="color:${t.muted}"><i class="fas fa-check" style="color:${t.accent}"></i>${escHtml(truncate(w,30))}</p>`).join('')}
+            </div>` : ''}
+          </div>
+        </div>
+      </div>
     </div>
-  </div>
+  </div>`;
+}
 
-  <!-- Settings menu — items relevant to this app -->
-  <div class="flex-1 overflow-y-auto px-3 mt-3 space-y-2 pb-2">
-    ${[
-      { icon:'fas fa-user-pen',           label:'Edit Profile',           sub:'Name, avatar, bio' },
-      { icon:'fas fa-shield-halved',      label:'Security',               sub:'Password · 2FA' },
-      hasSubs ? { icon:'fas fa-crown',    label:'Subscription',           sub:escHtml(bizModel)+' · Manage' } : null,
-      features.length > 0 ? { icon: feat0Icon, label: escHtml(truncate(feat0,28)), sub: escHtml(truncate(problem,40)) } : null,
-      apis.length > 0 ? { icon:'fas fa-plug', label:'Integrations',       sub: escHtml(truncate(apis.join(', '),40)) } : null,
-      { icon:'fas fa-bell',               label:'Notifications',          sub:'Alerts · Reminders' },
-      futureVer ? { icon:'fas fa-flask',  label:'Beta Features',          sub: escHtml(truncate(futureVer,36)) } : null,
-      { icon:'fas fa-circle-question',    label:'Help & Support',         sub:'FAQs · Contact' },
-      { icon:'fas fa-arrow-right-from-bracket', label:'Sign Out',         sub:'', danger:true },
-    ].filter(Boolean).map(item => `
-    <button class="w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl text-left" style="${css.card(p)}" onclick="viewGoTo('home')">
-      <div class="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style="${item.danger ? 'background:#ef444420' : css.accentGhost(p)}">
-        <i class="${item.icon}" style="color:${item.danger?'#ef4444':p.accent};font-size:12px"></i>
+// ══════════════════════════════════════════════════════════════════════════
+//  LAYOUT 3: CLINICAL / HEALTH DASHBOARD
+//  Medical/Health app — appointment calendar, vitals, patient list
+// ══════════════════════════════════════════════════════════════════════════
+function renderClinicalDashboard(t, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId) {
+  const roles = (fields.roles_permissions || 'Patient/Doctor').split(/[,/]/).map(s=>s.trim());
+  const wfItems = workflows.split(/[,.;]/).map(s=>s.trim()).filter(s=>s.length>3).slice(0,4);
+
+  const sidebarItems = [
+    { icon:'fas fa-gauge-high',    label:'Dashboard',    badge: null },
+    { icon:'fas fa-calendar-days', label:'Appointments', badge: '2 Today' },
+    { icon:'fas fa-heart-pulse',   label:'Vitals',       badge: null },
+    { icon:'fas fa-file-medical',  label:'Records',      badge: null },
+    { icon:'fas fa-pills',         label: truncate(feat0, 12), badge: null },
+    { icon:'fas fa-user-doctor',   label: truncate(roles[0]||'Provider', 12), badge: null },
+  ];
+
+  const vitals = [
+    { label:'Heart Rate', val:'– BPM', icon:'fas fa-heart', color:'#ef4444' },
+    { label:'Blood Pressure', val:'–/–', icon:'fas fa-stethoscope', color:'#3b82f6' },
+    { label:'Oxygen', val:'–%', icon:'fas fa-lungs', color:'#06b6d4' },
+    { label:'Temperature', val:'–°F', icon:'fas fa-thermometer', color:'#f97316' },
+  ];
+
+  return `<div class="flex flex-col h-full" style="background:${t.bg};font-family:'Inter',sans-serif">
+    ${viewTopBar(t, appName, appIcon, projectId)}
+    <div class="flex flex-1 overflow-hidden">
+      ${viewSidebar(t, sidebarItems, 0, '195px')}
+      <div class="flex-1 overflow-y-auto p-5 space-y-5">
+        <div class="flex items-center justify-between">
+          <div>
+            <h1 class="text-xl font-black" style="color:${t.text}">${escHtml(appName)}</h1>
+            <p class="text-xs" style="color:${t.sub}">${escHtml(truncate(problem || `Healthcare platform for ${audience}`, 70))}</p>
+          </div>
+          <button class="text-xs px-4 py-2 rounded-xl font-bold flex items-center gap-2" style="background:linear-gradient(135deg,${t.accent},${t.accent2});color:white">
+            <i class="fas fa-calendar-plus"></i> New Appointment
+          </button>
+        </div>
+
+        <div class="grid grid-cols-4 gap-3">
+          ${kpiCard(t, 'fas fa-calendar-days', 'Appointments', '0', 'This week', 0)}
+          ${kpiCard(t, 'fas fa-file-medical', 'Records', '0', 'Total', 0)}
+          ${kpiCard(t, 'fas fa-pills', 'Prescriptions', '0', 'Active')}
+          ${kpiCard(t, 'fas fa-chart-line', 'Health Score', '–', 'Overall')}
+        </div>
+
+        <div class="grid grid-cols-3 gap-4">
+          <!-- Vitals -->
+          <div class="col-span-1 space-y-3">
+            <h3 class="text-sm font-bold" style="color:${t.text}">Vital Signs</h3>
+            ${vitals.map(v => `
+            <div class="rounded-xl p-3 flex items-center gap-3" style="background:${t.card};border:1px solid ${t.border}">
+              <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style="background:${v.color}22">
+                <i class="${v.icon}" style="font-size:12px;color:${v.color}"></i>
+              </div>
+              <div>
+                <p class="text-xs" style="color:${t.sub}">${v.label}</p>
+                <p class="text-sm font-bold" style="color:${t.text}">${v.val}</p>
+              </div>
+            </div>`).join('')}
+          </div>
+
+          <!-- Appointments + workflow -->
+          <div class="col-span-2 space-y-4">
+            <div class="rounded-2xl p-4" style="background:${t.card};border:1px solid ${t.border}">
+              <h3 class="text-sm font-bold mb-3" style="color:${t.text}">Upcoming Appointments</h3>
+              <div class="space-y-2">
+                ${[
+                  { time: 'Today 10:00 AM', label: truncate(wfItems[0]||'Routine Checkup', 28), type: 'Virtual', color: t.accent },
+                  { time: 'Tomorrow 2:30 PM', label: truncate(wfItems[1]||'Follow-up', 28), type: 'In-Person', color: '#a855f7' },
+                  { time: 'Fri 9:00 AM', label: truncate(features[0]||'Specialist Consultation', 28), type: 'Pending', color: '#f59e0b' },
+                ].map(a => `
+                <div class="flex items-center gap-3 p-2 rounded-xl" style="background:${t.card2}">
+                  <div class="w-1.5 rounded-full h-full self-stretch" style="background:${a.color};min-height:36px"></div>
+                  <div class="flex-1">
+                    <p class="text-xs font-bold" style="color:${t.text}">${escHtml(a.label)}</p>
+                    <p class="text-xs" style="color:${t.sub}">${a.time}</p>
+                  </div>
+                  <span class="text-xs px-2 py-0.5 rounded-full" style="background:${a.color}22;color:${a.color}">${a.type}</span>
+                </div>`).join('')}
+              </div>
+            </div>
+            ${wfItems.length ? `
+            <div class="rounded-2xl p-4" style="background:${t.card};border:1px solid ${t.border}">
+              <h3 class="text-sm font-bold mb-2" style="color:${t.text}">Care Workflow</h3>
+              <div class="space-y-1.5">
+                ${wfItems.map((w, i) => `
+                <div class="flex items-center gap-2 text-xs" style="color:${t.sub}">
+                  <i class="fas fa-circle-check" style="color:${i<1?t.accent:t.muted};font-size:10px"></i>
+                  ${escHtml(truncate(w, 50))}
+                </div>`).join('')}
+              </div>
+            </div>` : ''}
+          </div>
+        </div>
       </div>
-      <div class="flex-1 min-w-0">
-        <p class="text-sm font-semibold truncate" style="color:${item.danger?'#ef4444':p.text}">${escHtml(item.label)}</p>
-        ${item.sub ? `<p class="text-xs opacity-45 mt-0.5 truncate" style="${css.sub(p)}">${escHtml(item.sub)}</p>` : ''}
+    </div>
+  </div>`;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  LAYOUT 4: TRADING / FINANCE DASHBOARD
+//  Finance app — portfolio bar, chart area, positions table
+// ══════════════════════════════════════════════════════════════════════════
+function renderTradingDashboard(t, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId) {
+  const wfItems = workflows.split(/[,.;]/).map(s=>s.trim()).filter(s=>s.length>3).slice(0,4);
+
+  const sidebarItems = [
+    { icon:'fas fa-gauge-high',      label:'Portfolio',  badge: null },
+    { icon:'fas fa-chart-line',      label:'Markets',    badge: null },
+    { icon:'fas fa-arrow-trend-up',  label: truncate(feat0,12), badge: null },
+    { icon:'fas fa-wallet',          label:'Wallet',     badge: null },
+    { icon:'fas fa-chart-pie',       label:'Analytics',  badge: null },
+    { icon:'fas fa-gear',            label:'Settings',   badge: null },
+  ];
+
+  const assets = [
+    { symbol:'BTC', name:'Bitcoin', val:'–', chg:'+0.0%', up:true },
+    { symbol:'ETH', name:'Ethereum', val:'–', chg:'+0.0%', up:true },
+    { symbol:'S&P', name:'S&P 500', val:'–', chg:'-0.0%', up:false },
+    { symbol:'GOLD', name:'Gold', val:'–', chg:'+0.0%', up:true },
+  ];
+
+  // Mini sparkline-like bars (purely decorative SVG)
+  const sparkline = `<svg width="80" height="30" viewBox="0 0 80 30">
+    <polyline points="0,20 10,18 20,22 30,15 40,17 50,10 60,12 70,8 80,6" stroke="${t.accent}" stroke-width="1.5" fill="none"/>
+  </svg>`;
+
+  return `<div class="flex flex-col h-full" style="background:${t.bg};font-family:'Inter',sans-serif">
+    ${viewTopBar(t, appName, appIcon, projectId)}
+    <div class="flex flex-1 overflow-hidden">
+      ${viewSidebar(t, sidebarItems, 0, '185px')}
+      <div class="flex-1 overflow-y-auto p-5 space-y-5">
+        <!-- Portfolio hero -->
+        <div class="rounded-3xl p-6 relative overflow-hidden" style="background:linear-gradient(135deg,${t.card},${t.card2});border:1px solid ${t.border}">
+          <div class="absolute right-0 top-0 bottom-0 flex items-center px-8 opacity-20">
+            ${sparkline}
+          </div>
+          <p class="text-xs font-semibold mb-1" style="color:${t.sub}">TOTAL PORTFOLIO VALUE</p>
+          <h1 class="text-4xl font-black mb-1" style="color:${t.text}">$0.00</h1>
+          <div class="flex items-center gap-2">
+            <span class="text-sm font-semibold" style="color:#22c55e">+$0.00 (0.0%)</span>
+            <span class="text-xs" style="color:${t.muted}">All time</span>
+          </div>
+          <p class="text-xs mt-2" style="color:${t.sub}">${escHtml(truncate(problem || `Finance platform for ${audience}`, 60))}</p>
+        </div>
+
+        <div class="grid grid-cols-4 gap-3">
+          ${kpiCard(t, 'fas fa-wallet', 'Net Worth', '$0', 'Current', 0)}
+          ${kpiCard(t, 'fas fa-arrow-trend-up', 'Return YTD', '0%', 'Year to date', 0)}
+          ${kpiCard(t, 'fas fa-chart-pie', 'Budget Used', '0%', 'This month')}
+          ${kpiCard(t, 'fas fa-coins', 'Savings Rate', '0%', 'Of income')}
+        </div>
+
+        <!-- Chart + positions -->
+        <div class="grid grid-cols-3 gap-4">
+          <!-- Fake chart area -->
+          <div class="col-span-2 rounded-2xl p-4" style="background:${t.card};border:1px solid ${t.border}">
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="text-sm font-bold" style="color:${t.text}">Portfolio Performance</h3>
+              <div class="flex gap-1">
+                ${['1D','1W','1M','1Y'].map((p,i) => `<button class="text-xs px-2 py-1 rounded-lg" style="${i===2?`background:${t.badge};color:${t.accent}`:`color:${t.muted}`}">${p}</button>`).join('')}
+              </div>
+            </div>
+            <!-- SVG Chart -->
+            <svg width="100%" height="120" viewBox="0 0 400 120" preserveAspectRatio="none">
+              <defs>
+                <linearGradient id="chartGrad_${appName.length}" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="${t.accent}" stop-opacity="0.3"/>
+                  <stop offset="100%" stop-color="${t.accent}" stop-opacity="0"/>
+                </linearGradient>
+              </defs>
+              <polygon points="0,100 40,85 80,90 120,70 160,75 200,55 240,60 280,40 320,45 360,25 400,20 400,120 0,120" fill="url(#chartGrad_${appName.length})"/>
+              <polyline points="0,100 40,85 80,90 120,70 160,75 200,55 240,60 280,40 320,45 360,25 400,20" stroke="${t.accent}" stroke-width="2" fill="none"/>
+            </svg>
+          </div>
+
+          <!-- Positions -->
+          <div class="rounded-2xl p-4" style="background:${t.card};border:1px solid ${t.border}">
+            <h3 class="text-sm font-bold mb-3" style="color:${t.text}">Positions</h3>
+            <div class="space-y-3">
+              ${assets.map(a => `
+              <div class="flex items-center justify-between">
+                <div>
+                  <p class="text-xs font-bold" style="color:${t.text}">${a.symbol}</p>
+                  <p class="text-xs" style="color:${t.sub}">${a.name}</p>
+                </div>
+                <div class="text-right">
+                  <p class="text-xs font-bold" style="color:${t.text}">${a.val}</p>
+                  <p class="text-xs font-semibold" style="color:${a.up?'#22c55e':'#ef4444'}">${a.chg}</p>
+                </div>
+              </div>`).join('')}
+            </div>
+            ${wfItems.length ? `<div class="mt-4 pt-3 space-y-1.5 border-t" style="border-color:${t.border}">
+              ${wfItems.slice(0,2).map(w => `<p class="text-xs" style="color:${t.muted}"><i class="fas fa-check mr-1" style="color:${t.accent}"></i>${escHtml(truncate(w,30))}</p>`).join('')}
+            </div>` : ''}
+          </div>
+        </div>
       </div>
-      ${!item.danger ? `<i class="fas fa-chevron-right opacity-20 flex-shrink-0" style="${css.sub(p)};font-size:9px"></i>` : ''}
-    </button>`).join('')}
-  </div>
-
-  ${buildBottomNav(p, 'profile', navItems)}
-</div>`
-  });
-
-  return screens;
+    </div>
+  </div>`;
 }
 
-function buildFallbackScreens(name) {
-  return buildAppScreens({ fields:{ app_name: name||'My App', color_scheme:'midnight' }, spec:{}, project:{ name: name||'My App' } });
-}
+// ══════════════════════════════════════════════════════════════════════════
+//  LAYOUT 5: STOREFRONT / E-COMMERCE DASHBOARD
+// ══════════════════════════════════════════════════════════════════════════
+function renderStorefrontDashboard(t, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId) {
+  const wfItems = workflows.split(/[,.;]/).map(s=>s.trim()).filter(s=>s.length>3).slice(0,4);
+  const cats = ['All', ...(features.slice(0,4).length ? features.slice(0,4) : ['Electronics', 'Clothing', 'Home', 'Sports'])];
 
-// ── Prototype renderer ────────────────────────────────────────────────
-function renderViewPrototype() {
-  const screens = VIEW_PROJECT.screens;
-  if (!screens.length) return;
+  const sidebarItems = [
+    { icon:'fas fa-gauge-high',    label:'Dashboard',  badge: null },
+    { icon:'fas fa-bag-shopping',  label:'Products',   badge: '12' },
+    { icon:'fas fa-list-check',    label:'Orders',     badge: '3 New' },
+    { icon:'fas fa-users',         label:'Customers',  badge: null },
+    { icon:'fas fa-chart-bar',     label:'Analytics',  badge: null },
+    { icon:'fas fa-gear',          label:'Settings',   badge: null },
+  ];
 
-  const navEl = document.getElementById('view-screen-nav');
-  if (navEl) {
-    navEl.innerHTML = screens.map((s, i) => `
-      <button id="vsnav-${i}" onclick="viewGoToIdx(${i})"
-        class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all
-               ${i===0?'bg-cyan-500 text-white':'text-slate-400 hover:text-white hover:bg-slate-800'}">
-        <i class="${s.icon}" style="font-size:10px"></i> ${escHtml(s.label)}
-      </button>`).join('');
-  }
-  renderCurrentScreen();
-}
+  const products = [
+    { name: truncate(wfItems[0]||feat0||'Featured Product', 22), price: '$0', badge: 'New', color: t.accent },
+    { name: truncate(wfItems[1]||features[1]||'Best Seller', 22), price: '$0', badge: 'Hot', color: '#f97316' },
+    { name: truncate(features[0]||'Premium Item', 22), price: '$0', badge: 'Sale', color: '#22c55e' },
+    { name: 'Staff Pick', price: '$0', badge: null, color: t.accent2 },
+  ];
 
-function renderCurrentScreen() {
-  const screens = VIEW_PROJECT.screens;
-  const idx     = VIEW_PROJECT.currentScreen;
-  if (!screens.length) return;
+  return `<div class="flex flex-col h-full" style="background:${t.bg};font-family:'Inter',sans-serif">
+    ${viewTopBar(t, appName, appIcon, projectId)}
+    <div class="flex flex-1 overflow-hidden">
+      ${viewSidebar(t, sidebarItems, 0, '185px')}
+      <div class="flex-1 overflow-y-auto p-5 space-y-5">
+        <div class="flex items-center justify-between">
+          <div>
+            <h1 class="text-xl font-black" style="color:${t.text}">${escHtml(appName)}</h1>
+            <p class="text-xs" style="color:${t.sub}">${escHtml(truncate(problem || `Shop for ${audience}`, 60))}</p>
+          </div>
+          <div class="flex gap-2">
+            <div class="relative">
+              <input class="text-xs pl-8 pr-4 py-2 rounded-xl outline-none" style="background:${t.card};border:1px solid ${t.border};color:${t.text};width:180px" placeholder="Search products…">
+              <i class="fas fa-magnifying-glass absolute left-2.5 top-2.5 text-xs" style="color:${t.muted}"></i>
+            </div>
+            <button class="text-xs px-4 py-2 rounded-xl font-bold flex items-center gap-2" style="background:linear-gradient(135deg,${t.accent},${t.accent2});color:white">
+              <i class="fas fa-plus"></i> Add Product
+            </button>
+          </div>
+        </div>
 
-  const screen    = screens[idx];
-  const contentEl = document.getElementById('view-screen-content');
-  if (contentEl) contentEl.innerHTML = screen.render();
+        <div class="grid grid-cols-4 gap-3">
+          ${kpiCard(t, 'fas fa-bag-shopping', 'Orders Today', '0', 'New', 0)}
+          ${kpiCard(t, 'fas fa-dollar-sign', 'Revenue', '$0', 'This month', 0)}
+          ${kpiCard(t, 'fas fa-star', 'Avg Rating', '–', 'Out of 5')}
+          ${kpiCard(t, 'fas fa-users', 'Customers', '0', 'Active')}
+        </div>
 
-  const labelEl   = document.getElementById('view-screen-label');
-  const counterEl = document.getElementById('view-screen-counter');
-  if (labelEl)   labelEl.textContent   = screen.label;
-  if (counterEl) counterEl.textContent = `${idx+1} / ${screens.length}`;
+        <!-- Category filter + product grid -->
+        <div>
+          <div class="flex gap-2 mb-3 overflow-x-auto pb-1">
+            ${cats.slice(0,5).map((c,i) => `<button class="flex-shrink-0 text-xs px-3 py-1.5 rounded-full font-semibold" style="${i===0?`background:linear-gradient(135deg,${t.accent},${t.accent2});color:white`:`background:${t.card2};color:${t.sub}`}">${escHtml(truncate(c,14))}</button>`).join('')}
+          </div>
+          <div class="grid grid-cols-4 gap-3">
+            ${products.map(p => `
+            <div class="rounded-2xl overflow-hidden" style="background:${t.card};border:1px solid ${t.border}">
+              <div class="h-32 flex items-center justify-center relative" style="background:linear-gradient(135deg,${p.color}22,${t.card2})">
+                <i class="fas fa-bag-shopping" style="font-size:32px;color:${p.color};opacity:0.4"></i>
+                ${p.badge ? `<span class="absolute top-2 left-2 text-xs px-2 py-0.5 rounded-full font-bold" style="background:${p.color};color:white">${p.badge}</span>` : ''}
+              </div>
+              <div class="p-3">
+                <p class="text-xs font-bold" style="color:${t.text}">${escHtml(p.name)}</p>
+                <div class="flex items-center justify-between mt-1">
+                  <span class="text-sm font-black" style="color:${t.accent}">${p.price}</span>
+                  <button class="w-6 h-6 rounded-full flex items-center justify-center" style="background:${t.badge}">
+                    <i class="fas fa-cart-plus" style="font-size:9px;color:${t.accent}"></i>
+                  </button>
+                </div>
+              </div>
+            </div>`).join('')}
+          </div>
+        </div>
 
-  screens.forEach((_,i) => {
-    const btn = document.getElementById(`vsnav-${i}`);
-    if (!btn) return;
-    if (i === idx) {
-      btn.classList.remove('text-slate-400','hover:text-white','hover:bg-slate-800');
-      btn.classList.add('bg-cyan-500','text-white');
-    } else {
-      btn.classList.remove('bg-cyan-500','text-white');
-      btn.classList.add('text-slate-400','hover:text-white','hover:bg-slate-800');
-    }
-  });
-
-  const prevBtn = document.getElementById('view-prev-btn');
-  const nextBtn = document.getElementById('view-next-btn');
-  if (prevBtn) prevBtn.style.opacity = idx===0 ? '0.3' : '1';
-  if (nextBtn) nextBtn.style.opacity = idx===screens.length-1 ? '0.3' : '1';
-}
-
-function viewNavigate(dir) {
-  const next = VIEW_PROJECT.currentScreen + dir;
-  if (next < 0 || next >= VIEW_PROJECT.screens.length) return;
-  VIEW_PROJECT.currentScreen = next;
-  renderCurrentScreen();
-}
-function viewGoTo(screenId) {
-  const idx = VIEW_PROJECT.screens.findIndex(s => s.id === screenId);
-  if (idx === -1) return;
-  VIEW_PROJECT.currentScreen = idx;
-  renderCurrentScreen();
-}
-function viewGoToIdx(idx) {
-  if (idx < 0 || idx >= VIEW_PROJECT.screens.length) return;
-  VIEW_PROJECT.currentScreen = idx;
-  renderCurrentScreen();
-}
-
-// ── Spec panel ───────────────────────────────────────────────────────
-function renderViewSpecPanel(d) {
-  const el = document.getElementById('view-spec-content');
-  if (!el) return;
-  const fields  = d.fields  || {};
-  const spec    = d.spec    || {};
-  const project = d.project || {};
-
-  const sections = [
-    { label:'App Name',        val: fields.app_name || spec.app_name || project.name },
-    { label:'Category',        val: fields.category || project.category },
-    { label:'Target Audience', val: fields.audience || spec.target_audience },
-    { label:'Problem Solved',  val: fields.problem_statement || spec.problem_statement },
-    { label:'Core Features',   val: parseFeatureList(fields.core_features || spec.key_features || '[]').join(', ') },
-    { label:'Workflows',       val: fields.workflows },
-    { label:'Roles',           val: fields.roles_permissions },
-    { label:'Business Model',  val: fields.business_model || spec.monetization },
-    { label:'APIs & Tools',    val: fields.apis_tools },
-    { label:'Platform',        val: fields.platform_notes },
-    { label:'Deployment',      val: fields.deployment_preferences },
-    { label:'Future Versions', val: fields.future_versions },
-    { label:'Color Scheme',    val: fields.color_scheme },
-    { label:'Readiness',       val: project.readiness_score ? `${project.readiness_score}%` : null },
-  ].filter(s => s.val && String(s.val).trim());
-
-  if (!sections.length) {
-    el.innerHTML = `<div class="glass rounded-xl p-6 text-center border border-slate-700/40 m-4">
-      <i class="fas fa-file-code text-slate-600 text-3xl mb-3 block"></i>
-      <p class="text-slate-400 text-sm">No spec data available yet.</p>
-    </div>`;
-    return;
-  }
-
-  el.innerHTML = `
-    <div class="space-y-3 pb-4">
-      <div class="flex items-center gap-2 px-1 mb-2">
-        <div class="w-2 h-2 rounded-full bg-cyan-400"></div>
-        <p class="text-xs text-slate-400 font-semibold uppercase tracking-wider">App Specification</p>
-        ${d.built_at ? `<span class="ml-auto text-xs text-slate-600">Built ${new Date(d.built_at).toLocaleDateString()}</span>` : ''}
+        <!-- Recent orders table -->
+        <div class="rounded-2xl p-4" style="background:${t.card};border:1px solid ${t.border}">
+          <h3 class="text-sm font-bold mb-3" style="color:${t.text}">Recent Orders</h3>
+          <table class="w-full text-xs">
+            <thead>
+              <tr style="color:${t.muted}">
+                <th class="text-left py-1.5 font-semibold">Order ID</th>
+                <th class="text-left py-1.5 font-semibold">Customer</th>
+                <th class="text-left py-1.5 font-semibold">Item</th>
+                <th class="text-left py-1.5 font-semibold">Total</th>
+                <th class="text-left py-1.5 font-semibold">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${[
+                { id:'#001', cust: truncate(audience.split(/[,/]/)[0]||'Customer', 14), item: truncate(products[0].name,18), total:'$0', status:'Delivered', color:'#22c55e' },
+                { id:'#002', cust: 'New User', item: truncate(products[1].name,18), total:'$0', status:'Processing', color:t.accent },
+                { id:'#003', cust: 'Returning', item: truncate(products[2].name,18), total:'$0', status:'Pending', color:'#f59e0b' },
+              ].map(o => `<tr style="border-top:1px solid ${t.border}">
+                <td class="py-2 font-mono" style="color:${t.accent}">${o.id}</td>
+                <td class="py-2" style="color:${t.text}">${escHtml(o.cust)}</td>
+                <td class="py-2" style="color:${t.sub}">${escHtml(o.item)}</td>
+                <td class="py-2 font-bold" style="color:${t.text}">${o.total}</td>
+                <td class="py-2"><span class="px-2 py-0.5 rounded-full" style="background:${o.color}22;color:${o.color}">${o.status}</span></td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
       </div>
-      ${sections.map(s => `
-      <div class="glass rounded-xl p-4 border border-slate-700/40">
-        <p class="text-xs font-bold text-slate-500 mb-1.5 uppercase tracking-wider">${escHtml(s.label)}</p>
-        <p class="text-sm text-slate-200 leading-relaxed">${escHtml(String(s.val))}</p>
-      </div>`).join('')}
-    </div>`;
+    </div>
+  </div>`;
 }
 
-function renderViewSpecMode(data) {
-  const el = document.getElementById('view-spec-content');
-  if (!el) return;
-  if (!data) { el.innerHTML = '<div class="p-6 text-center text-slate-400 text-sm">Loading spec…</div>'; return; }
-  renderViewSpecPanel(data);
+// ══════════════════════════════════════════════════════════════════════════
+//  LAYOUT 6: LMS (Learning Management System)
+// ══════════════════════════════════════════════════════════════════════════
+function renderLMSDashboard(t, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId) {
+  const wfItems = workflows.split(/[,.;]/).map(s=>s.trim()).filter(s=>s.length>3).slice(0,4);
+
+  const sidebarItems = [
+    { icon:'fas fa-house',          label:'Dashboard', badge: null },
+    { icon:'fas fa-book-open',      label:'Courses',   badge: '3 New' },
+    { icon:'fas fa-graduation-cap', label: truncate(feat0,12), badge: null },
+    { icon:'fas fa-trophy',         label:'Progress',  badge: null },
+    { icon:'fas fa-users',          label:'Community', badge: null },
+    { icon:'fas fa-gear',           label:'Settings',  badge: null },
+  ];
+
+  const courses = features.slice(0,4).length >= 2 ? features.slice(0,4) : ['Intro Module', 'Core Concepts', 'Advanced Topics', 'Final Project'];
+
+  return `<div class="flex flex-col h-full" style="background:${t.bg};font-family:'Inter',sans-serif">
+    ${viewTopBar(t, appName, appIcon, projectId)}
+    <div class="flex flex-1 overflow-hidden">
+      ${viewSidebar(t, sidebarItems, 0, '190px')}
+      <div class="flex-1 overflow-y-auto p-5 space-y-5">
+        <div class="flex items-center justify-between">
+          <div>
+            <h1 class="text-xl font-black" style="color:${t.text}">Learning Hub</h1>
+            <p class="text-xs" style="color:${t.sub}">${escHtml(truncate(problem || `Education platform for ${audience}`, 60))}</p>
+          </div>
+          <button class="text-xs px-4 py-2 rounded-xl font-bold" style="background:linear-gradient(135deg,${t.accent},${t.accent2});color:white">
+            <i class="fas fa-play mr-1"></i> Continue Learning
+          </button>
+        </div>
+
+        <!-- Progress hero -->
+        <div class="rounded-3xl p-5" style="background:linear-gradient(135deg,${t.card},${t.card2});border:1px solid ${t.border}">
+          <div class="flex items-center gap-4">
+            <div class="w-16 h-16 rounded-2xl flex items-center justify-center flex-shrink-0" style="background:linear-gradient(135deg,${t.accent},${t.accent2})">
+              <i class="${appIcon} text-white text-2xl"></i>
+            </div>
+            <div class="flex-1">
+              <p class="text-xs mb-1" style="color:${t.sub}">Overall Progress</p>
+              <div class="h-3 rounded-full mb-1" style="background:${t.border}">
+                <div class="h-3 rounded-full w-0" style="background:linear-gradient(90deg,${t.accent},${t.accent2})"></div>
+              </div>
+              <div class="flex justify-between text-xs" style="color:${t.muted}"><span>0% Complete</span><span>0 / 0 lessons</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-4 gap-3">
+          ${kpiCard(t, 'fas fa-book-open', 'Courses', '0', 'Enrolled')}
+          ${kpiCard(t, 'fas fa-check-circle', 'Completed', '0', 'Lessons')}
+          ${kpiCard(t, 'fas fa-clock', 'Study Time', '0h', 'This week')}
+          ${kpiCard(t, 'fas fa-trophy', 'Streak', '0 days', 'Current')}
+        </div>
+
+        <!-- Course cards -->
+        <div>
+          <h3 class="text-sm font-bold mb-3" style="color:${t.text}">Your Courses</h3>
+          <div class="grid grid-cols-2 gap-3">
+            ${courses.slice(0,4).map((c, i) => `
+            <div class="rounded-2xl p-4" style="background:${t.card};border:1px solid ${t.border}">
+              <div class="flex items-center gap-3 mb-3">
+                <div class="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style="background:${t.badge}">
+                  <i class="${resolveIcon(c)}" style="font-size:14px;color:${t.accent}"></i>
+                </div>
+                <div>
+                  <p class="text-xs font-bold" style="color:${t.text}">${escHtml(truncate(c, 28))}</p>
+                  <p class="text-xs" style="color:${t.sub}">${i === 0 ? 'In Progress' : i === 1 ? 'Not Started' : 'Locked'}</p>
+                </div>
+              </div>
+              <div class="h-1.5 rounded-full" style="background:${t.border}">
+                <div class="h-1.5 rounded-full" style="width:${i===0?'30%':'0%'};background:linear-gradient(90deg,${t.accent},${t.accent2})"></div>
+              </div>
+              <p class="text-xs mt-1" style="color:${t.muted}">${i===0?'30%':i===1?'0%':'–'} complete</p>
+            </div>`).join('')}
+          </div>
+        </div>
+
+        ${wfItems.length ? `<div class="rounded-2xl p-4" style="background:${t.card};border:1px solid ${t.border}">
+          <h3 class="text-sm font-bold mb-2" style="color:${t.text}">Learning Path</h3>
+          <div class="flex gap-3 overflow-x-auto">
+            ${wfItems.map((w,i) => `<div class="flex-shrink-0 flex items-center gap-2">
+              <div class="w-6 h-6 rounded-full flex items-center justify-center text-xs font-black" style="background:${i===0?`linear-gradient(135deg,${t.accent},${t.accent2})`:t.card2};color:${i===0?'white':t.sub}">${i+1}</div>
+              <span class="text-xs whitespace-nowrap" style="color:${t.sub}">${escHtml(truncate(w,24))}</span>
+              ${i<wfItems.length-1?`<i class="fas fa-arrow-right text-xs" style="color:${t.muted}"></i>`:''}
+            </div>`).join('')}
+          </div>
+        </div>` : ''}
+      </div>
+    </div>
+  </div>`;
 }
+
+// ══════════════════════════════════════════════════════════════════════════
+//  LAYOUT 7: AI CONSOLE DASHBOARD
+//  AI/Automation tool — terminal-inspired, prompt input, output panel
+// ══════════════════════════════════════════════════════════════════════════
+function renderAIConsoleDashboard(t, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId) {
+  const wfItems = workflows.split(/[,.;]/).map(s=>s.trim()).filter(s=>s.length>3).slice(0,4);
+
+  const sidebarItems = [
+    { icon:'fas fa-terminal',       label:'Console',    badge: null },
+    { icon:'fas fa-brain',          label: truncate(feat0,12), badge: 'AI' },
+    { icon:'fas fa-history',        label:'History',    badge: null },
+    { icon:'fas fa-chart-bar',      label:'Analytics',  badge: null },
+    { icon:'fas fa-key',            label:'API Keys',   badge: null },
+    { icon:'fas fa-gear',           label:'Settings',   badge: null },
+  ];
+
+  const prompts = [
+    { input: truncate(wfItems[0]||'Analyze this data and give me insights', 45), time: '2m ago', status: 'Done' },
+    { input: truncate(wfItems[1]||'Generate a summary report', 45), time: '15m ago', status: 'Done' },
+    { input: truncate(features[0]||'Process the latest batch', 45), time: '1h ago', status: 'Done' },
+  ];
+
+  return `<div class="flex flex-col h-full" style="background:${t.bg};font-family:'JetBrains Mono','Courier New',monospace">
+    ${viewTopBar(t, appName, appIcon, projectId)}
+    <div class="flex flex-1 overflow-hidden">
+      ${viewSidebar(t, sidebarItems, 0, '185px')}
+      <div class="flex-1 flex flex-col overflow-hidden p-5 gap-4">
+        <!-- Header -->
+        <div>
+          <h1 class="text-xl font-black" style="color:${t.text};font-family:'Inter',sans-serif">${escHtml(appName)}</h1>
+          <p class="text-xs" style="color:${t.sub};font-family:'Inter',sans-serif">${escHtml(truncate(problem || `AI automation for ${audience}`, 70))}</p>
+        </div>
+
+        <!-- KPIs -->
+        <div class="grid grid-cols-4 gap-3 flex-shrink-0" style="font-family:'Inter',sans-serif">
+          ${kpiCard(t, 'fas fa-bolt', 'Runs Today', '0', 'Executions')}
+          ${kpiCard(t, 'fas fa-check-circle', 'Success Rate', '–%', 'Avg')}
+          ${kpiCard(t, 'fas fa-clock', 'Avg Latency', '–ms', 'Per call')}
+          ${kpiCard(t, 'fas fa-coins', 'Tokens Used', '–', 'Today')}
+        </div>
+
+        <!-- Terminal + history panel -->
+        <div class="flex gap-4 flex-1 overflow-hidden">
+          <!-- Terminal -->
+          <div class="flex-1 rounded-2xl overflow-hidden flex flex-col" style="background:#050810;border:1px solid ${t.border}">
+            <div class="flex items-center gap-2 px-4 py-2 border-b" style="background:${t.card};border-color:${t.border}">
+              <span class="w-3 h-3 rounded-full bg-red-500 opacity-70"></span>
+              <span class="w-3 h-3 rounded-full bg-amber-500 opacity-70"></span>
+              <span class="w-3 h-3 rounded-full bg-green-500 opacity-70"></span>
+              <span class="text-xs ml-2" style="color:${t.muted}">${escHtml(appName)} Console</span>
+            </div>
+            <div class="flex-1 p-4 overflow-y-auto text-xs space-y-2" style="color:${t.sub}">
+              <p style="color:${t.accent}">$ ${escHtml(appName.toLowerCase().replace(/\s+/g,'-'))} init</p>
+              <p style="color:#22c55e">✓ Initialized. Ready for input.</p>
+              <p style="color:${t.muted}"># ${escHtml(truncate(problem||`AI tool for ${audience}`,60))}</p>
+              <p style="color:${t.accent}">$ ${escHtml(truncate(feat0||'run --analyze',30))}</p>
+              <p style="color:${t.sub}">Processing... </p>
+              <p style="color:#22c55e">✓ Complete. Results ready.</p>
+              ${features.slice(0,2).map(f => `<p style="color:${t.muted}">  • ${escHtml(truncate(f,40))}</p>`).join('')}
+              <p style="color:${t.accent}">$ <span class="border-r border-current animate-pulse">&nbsp;</span></p>
+            </div>
+            <!-- Input -->
+            <div class="flex items-center gap-2 px-4 py-3 border-t" style="border-color:${t.border}">
+              <span style="color:${t.accent}">$</span>
+              <input class="flex-1 bg-transparent outline-none text-xs" style="color:${t.text}" placeholder="Enter command…">
+              <button class="text-xs px-3 py-1 rounded-lg" style="background:${t.badge};color:${t.accent}">Run</button>
+            </div>
+          </div>
+
+          <!-- History panel -->
+          <div class="w-56 flex-shrink-0 rounded-2xl overflow-hidden flex flex-col" style="background:${t.card};border:1px solid ${t.border};font-family:'Inter',sans-serif">
+            <div class="px-4 py-3 border-b" style="border-color:${t.border}">
+              <p class="text-xs font-bold" style="color:${t.text}">Run History</p>
+            </div>
+            <div class="flex-1 overflow-y-auto p-3 space-y-2">
+              ${prompts.map(pr => `
+              <div class="p-2 rounded-xl" style="background:${t.card2}">
+                <p class="text-xs" style="color:${t.text}">${escHtml(pr.input)}</p>
+                <div class="flex items-center justify-between mt-1">
+                  <span class="text-xs" style="color:${t.muted}">${pr.time}</span>
+                  <span class="text-xs px-1.5 rounded-full" style="background:#22c55e22;color:#22c55e">${pr.status}</span>
+                </div>
+              </div>`).join('')}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  LAYOUT 8: COMMAND CENTER (SaaS / CRM)
+// ══════════════════════════════════════════════════════════════════════════
+function renderCommandCenterDashboard(t, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId) {
+  const wfItems = workflows.split(/[,.;]/).map(s=>s.trim()).filter(s=>s.length>3).slice(0,4);
+  const roles = (fields.roles_permissions || 'Admin/User').split(/[,/]/).map(s=>s.trim());
+
+  const sidebarItems = [
+    { icon:'fas fa-gauge-high',   label:'Dashboard',  badge: null },
+    { icon: resolveIcon(feat0),   label: truncate(feat0,12), badge: 'New' },
+    { icon:'fas fa-users',        label:'Contacts',   badge: null },
+    { icon:'fas fa-chart-bar',    label:'Reports',    badge: null },
+    { icon:'fas fa-bell',         label:'Alerts',     badge: '3' },
+    { icon:'fas fa-gear',         label:'Settings',   badge: null },
+  ];
+
+  const tableRows = [
+    { name: truncate(audience.split(/[,/]/)[0]||'User', 18), action: truncate(wfItems[0]||feat0||'Completed task', 24), status:'Active', date:'Today' },
+    { name: 'New Account', action: truncate(wfItems[1]||'Started workflow', 24), status:'Pending', date:'Yesterday' },
+    { name: truncate(roles[0]||'Admin', 18), action: truncate(features[0]||'Updated record', 24), status:'Done', date:'2 days ago' },
+    { name: 'Integration', action: 'Sync completed', status:'Active', date:'3 days ago' },
+  ];
+
+  return `<div class="flex flex-col h-full" style="background:${t.bg};font-family:'Inter',sans-serif">
+    ${viewTopBar(t, appName, appIcon, projectId)}
+    <div class="flex flex-1 overflow-hidden">
+      ${viewSidebar(t, sidebarItems, 0, '190px')}
+      <div class="flex-1 overflow-y-auto p-5 space-y-5">
+        <div class="flex items-center justify-between">
+          <div>
+            <h1 class="text-xl font-black" style="color:${t.text}">${escHtml(appName)}</h1>
+            <p class="text-xs" style="color:${t.sub}">${escHtml(truncate(problem || `Command center for ${audience}`, 70))}</p>
+          </div>
+          <div class="flex gap-2">
+            <button class="text-xs px-4 py-2 rounded-xl font-bold flex items-center gap-2" style="background:linear-gradient(135deg,${t.accent},${t.accent2});color:white">
+              <i class="fas fa-plus"></i> New ${escHtml(truncate(feat0,10))}
+            </button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-4 gap-3">
+          ${kpiCard(t, resolveIcon(feat0), truncate(feat0,14), '0', 'Total', 0)}
+          ${kpiCard(t, 'fas fa-users', truncate(audience.split(/[,/]/)[0]||'Users',14), '0', 'Active', 0)}
+          ${kpiCard(t, 'fas fa-bolt', 'Automations', '0', 'Running')}
+          ${kpiCard(t, 'fas fa-chart-line', 'Growth', '0%', 'This month')}
+        </div>
+
+        <!-- Chart + activity -->
+        <div class="grid grid-cols-3 gap-4">
+          <!-- Activity chart -->
+          <div class="col-span-2 rounded-2xl p-4" style="background:${t.card};border:1px solid ${t.border}">
+            <div class="flex items-center justify-between mb-4">
+              <h3 class="text-sm font-bold" style="color:${t.text}">Activity Overview</h3>
+              <span class="text-xs" style="color:${t.muted}">Last 7 days</span>
+            </div>
+            <!-- Bar chart (decorative) -->
+            <div class="flex items-end gap-2 h-20">
+              ${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map((d,i) => {
+                const h = [30,50,40,70,55,20,45][i];
+                return `<div class="flex-1 flex flex-col items-center gap-1">
+                  <div class="w-full rounded-t" style="height:${h}%;background:${i===4?`linear-gradient(180deg,${t.accent},${t.accent2})`:t.card2};min-height:4px"></div>
+                  <span class="text-xs" style="color:${t.muted}">${d}</span>
+                </div>`;
+              }).join('')}
+            </div>
+          </div>
+
+          <!-- Quick actions -->
+          <div class="rounded-2xl p-4" style="background:${t.card};border:1px solid ${t.border}">
+            <h3 class="text-sm font-bold mb-3" style="color:${t.text}">Quick Actions</h3>
+            <div class="space-y-2">
+              ${features.slice(0,4).map((f,i) => `
+              <button class="w-full flex items-center gap-3 p-2.5 rounded-xl text-left transition-opacity hover:opacity-80" style="background:${t.card2}">
+                <div class="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style="background:${t.badge}">
+                  <i class="${resolveIcon(f)}" style="font-size:11px;color:${t.accent}"></i>
+                </div>
+                <span class="text-xs font-medium" style="color:${t.sub}">${escHtml(truncate(f, 22))}</span>
+              </button>`).join('')}
+              ${features.length < 2 ? wfItems.slice(0,2).map(w => `
+              <button class="w-full flex items-center gap-3 p-2.5 rounded-xl text-left" style="background:${t.card2}">
+                <div class="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style="background:${t.badge}">
+                  <i class="${resolveIcon(w)}" style="font-size:11px;color:${t.accent}"></i>
+                </div>
+                <span class="text-xs font-medium" style="color:${t.sub}">${escHtml(truncate(w, 22))}</span>
+              </button>`).join('') : ''}
+            </div>
+          </div>
+        </div>
+
+        <!-- Table -->
+        <div class="rounded-2xl p-4" style="background:${t.card};border:1px solid ${t.border}">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-sm font-bold" style="color:${t.text}">Recent Activity</h3>
+            <button class="text-xs" style="color:${t.accent}">View all</button>
+          </div>
+          <table class="w-full text-xs">
+            <thead>
+              <tr style="color:${t.muted}">
+                <th class="text-left py-2 font-semibold">Name</th>
+                <th class="text-left py-2 font-semibold">Action</th>
+                <th class="text-left py-2 font-semibold">Status</th>
+                <th class="text-left py-2 font-semibold">Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${tableRows.map((r,i) => `
+              <tr style="border-top:1px solid ${t.border}">
+                <td class="py-2"><div class="flex items-center gap-2">
+                  <div class="w-6 h-6 rounded-full flex items-center justify-center text-xs font-black" style="background:${t.badge};color:${t.accent}">${r.name[0]}</div>
+                  <span style="color:${t.text}">${escHtml(r.name)}</span>
+                </div></td>
+                <td class="py-2" style="color:${t.sub}">${escHtml(r.action)}</td>
+                <td class="py-2"><span class="px-2 py-0.5 rounded-full" style="background:${r.status==='Active'?t.accent+'22':r.status==='Done'?'#22c55e22':'#f59e0b22'};color:${r.status==='Active'?t.accent:r.status==='Done'?'#22c55e':'#f59e0b'}">${r.status}</span></td>
+                <td class="py-2" style="color:${t.muted}">${r.date}</td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  REMAINING LAYOUTS — DELEGATED TO renderAppDashboard WITH DOMAIN SKIN
+// ══════════════════════════════════════════════════════════════════════════
+function renderDispatchDashboard(t, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId) {
+  return renderAppDashboard(t, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId, 'Dispatch Center', 'fas fa-truck', [
+    { icon:'fas fa-truck', label:'Active Routes', value:'0', note:'Now' },
+    { icon:'fas fa-map-location-dot', label:'Deliveries', value:'0', note:'Today' },
+    { icon:'fas fa-users', label:'Drivers', value:'0', note:'Online' },
+    { icon:'fas fa-check-circle', label:'Completed', value:'0', note:'Today' },
+  ]);
+}
+function renderCaseManagerDashboard(t, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId) {
+  return renderAppDashboard(t, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId, 'Case Manager', 'fas fa-scale-balanced', [
+    { icon:'fas fa-folder-open', label:'Open Cases', value:'0', note:'Active' },
+    { icon:'fas fa-file-contract', label:'Documents', value:'0', note:'Filed' },
+    { icon:'fas fa-calendar-check', label:'Hearings', value:'0', note:'Scheduled' },
+    { icon:'fas fa-clock', label:'Billable Hours', value:'0h', note:'This month' },
+  ]);
+}
+function renderSocialFeedDashboard(t, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId) {
+  return renderAppDashboard(t, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId, 'Social Feed', 'fas fa-heart', [
+    { icon:'fas fa-users', label:'Followers', value:'0', note:'Total' },
+    { icon:'fas fa-heart', label:'Total Likes', value:'0', note:'All posts' },
+    { icon:'fas fa-eye', label:'Views', value:'0', note:'This week' },
+    { icon:'fas fa-chart-line', label:'Engagement', value:'0%', note:'Rate' },
+  ]);
+}
+function renderPropertyPortalDashboard(t, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId) {
+  return renderAppDashboard(t, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId, 'Property Portal', 'fas fa-house', [
+    { icon:'fas fa-house', label:'Listings', value:'0', note:'Active' },
+    { icon:'fas fa-eye', label:'Views', value:'0', note:'This week' },
+    { icon:'fas fa-handshake', label:'Inquiries', value:'0', note:'Pending' },
+    { icon:'fas fa-dollar-sign', label:'Avg Price', value:'$0', note:'Market avg' },
+  ]);
+}
+function renderItineraryDashboard(t, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId) {
+  return renderAppDashboard(t, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId, 'Travel Planner', 'fas fa-plane', [
+    { icon:'fas fa-plane', label:'Trips Planned', value:'0', note:'Total' },
+    { icon:'fas fa-hotel', label:'Hotels', value:'0', note:'Booked' },
+    { icon:'fas fa-map-pin', label:'Destinations', value:'0', note:'Saved' },
+    { icon:'fas fa-star', label:'Avg Rating', value:'–', note:'Trips' },
+  ]);
+}
+function renderKitchenDashboard(t, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId) {
+  return renderAppDashboard(t, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId, 'Kitchen Manager', 'fas fa-utensils', [
+    { icon:'fas fa-utensils', label:'Menu Items', value:'0', note:'Available' },
+    { icon:'fas fa-list-check', label:'Orders Today', value:'0', note:'New' },
+    { icon:'fas fa-star', label:'Avg Rating', value:'–', note:'Customer' },
+    { icon:'fas fa-dollar-sign', label:'Revenue', value:'$0', note:'Today' },
+  ]);
+}
+function renderDesignStudioDashboard(t, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId) {
+  return renderAppDashboard(t, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId, 'Design Studio', 'fas fa-pen-nib', [
+    { icon:'fas fa-pen-nib', label:'Projects', value:'0', note:'Active' },
+    { icon:'fas fa-layer-group', label:'Assets', value:'0', note:'Library' },
+    { icon:'fas fa-users', label:'Collaborators', value:'0', note:'Online' },
+    { icon:'fas fa-share-nodes', label:'Exports', value:'0', note:'This week' },
+  ]);
+}
+function renderArcadeDashboard(t, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId) {
+  return renderAppDashboard(t, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId, 'Game Hub', 'fas fa-gamepad', [
+    { icon:'fas fa-gamepad', label:'Games', value:'0', note:'Available' },
+    { icon:'fas fa-trophy', label:'Achievements', value:'0', note:'Earned' },
+    { icon:'fas fa-users', label:'Players', value:'0', note:'Online' },
+    { icon:'fas fa-fire', label:'High Score', value:'–', note:'Leaderboard' },
+  ]);
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  GENERIC APP DASHBOARD — Flexible layout for any project
+// ══════════════════════════════════════════════════════════════════════════
+function renderAppDashboard(t, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId,
+    overrideTitle = null, overrideIcon = null, overrideKPIs = null) {
+
+  const wfItems = workflows.split(/[,.;]/).map(s=>s.trim()).filter(s=>s.length>3).slice(0,4);
+  const roles = (fields.roles_permissions || 'Admin/User').split(/[,/]/).map(s=>s.trim());
+  const apis = (fields.apis_tools || '').split(',').map(s=>s.trim()).filter(Boolean);
+
+  const dashTitle  = overrideTitle || appName;
+  const dashIcon   = overrideIcon  || appIcon;
+
+  const sidebarItems = [
+    { icon:'fas fa-gauge-high',  label:'Dashboard',                badge: null },
+    { icon: resolveIcon(feat0),  label: truncate(feat0||'Main',12),badge: 'New' },
+    { icon: resolveIcon(feat1),  label: truncate(feat1||'Analytics',12), badge: null },
+    { icon:'fas fa-users',       label: truncate(roles[0]||'Users',12), badge: null },
+    { icon:'fas fa-bell',        label:'Notifications',            badge: '3' },
+    { icon:'fas fa-gear',        label:'Settings',                 badge: null },
+  ];
+
+  const kpis = overrideKPIs || [
+    { icon: resolveIcon(feat0), label: truncate(feat0||'Items',14), value:'0', note:'Total', change:0 },
+    { icon:'fas fa-users', label: truncate(audience.split(/[,/]/)[0]||'Users',14), value:'0', note:'Active', change:0 },
+    { icon:'fas fa-bolt', label:'Automations', value:'0', note:'Running' },
+    { icon:'fas fa-chart-line', label:'Growth', value:'0%', note:'This month' },
+  ];
+
+  const activityItems = [
+    ...(wfItems.length ? wfItems.slice(0,3).map((w,i) => ({ label: truncate(w,40), time:['Just now','5m ago','1h ago'][i]||'Today', icon: resolveIcon(w), color: [t.accent,'#a855f7','#f59e0b'][i]||t.accent })) : []),
+    ...(features.slice(0,2).map((f,i) => ({ label: truncate(`${f} updated`,40), time:['2h ago','Yesterday'][i]||'', icon: resolveIcon(f), color:[t.accent2,'#22c55e'][i]||t.accent2 }))),
+  ].slice(0,5);
+
+  return `<div class="flex flex-col h-full" style="background:${t.bg};font-family:'Inter',sans-serif">
+    ${viewTopBar(t, appName, appIcon, projectId)}
+    <div class="flex flex-1 overflow-hidden">
+      ${viewSidebar(t, sidebarItems, 0, '190px')}
+      <div class="flex-1 overflow-y-auto p-5 space-y-5">
+        <!-- Header -->
+        <div class="flex items-center justify-between">
+          <div>
+            <h1 class="text-xl font-black" style="color:${t.text}">${escHtml(dashTitle)}</h1>
+            <p class="text-xs" style="color:${t.sub}">${escHtml(truncate(problem || `Platform for ${audience}`, 70))}</p>
+          </div>
+          <div class="flex gap-2">
+            <div class="relative hidden sm:block">
+              <input class="text-xs pl-8 pr-4 py-2 rounded-xl outline-none" style="background:${t.card};border:1px solid ${t.border};color:${t.text};width:160px" placeholder="Search…">
+              <i class="fas fa-magnifying-glass absolute left-2.5 top-2.5 text-xs" style="color:${t.muted}"></i>
+            </div>
+            <button class="text-xs px-4 py-2 rounded-xl font-bold flex items-center gap-2" style="background:linear-gradient(135deg,${t.accent},${t.accent2});color:white">
+              <i class="${dashIcon}"></i> <span class="hidden sm:inline">New ${escHtml(truncate(feat0,12))}</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- KPIs -->
+        <div class="grid grid-cols-4 gap-3">
+          ${kpis.map(k => kpiCard(t, k.icon, k.label, k.value, k.note, k.change !== undefined ? k.change : null)).join('')}
+        </div>
+
+        <!-- Main content grid -->
+        <div class="grid grid-cols-3 gap-4">
+          <!-- Feature list / main panel -->
+          <div class="col-span-2 rounded-2xl p-4" style="background:${t.card};border:1px solid ${t.border}">
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="text-sm font-bold" style="color:${t.text}">${escHtml(truncate(feat0||'Overview',28))}</h3>
+              <span class="text-xs px-2 py-0.5 rounded-full" style="background:${t.badge};color:${t.badgeText}">Live</span>
+            </div>
+
+            <!-- Hero feature card -->
+            <div class="rounded-2xl p-4 mb-3 relative overflow-hidden" style="background:linear-gradient(135deg,${t.accent}18,${t.accent2}22);border:1px solid ${t.border}">
+              <div class="absolute right-4 top-4 opacity-10">
+                <i class="${dashIcon}" style="font-size:48px;color:${t.accent}"></i>
+              </div>
+              <div class="w-10 h-10 rounded-xl flex items-center justify-center mb-3" style="background:linear-gradient(135deg,${t.accent},${t.accent2})">
+                <i class="${dashIcon} text-white text-sm"></i>
+              </div>
+              <p class="text-sm font-black mb-1" style="color:${t.text}">${escHtml(truncate(feat0||appName, 36))}</p>
+              <p class="text-xs" style="color:${t.sub}">${escHtml(truncate(problem || `Core feature for ${audience}`, 80))}</p>
+              <div class="flex gap-2 mt-3">
+                <button class="text-xs px-3 py-1.5 rounded-lg font-bold" style="background:linear-gradient(135deg,${t.accent},${t.accent2});color:white">Get Started</button>
+                <button class="text-xs px-3 py-1.5 rounded-lg font-semibold" style="background:${t.badge};color:${t.sub}">Learn More</button>
+              </div>
+            </div>
+
+            <!-- Feature items -->
+            <div class="space-y-2">
+              ${(features.length > 1 ? features : wfItems).slice(0,4).map((item, i) => `
+              <div class="flex items-center gap-3 p-2.5 rounded-xl" style="background:${t.card2}">
+                <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style="background:${t.badge}">
+                  <i class="${resolveIcon(item)}" style="font-size:11px;color:${t.accent}"></i>
+                </div>
+                <div class="flex-1">
+                  <p class="text-xs font-semibold" style="color:${t.text}">${escHtml(truncate(item,38))}</p>
+                  <p class="text-xs" style="color:${t.muted}">${['Active', 'In Progress', 'Ready', 'Pending'][i % 4]}</p>
+                </div>
+                <div class="flex items-center gap-1">
+                  <div class="w-16 h-1.5 rounded-full" style="background:${t.border}">
+                    <div class="h-1.5 rounded-full" style="width:${[70,45,90,20][i%4]}%;background:${t.accent}"></div>
+                  </div>
+                </div>
+              </div>`).join('')}
+            </div>
+          </div>
+
+          <!-- Right panel: activity + info -->
+          <div class="space-y-4">
+            <!-- Activity feed -->
+            <div class="rounded-2xl p-4" style="background:${t.card};border:1px solid ${t.border}">
+              <h3 class="text-sm font-bold mb-3" style="color:${t.text}">Activity</h3>
+              <div class="space-y-3">
+                ${activityItems.map(a => `
+                <div class="flex items-start gap-3">
+                  <div class="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5" style="background:${a.color}22">
+                    <i class="${a.icon}" style="font-size:10px;color:${a.color}"></i>
+                  </div>
+                  <div>
+                    <p class="text-xs" style="color:${t.sub}">${escHtml(a.label)}</p>
+                    <p class="text-xs" style="color:${t.muted}">${a.time}</p>
+                  </div>
+                </div>`).join('')}
+              </div>
+            </div>
+
+            <!-- Project info -->
+            <div class="rounded-2xl p-4" style="background:${t.card};border:1px solid ${t.border}">
+              <h3 class="text-sm font-bold mb-3" style="color:${t.text}">App Details</h3>
+              <div class="space-y-2 text-xs">
+                ${[
+                  { label: 'Audience', val: truncate(audience, 24) },
+                  { label: 'Business', val: truncate(bizModel||'–', 24) },
+                  ...(apis.length ? [{ label: 'Integrations', val: truncate(apis.slice(0,2).join(', '), 24) }] : []),
+                  { label: 'Features', val: String(features.length || wfItems.length) },
+                ].map(row => `
+                <div class="flex justify-between items-start gap-2">
+                  <span style="color:${t.muted}">${row.label}</span>
+                  <span class="text-right font-medium" style="color:${t.sub}">${escHtml(row.val)}</span>
+                </div>`).join('')}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Workflow steps if available -->
+        ${wfItems.length >= 2 ? `
+        <div class="rounded-2xl p-4" style="background:${t.card};border:1px solid ${t.border}">
+          <h3 class="text-sm font-bold mb-3" style="color:${t.text}">Workflow</h3>
+          <div class="flex items-center gap-3 overflow-x-auto pb-1">
+            ${wfItems.map((w, i) => `
+            <div class="flex items-center gap-2 flex-shrink-0">
+              <div class="flex items-center gap-2 px-3 py-2 rounded-xl" style="background:${t.card2};border:1px solid ${i===0?t.accent:t.border}">
+                <div class="w-5 h-5 rounded-full flex items-center justify-center text-xs font-black" style="background:${i===0?`linear-gradient(135deg,${t.accent},${t.accent2})`:t.badge};color:${i===0?'white':t.muted}">${i+1}</div>
+                <span class="text-xs whitespace-nowrap" style="color:${i===0?t.text:t.sub}">${escHtml(truncate(w,26))}</span>
+              </div>
+              ${i < wfItems.length-1 ? `<i class="fas fa-chevron-right text-xs" style="color:${t.muted}"></i>` : ''}
+            </div>`).join('')}
+          </div>
+        </div>` : ''}
+      </div>
+    </div>
+  </div>`;
+}
+
+// Legacy compat — setViewMode and renderViewSpecPanel no longer needed
+// but keep stubs in case referenced from old HTML
+function setViewMode() {}
+function renderViewSpecPanel() {}
+function renderViewSpecMode() {}
+function renderViewPrototype() {}
+function renderCurrentScreen() {}
+function viewNavigate() {}
+function viewGoTo() {}
+function viewGoToIdx() {}
+function buildFallbackScreens(name) { return []; }
+function buildAppScreens(d) { return []; }

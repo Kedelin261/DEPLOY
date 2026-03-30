@@ -389,6 +389,25 @@ function getAppHTML(): string {
     .page { display: none; }
     .page.active { display: block; animation: fadeInUp 0.3s ease; }
     
+    /* Planning page — Kanban breaks out of max-w-2xl and fills full screen */
+    #page-planning.active {
+      display: flex;
+      flex-direction: column;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 30;
+      background: #060912;
+      overflow: hidden;
+      padding-top: 60px;  /* below sticky header */
+      padding-bottom: 68px; /* above bottom nav */
+    }
+    /* When planning is active, hide the page wrapper scroll */
+    body.planning-active #main-content { overflow: hidden; }
+
+    
     /* Toast */
     #toast-container { position: fixed; top: 20px; right: 20px; z-index: 9999; pointer-events: none; }
     .toast {
@@ -551,8 +570,8 @@ function getAppHTML(): string {
   </header>
   
   <!-- Page Content -->
-  <main class="flex-1 pb-24 overflow-y-auto">
-    <div class="max-w-2xl mx-auto px-4">
+  <main id="main-content" class="flex-1 pb-24 overflow-y-auto">
+    <div id="page-wrapper" class="max-w-2xl mx-auto px-4">
       <!-- HOME PAGE -->
       <div id="page-home" class="page active pt-4 space-y-5">
         <!-- Welcome + Stats -->
@@ -858,109 +877,109 @@ function getAppHTML(): string {
         </div>
       </div>
       
-      <!-- PLANNING PAGE (Kanban) -->
-      <div id="page-planning" class="page pt-4">
-        <div class="animate-fade-up">
-          <div class="flex items-center justify-between mb-4">
-            <div>
-              <h2 class="text-xl font-bold text-white">Planning Board</h2>
-              <p class="text-xs text-slate-500 mt-0.5">Kanban · stay on track, ship faster</p>
-            </div>
-            <button onclick="openAddTaskModal()" class="btn-primary px-3 py-2 rounded-lg text-xs font-semibold">
-              <i class="fas fa-plus mr-1"></i> Add Task
-            </button>
+      <!-- PLANNING PAGE (Kanban) — FULL SCREEN -->
+      <div id="page-planning" class="page">
+        <!-- Header bar -->
+        <div class="flex items-center justify-between px-4 pt-4 pb-3 flex-shrink-0">
+          <div>
+            <h2 class="text-xl font-bold text-white">Planning Board</h2>
+            <p class="text-xs text-slate-500 mt-0.5">Kanban · stay on track, ship faster</p>
           </div>
+          <button onclick="openAddTaskModal()" class="btn-primary px-3 py-2 rounded-lg text-xs font-semibold">
+            <i class="fas fa-plus mr-1"></i> Add Task
+          </button>
+        </div>
 
-          <!-- Board scroll container -->
-          <div class="flex gap-3 overflow-x-auto pb-4 snap-x snap-mandatory -mx-4 px-4" id="kanban-board"
-               style="scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch">
+        <!-- Full-height board — columns fill vertical space -->
+        <div class="flex gap-3 overflow-x-auto px-4 pb-2 flex-1" id="kanban-board"
+             style="min-height:0;align-items:stretch">
 
-            <!-- Column: Project To-Do -->
-            <div class="kanban-col flex-shrink-0 w-72 snap-start rounded-2xl bg-slate-900/70 border border-slate-800/60 flex flex-col" data-col="todo">
-              <div class="flex items-center gap-2 px-4 py-3 border-b border-slate-800/60">
-                <span class="w-2.5 h-2.5 rounded-full bg-slate-500"></span>
-                <p class="text-sm font-bold text-white">Project To-Do</p>
-                <span class="ml-auto text-xs text-slate-600 bg-slate-800 px-2 py-0.5 rounded-full" id="badge-todo">0</span>
-              </div>
-              <div class="flex-1 p-3 space-y-2 kanban-cards min-h-24" id="col-todo"
-                   ondragover="onDragOver(event)" ondrop="onDrop(event,'todo')">
-                <p class="text-xs text-slate-700 italic text-center py-4 empty-hint">Drag tasks here or tap + above</p>
-              </div>
-              <div class="p-3 border-t border-slate-800/40">
-                <button onclick="quickAddTask('todo')" class="w-full text-xs text-slate-600 hover:text-slate-400 flex items-center gap-1.5 transition-colors py-1">
-                  <i class="fas fa-plus-circle"></i> Add to Project To-Do
-                </button>
-              </div>
+          <!-- Column: Project To-Do -->
+          <div class="kanban-col flex-shrink-0 rounded-2xl bg-slate-900/70 border border-slate-800/60 flex flex-col" style="width:calc(25% - 9px);min-width:220px" data-col="todo">
+            <div class="flex items-center gap-2 px-4 py-3 border-b border-slate-800/60 flex-shrink-0">
+              <span class="w-2.5 h-2.5 rounded-full bg-slate-500"></span>
+              <p class="text-sm font-bold text-white">Project To-Do</p>
+              <span class="ml-auto text-xs text-slate-600 bg-slate-800 px-2 py-0.5 rounded-full" id="badge-todo">0</span>
             </div>
-
-            <!-- Column: Daily To-Do -->
-            <div class="kanban-col flex-shrink-0 w-72 snap-start rounded-2xl bg-slate-900/70 border border-blue-500/20 flex flex-col" data-col="daily">
-              <div class="flex items-center gap-2 px-4 py-3 border-b border-blue-500/20">
-                <span class="w-2.5 h-2.5 rounded-full bg-blue-400"></span>
-                <p class="text-sm font-bold text-white">Daily To-Do</p>
-                <span class="ml-auto text-xs text-blue-400/60 bg-blue-500/10 px-2 py-0.5 rounded-full" id="badge-daily">0</span>
-              </div>
-              <div class="flex-1 p-3 space-y-2 kanban-cards min-h-24" id="col-daily"
-                   ondragover="onDragOver(event)" ondrop="onDrop(event,'daily')">
-                <p class="text-xs text-slate-700 italic text-center py-4 empty-hint">Today's tasks</p>
-              </div>
-              <div class="p-3 border-t border-blue-500/10">
-                <button onclick="quickAddTask('daily')" class="w-full text-xs text-slate-600 hover:text-blue-400 flex items-center gap-1.5 transition-colors py-1">
-                  <i class="fas fa-plus-circle"></i> Add to Daily To-Do
-                </button>
-              </div>
+            <div class="flex-1 overflow-y-auto p-3 space-y-2 kanban-cards" id="col-todo"
+                 ondragover="onDragOver(event)" ondrop="onDrop(event,'todo')">
+              <p class="text-xs text-slate-700 italic text-center py-4 empty-hint">Drag tasks here or tap + above</p>
             </div>
-
-            <!-- Column: Doing -->
-            <div class="kanban-col flex-shrink-0 w-72 snap-start rounded-2xl bg-slate-900/70 border border-amber-500/20 flex flex-col" data-col="doing">
-              <div class="flex items-center gap-2 px-4 py-3 border-b border-amber-500/20">
-                <span class="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse"></span>
-                <p class="text-sm font-bold text-white">Doing</p>
-                <span class="ml-auto text-xs text-amber-400/70 bg-amber-500/10 px-2 py-0.5 rounded-full" id="badge-doing">0</span>
-              </div>
-              <div class="flex-1 p-3 space-y-2 kanban-cards min-h-24" id="col-doing"
-                   ondragover="onDragOver(event)" ondrop="onDrop(event,'doing')">
-                <p class="text-xs text-slate-700 italic text-center py-4 empty-hint">In progress</p>
-              </div>
-              <div class="p-3 border-t border-amber-500/10">
-                <button onclick="quickAddTask('doing')" class="w-full text-xs text-slate-600 hover:text-amber-400 flex items-center gap-1.5 transition-colors py-1">
-                  <i class="fas fa-plus-circle"></i> Add to Doing
-                </button>
-              </div>
-            </div>
-
-            <!-- Column: Done -->
-            <div class="kanban-col flex-shrink-0 w-72 snap-start rounded-2xl bg-slate-900/70 border border-emerald-500/20 flex flex-col" data-col="done">
-              <div class="flex items-center gap-2 px-4 py-3 border-b border-emerald-500/20">
-                <span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
-                <p class="text-sm font-bold text-white">Done</p>
-                <span class="ml-auto text-xs text-emerald-400/70 bg-emerald-500/10 px-2 py-0.5 rounded-full" id="badge-done">0</span>
-              </div>
-              <div class="flex-1 p-3 space-y-2 kanban-cards min-h-24" id="col-done"
-                   ondragover="onDragOver(event)" ondrop="onDrop(event,'done')">
-                <p class="text-xs text-slate-700 italic text-center py-4 empty-hint">Completed tasks</p>
-              </div>
-              <div class="p-3 border-t border-emerald-500/10">
-                <button onclick="clearDoneTasks()" class="w-full text-xs text-slate-600 hover:text-emerald-400 flex items-center gap-1.5 transition-colors py-1">
-                  <i class="fas fa-broom"></i> Clear Done
-                </button>
-              </div>
+            <div class="p-3 border-t border-slate-800/40 flex-shrink-0">
+              <button onclick="quickAddTask('todo')" class="w-full text-xs text-slate-600 hover:text-slate-400 flex items-center gap-1.5 transition-colors py-1">
+                <i class="fas fa-plus-circle"></i> Add to Project To-Do
+              </button>
             </div>
           </div>
 
-          <!-- Stats bar -->
-          <div class="glass rounded-xl p-3 flex items-center justify-between mt-1" id="kanban-stats">
-            <div class="flex items-center gap-4 text-xs text-slate-500">
-              <span><span id="stat-total-tasks" class="font-bold text-white">0</span> total</span>
-              <span><span id="stat-done-tasks" class="font-bold text-emerald-400">0</span> done</span>
+          <!-- Column: Daily To-Do -->
+          <div class="kanban-col flex-shrink-0 rounded-2xl bg-slate-900/70 border border-blue-500/20 flex flex-col" style="width:calc(25% - 9px);min-width:220px" data-col="daily">
+            <div class="flex items-center gap-2 px-4 py-3 border-b border-blue-500/20 flex-shrink-0">
+              <span class="w-2.5 h-2.5 rounded-full bg-blue-400"></span>
+              <p class="text-sm font-bold text-white">Daily To-Do</p>
+              <span class="ml-auto text-xs text-blue-400/60 bg-blue-500/10 px-2 py-0.5 rounded-full" id="badge-daily">0</span>
             </div>
-            <div id="kanban-velocity" class="text-xs text-slate-600 hidden">
-              <i class="fas fa-fire text-amber-400 mr-1"></i>
-              <span id="velocity-text"></span>
+            <div class="flex-1 overflow-y-auto p-3 space-y-2 kanban-cards" id="col-daily"
+                 ondragover="onDragOver(event)" ondrop="onDrop(event,'daily')">
+              <p class="text-xs text-slate-700 italic text-center py-4 empty-hint">Today's tasks</p>
+            </div>
+            <div class="p-3 border-t border-blue-500/10 flex-shrink-0">
+              <button onclick="quickAddTask('daily')" class="w-full text-xs text-slate-600 hover:text-blue-400 flex items-center gap-1.5 transition-colors py-1">
+                <i class="fas fa-plus-circle"></i> Add to Daily To-Do
+              </button>
+            </div>
+          </div>
+
+          <!-- Column: Doing -->
+          <div class="kanban-col flex-shrink-0 rounded-2xl bg-slate-900/70 border border-amber-500/20 flex flex-col" style="width:calc(25% - 9px);min-width:220px" data-col="doing">
+            <div class="flex items-center gap-2 px-4 py-3 border-b border-amber-500/20 flex-shrink-0">
+              <span class="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse"></span>
+              <p class="text-sm font-bold text-white">Doing</p>
+              <span class="ml-auto text-xs text-amber-400/70 bg-amber-500/10 px-2 py-0.5 rounded-full" id="badge-doing">0</span>
+            </div>
+            <div class="flex-1 overflow-y-auto p-3 space-y-2 kanban-cards" id="col-doing"
+                 ondragover="onDragOver(event)" ondrop="onDrop(event,'doing')">
+              <p class="text-xs text-slate-700 italic text-center py-4 empty-hint">In progress</p>
+            </div>
+            <div class="p-3 border-t border-amber-500/10 flex-shrink-0">
+              <button onclick="quickAddTask('doing')" class="w-full text-xs text-slate-600 hover:text-amber-400 flex items-center gap-1.5 transition-colors py-1">
+                <i class="fas fa-plus-circle"></i> Add to Doing
+              </button>
+            </div>
+          </div>
+
+          <!-- Column: Done -->
+          <div class="kanban-col flex-shrink-0 rounded-2xl bg-slate-900/70 border border-emerald-500/20 flex flex-col" style="width:calc(25% - 9px);min-width:220px" data-col="done">
+            <div class="flex items-center gap-2 px-4 py-3 border-b border-emerald-500/20 flex-shrink-0">
+              <span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+              <p class="text-sm font-bold text-white">Done</p>
+              <span class="ml-auto text-xs text-emerald-400/70 bg-emerald-500/10 px-2 py-0.5 rounded-full" id="badge-done">0</span>
+            </div>
+            <div class="flex-1 overflow-y-auto p-3 space-y-2 kanban-cards" id="col-done"
+                 ondragover="onDragOver(event)" ondrop="onDrop(event,'done')">
+              <p class="text-xs text-slate-700 italic text-center py-4 empty-hint">Completed tasks</p>
+            </div>
+            <div class="p-3 border-t border-emerald-500/10 flex-shrink-0">
+              <button onclick="clearDoneTasks()" class="w-full text-xs text-slate-600 hover:text-emerald-400 flex items-center gap-1.5 transition-colors py-1">
+                <i class="fas fa-broom"></i> Clear Done
+              </button>
             </div>
           </div>
         </div>
+
+        <!-- Stats bar -->
+        <div class="flex items-center justify-between px-4 pb-2 pt-2 flex-shrink-0" id="kanban-stats">
+          <div class="flex items-center gap-4 text-xs text-slate-500">
+            <span><span id="stat-total-tasks" class="font-bold text-white">0</span> total</span>
+            <span><span id="stat-done-tasks" class="font-bold text-emerald-400">0</span> done</span>
+          </div>
+          <div id="kanban-velocity" class="text-xs text-slate-600 hidden">
+            <i class="fas fa-fire text-amber-400 mr-1"></i>
+            <span id="velocity-text"></span>
+          </div>
+        </div>
       </div>
+      <!-- /PLANNING PAGE -->
 
       <!-- INFO PAGE -->
       <div id="page-info" class="page pt-4 space-y-4">
@@ -1786,132 +1805,25 @@ function getAppHTML(): string {
 <!-- ============================================================
      VIEW PROJECT MODAL — Full-screen interactive prototype viewer
      ============================================================ -->
-<div id="modal-view" class="hidden fixed inset-0 z-50 flex-col" style="background:#0a0f1e">
-  <!-- Top bar -->
-  <div class="flex-shrink-0 flex items-center justify-between px-4 py-3 border-b border-slate-800/80" style="background:#0d1424">
-    <div class="flex items-center gap-3">
-      <button onclick="closeModal('modal-view')" class="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors">
-        <i class="fas fa-arrow-left text-sm"></i>
-      </button>
-      <div class="flex items-center gap-2">
-        <div class="w-7 h-7 rounded-lg flex items-center justify-center" style="background:linear-gradient(135deg,#06b6d4,#0891b2)">
-          <i class="fas fa-eye text-white" style="font-size:10px"></i>
-        </div>
-        <div>
-          <p class="text-sm font-bold text-white leading-none" id="view-project-name">Your Project</p>
-          <p class="text-xs text-slate-500 leading-none mt-0.5">Interactive Preview</p>
-        </div>
-      </div>
-    </div>
-    <!-- View mode toggle -->
-    <div class="flex items-center gap-2">
-      <div class="flex gap-1 bg-slate-800/80 p-1 rounded-lg">
-        <button onclick="setViewMode('prototype')" id="vmode-prototype"
-          class="px-3 py-1 text-xs font-semibold rounded-md transition-all bg-cyan-500 text-white">
-          <i class="fas fa-mobile-screen-button mr-1"></i>Preview
-        </button>
-        <button onclick="setViewMode('spec')" id="vmode-spec"
-          class="px-3 py-1 text-xs font-semibold rounded-md transition-all text-slate-400 hover:text-white">
-          <i class="fas fa-file-code mr-1"></i>Spec
-        </button>
-      </div>
-      <button onclick="closeModal('modal-view')" class="w-8 h-8 flex items-center justify-center rounded-lg text-slate-500 hover:text-white hover:bg-slate-800">
-        <i class="fas fa-xmark"></i>
-      </button>
-    </div>
-  </div>
-
+<div id="modal-view" class="hidden fixed inset-0 z-50 overflow-hidden" style="background:#060912">
+  <!-- The entire view is injected by generateProjectDashboard() in app.js -->
   <!-- Loading state -->
-  <div id="view-loading" class="flex-1 flex items-center justify-center">
+  <div id="view-loading" class="absolute inset-0 flex items-center justify-center" style="background:#060912;z-index:10">
     <div class="text-center">
-      <div class="w-12 h-12 border-2 border-cyan-500/30 border-t-cyan-400 rounded-full animate-spin mx-auto mb-4"></div>
-      <p class="text-slate-300 font-semibold">Building preview…</p>
-      <p class="text-slate-500 text-sm mt-1">Generating your app screens</p>
+      <div class="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-5 shadow-2xl" id="view-loading-icon" style="background:linear-gradient(135deg,#06b6d4,#0891b2)">
+        <i class="fas fa-cube text-white text-2xl"></i>
+      </div>
+      <p class="text-white font-bold text-lg mb-1">Generating Preview…</p>
+      <p class="text-slate-500 text-sm">Building your unique interface</p>
+      <div class="flex justify-center gap-1.5 mt-5">
+        <div class="w-2 h-2 rounded-full bg-cyan-500 animate-bounce" style="animation-delay:0ms"></div>
+        <div class="w-2 h-2 rounded-full bg-cyan-500 animate-bounce" style="animation-delay:150ms"></div>
+        <div class="w-2 h-2 rounded-full bg-cyan-500 animate-bounce" style="animation-delay:300ms"></div>
+      </div>
     </div>
   </div>
-
-  <!-- Main content area -->
-  <div id="view-content" class="hidden flex-1 flex overflow-hidden">
-
-    <!-- PROTOTYPE MODE -->
-    <div id="view-mode-prototype" class="flex-1 flex flex-col overflow-hidden">
-      <!-- Screen nav bar -->
-      <div class="flex-shrink-0 overflow-x-auto" style="background:#0d1424;border-bottom:1px solid rgba(255,255,255,0.06)">
-        <div id="view-screen-nav" class="flex gap-1 px-4 py-2 min-w-max">
-          <!-- Screen tabs injected by JS -->
-        </div>
-      </div>
-
-      <!-- Phone + screen content — scrollable middle -->
-      <div class="flex-1 flex items-start justify-center overflow-y-auto py-4 px-4" style="background:radial-gradient(ellipse at 50% 0%,rgba(6,182,212,0.06) 0%,transparent 60%)">
-        <div class="w-full max-w-sm pb-2">
-          <!-- Phone frame -->
-          <div class="relative mx-auto" style="width:100%;max-width:320px">
-            <!-- Phone bezel -->
-            <div class="relative rounded-3xl overflow-hidden shadow-2xl" style="background:#111827;border:2px solid rgba(255,255,255,0.12);box-shadow:0 0 0 1px rgba(0,0,0,0.5),0 25px 60px rgba(0,0,0,0.6)">
-              <!-- Status bar -->
-              <div class="flex items-center justify-between px-5 pt-3 pb-1" style="background:#111827">
-                <span class="text-white text-xs font-semibold" id="view-time">9:41</span>
-                <div class="w-20 h-5 rounded-full" style="background:#000;position:absolute;left:50%;transform:translateX(-50%)"></div>
-                <div class="flex items-center gap-1">
-                  <i class="fas fa-signal text-white" style="font-size:9px"></i>
-                  <i class="fas fa-wifi text-white" style="font-size:9px"></i>
-                  <i class="fas fa-battery-full text-white" style="font-size:9px"></i>
-                </div>
-              </div>
-              <!-- Screen content area -->
-              <div id="view-screen-content" class="overflow-y-auto" style="min-height:520px;max-height:560px;background:#f8fafc">
-                <!-- Populated by JS -->
-              </div>
-              <!-- Home indicator -->
-              <div class="flex justify-center py-2" style="background:#111827">
-                <div class="w-24 h-1 rounded-full" style="background:rgba(255,255,255,0.3)"></div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Screen label + nav arrows -->
-          <div class="flex items-center justify-between mt-3 px-2">
-            <button id="view-prev-btn" onclick="viewNavigate(-1)"
-              class="w-9 h-9 rounded-full flex items-center justify-center transition-all border border-slate-700 text-slate-400 hover:border-cyan-500 hover:text-cyan-400">
-              <i class="fas fa-chevron-left text-xs"></i>
-            </button>
-            <div class="text-center">
-              <p class="text-sm font-semibold text-white" id="view-screen-label">Home</p>
-              <p class="text-xs text-slate-500" id="view-screen-counter">1 / 1</p>
-            </div>
-            <button id="view-next-btn" onclick="viewNavigate(1)"
-              class="w-9 h-9 rounded-full flex items-center justify-center transition-all border border-slate-700 text-slate-400 hover:border-cyan-500 hover:text-cyan-400">
-              <i class="fas fa-chevron-right text-xs"></i>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Action buttons — pinned at bottom, never cut off -->
-      <div class="flex-shrink-0 flex gap-3 px-4 py-3 border-t border-slate-800/60" style="background:#0d1424">
-        <button onclick="closeModal('modal-view'); openTestingModal(null, VIEW_PROJECT.id, VIEW_PROJECT.name)"
-          class="flex-1 py-3 rounded-xl text-sm font-semibold border border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 transition-colors flex items-center justify-center gap-2">
-          <i class="fas fa-flask"></i> Revise
-        </button>
-        <button onclick="closeModal('modal-view'); openPublishModal(VIEW_PROJECT.id)"
-          class="flex-1 py-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-colors"
-          style="background:linear-gradient(135deg,#6366f1,#4f46e5);color:white">
-          <i class="fas fa-rocket"></i> Publish
-        </button>
-      </div>
-    </div>
-
-    <!-- SPEC MODE -->
-    <div id="view-mode-spec" class="hidden flex-1 overflow-y-auto px-4 py-5 space-y-4">
-      <div id="view-spec-content">
-        <div class="glass rounded-xl p-6 text-center border border-slate-700/40">
-          <p class="text-slate-400 text-sm">Loading spec…</p>
-        </div>
-      </div>
-    </div>
-
-  </div>
+  <!-- Dashboard content injected here -->
+  <div id="view-content" class="hidden absolute inset-0 overflow-hidden"></div>
 </div>
 
 <!-- Scripts -->
