@@ -1805,10 +1805,10 @@ function getAppHTML(): string {
 <!-- ============================================================
      VIEW PROJECT MODAL — Full-screen interactive prototype viewer
      ============================================================ -->
-<div id="modal-view" class="hidden fixed inset-0 z-50 overflow-hidden" style="background:#060912">
+<div id="modal-view" class="hidden fixed inset-0 z-50" style="background:#060912">
   <!-- The entire view is injected by generateProjectDashboard() in app.js -->
-  <!-- Loading state -->
-  <div id="view-loading" class="absolute inset-0 flex items-center justify-center" style="background:#060912;z-index:10">
+  <!-- Loading state — shown by JS when modal opens -->
+  <div id="view-loading" style="display:none;position:absolute;inset:0;align-items:center;justify-content:center;background:#060912;z-index:5">
     <div class="text-center">
       <div class="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-5 shadow-2xl" id="view-loading-icon" style="background:linear-gradient(135deg,#06b6d4,#0891b2)">
         <i class="fas fa-cube text-white text-2xl"></i>
@@ -1822,8 +1822,8 @@ function getAppHTML(): string {
       </div>
     </div>
   </div>
-  <!-- Dashboard content injected here -->
-  <div id="view-content" class="hidden absolute inset-0 overflow-hidden"></div>
+  <!-- Dashboard content injected here — display managed entirely by JS -->
+  <div id="view-content" style="display:none;position:absolute;inset:0;flex-direction:column;z-index:10;overflow:hidden"></div>
 </div>
 
 <!-- Scripts -->

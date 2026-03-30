@@ -3611,10 +3611,10 @@ async function openViewModal(projectId, projectName) {
   if (!modal) return;
 
   modal.classList.remove('hidden');
-  modal.classList.add('flex');
+  modal.style.display = 'block';   // force show
   document.body.style.overflow = 'hidden';
-  if (loading) loading.classList.remove('hidden');
-  if (content) { content.classList.add('hidden'); content.innerHTML = ''; }
+  if (loading) { loading.style.display = 'flex'; }
+  if (content) { content.style.display = 'none'; content.innerHTML = ''; }
 
   try {
     const res = await axios.get(`/api/projects/${projectId}/preview`);
@@ -3628,19 +3628,20 @@ async function openViewModal(projectId, projectName) {
   const html = generateProjectDashboard(VIEW_PROJECT.data, projectId, projectName);
   if (content) {
     content.innerHTML = html;
-    content.classList.remove('hidden');
+    content.style.display = 'flex';   // flex + flex-direction:column (set in inline style)
   }
-  if (loading) loading.classList.add('hidden');
+  if (loading) {
+    loading.style.display = 'none';
+  }
 }
 
 function closeViewModal() {
   const modal = document.getElementById('modal-view');
-  if (modal) {
-    modal.classList.add('hidden');
-    modal.classList.remove('flex');
-  }
+  if (modal) { modal.classList.add('hidden'); modal.style.display = ''; }
   const content = document.getElementById('view-content');
-  if (content) content.innerHTML = '';
+  if (content) { content.style.display = 'none'; content.innerHTML = ''; }
+  const loading = document.getElementById('view-loading');
+  if (loading) { loading.style.display = ''; }
   document.body.style.overflow = '';
 }
 
