@@ -1786,7 +1786,7 @@ function getAppHTML(): string {
 <!-- ============================================================
      VIEW PROJECT MODAL — Full-screen interactive prototype viewer
      ============================================================ -->
-<div id="modal-view" class="hidden fixed inset-0 z-50 flex flex-col" style="background:#0a0f1e">
+<div id="modal-view" class="hidden fixed inset-0 z-50 flex-col" style="background:#0a0f1e">
   <!-- Top bar -->
   <div class="flex-shrink-0 flex items-center justify-between px-4 py-3 border-b border-slate-800/80" style="background:#0d1424">
     <div class="flex items-center gap-3">
