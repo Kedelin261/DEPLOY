@@ -3590,87 +3590,90 @@ async function triggerWebDeploy() {
 
 
 
+
 // ══════════════════════════════════════════════════════════════════════════
-//  PROJECT VIEWER — Full-Screen Unique Dashboard Generator v5
-//  Every project gets a completely different application interface.
-//  No two projects share layout, color scheme, navigation, or widget types.
+//  PROJECT VIEW MODAL — COMPLETELY INLINE STYLES, NO TAILWIND
+//  Each project gets a completely different application interface.
+//  All CSS is inline; never relies on Tailwind for dynamically injected HTML.
 // ══════════════════════════════════════════════════════════════════════════
 
 const VIEW_PROJECT = { id: null, name: '', data: null };
 
 // ── Open the view modal ───────────────────────────────────────────────────
 async function openViewModal(projectId, projectName) {
-  VIEW_PROJECT.id = projectId;
+  VIEW_PROJECT.id   = projectId;
   VIEW_PROJECT.name = projectName || 'Your Project';
   VIEW_PROJECT.data = null;
 
-  // Show modal with loading state
-  const modal = document.getElementById('modal-view');
+  const modal   = document.getElementById('modal-view');
   const loading = document.getElementById('view-loading');
   const content = document.getElementById('view-content');
   if (!modal) return;
 
-  modal.classList.remove('hidden');
-  modal.style.display = 'block';   // force show
+  // Show modal — use inline style to bypass Tailwind hidden !important
+  modal.style.cssText = 'display:block;position:fixed;inset:0;z-index:9999;background:#060912';
   document.body.style.overflow = 'hidden';
-  if (loading) { loading.style.display = 'flex'; }
-  if (content) { content.style.display = 'none'; content.innerHTML = ''; }
+
+  // Show loading, hide content
+  if (loading) loading.style.cssText = 'display:flex;position:absolute;inset:0;align-items:center;justify-content:center;background:#060912;z-index:2';
+  if (content) { content.style.cssText = 'display:none;position:absolute;inset:0;overflow:hidden;z-index:3'; content.innerHTML = ''; }
 
   try {
     const res = await axios.get(`/api/projects/${projectId}/preview`);
     VIEW_PROJECT.data = res.data?.data || {};
   } catch (err) {
-    console.warn('Preview fetch failed, using minimal data', err);
+    console.warn('Preview fetch failed, using minimal data');
     VIEW_PROJECT.data = { project: { name: projectName }, fields: {}, spec: {} };
   }
 
-  // Generate and inject the dashboard
+  // Generate the dashboard HTML (all inline styles)
   const html = generateProjectDashboard(VIEW_PROJECT.data, projectId, projectName);
+
   if (content) {
     content.innerHTML = html;
-    content.style.display = 'flex';   // flex + flex-direction:column (set in inline style)
+    // Show content, hide loading
+    content.style.cssText = 'display:flex;flex-direction:column;position:absolute;inset:0;overflow:hidden;z-index:3';
   }
-  if (loading) {
-    loading.style.display = 'none';
-  }
+  if (loading) loading.style.cssText = 'display:none;position:absolute;inset:0';
 }
 
 function closeViewModal() {
   const modal = document.getElementById('modal-view');
-  if (modal) { modal.classList.add('hidden'); modal.style.display = ''; }
+  if (modal) modal.style.cssText = 'display:none';
   const content = document.getElementById('view-content');
-  if (content) { content.style.display = 'none'; content.innerHTML = ''; }
+  if (content) { content.style.cssText = 'display:none'; content.innerHTML = ''; }
   const loading = document.getElementById('view-loading');
-  if (loading) { loading.style.display = ''; }
+  if (loading) loading.style.cssText = 'display:none;position:absolute;inset:0';
   document.body.style.overflow = '';
 }
 
+// ── Helpers ───────────────────────────────────────────────────────────────
 function truncate(str, len) {
   if (!str) return '';
-  return str.length > len ? str.slice(0, len) + '…' : str;
+  return str.length > len ? str.slice(0, len) + '\u2026' : str;
 }
 
 function parseFeatureList(raw) {
   if (!raw) return [];
-  if (Array.isArray(raw)) return raw.map(f => typeof f === 'string' ? f : f.feature || f.name || '').filter(Boolean);
-  try { const a = JSON.parse(raw); if (Array.isArray(a)) return a.map(f => typeof f === 'string' ? f : f.feature || f.name || '').filter(Boolean); } catch (_) {}
+  if (Array.isArray(raw)) return raw.map(f => typeof f === 'string' ? f : (f.feature || f.name || '')).filter(Boolean);
+  try { const a = JSON.parse(raw); if (Array.isArray(a)) return a.map(f => typeof f === 'string' ? f : (f.feature || f.name || '')).filter(Boolean); } catch (_) {}
   return String(raw).split(',').map(s => s.trim()).filter(Boolean);
 }
 
-// ── Semantic icon resolver (50+ patterns) ─────────────────────────────────
+// ── Icon resolver (50+ patterns) ──────────────────────────────────────────
 function resolveIcon(text) {
   const t = (text || '').toLowerCase();
   if (t.match(/film|video|watch|reel|playback|footage|stream|cinema/)) return 'fas fa-film';
   if (t.match(/music|song|playlist|audio|beat|track|album|sound|listen|spotify/)) return 'fas fa-music';
-  if (t.match(/football|soccer|coach|formation|blitz|tackle|roster|nfl|athlete|gridiron/)) return 'fas fa-football';
+  if (t.match(/football|soccer|coach|formation|blitz|tackle|roster|nfl|athlete/)) return 'fas fa-football';
   if (t.match(/basketball|nba|court|dunk|hoop/)) return 'fas fa-basketball';
   if (t.match(/draw|sketch|canvas|paint|brush|art|illustrat|creative|design/)) return 'fas fa-pen-nib';
   if (t.match(/photo|camera|image|picture|gallery|snapshot/)) return 'fas fa-camera';
-  if (t.match(/ai|machine learn|intelligence|neural|automat|smart|analyze|breakdown|predict/)) return 'fas fa-brain';
+  if (t.match(/ai|machine learn|intelligence|neural|automat|smart|analyz|predict/)) return 'fas fa-brain';
   if (t.match(/upload|import|ingest|transfer|sync/)) return 'fas fa-cloud-arrow-up';
   if (t.match(/download|export|extract/)) return 'fas fa-cloud-arrow-down';
   if (t.match(/analyt|stat|metric|insight|kpi|chart|graph|data|report/)) return 'fas fa-chart-bar';
-  if (t.match(/pay|stripe|billing|invoice|subscri|checkout|wallet|money|revenue|coin/)) return 'fas fa-credit-card';
+  if (t.match(/pay|stripe|billing|invoice|subscri|checkout|wallet|money|revenue/)) return 'fas fa-credit-card';
   if (t.match(/search|find|discover|browse|explore|query|lookup/)) return 'fas fa-magnifying-glass';
   if (t.match(/team|collab|member|group|crew|squad|roster/)) return 'fas fa-users';
   if (t.match(/chat|message|inbox|dm|comment|discuss|communit/)) return 'fas fa-comment-dots';
@@ -3685,388 +3688,352 @@ function resolveIcon(text) {
   if (t.match(/educat|learn|course|lesson|student|quiz|tutor|school|class/)) return 'fas fa-graduation-cap';
   if (t.match(/social|network|post|feed|follow|like|share/)) return 'fas fa-heart';
   if (t.match(/real estate|property|house|rent|home|listing|agent/)) return 'fas fa-house';
-  if (t.match(/task|todo|project|manage|workflow|sprint|board|plan/)) return 'fas fa-check-square';
+  if (t.match(/task|todo|project|manage|workflow|sprint|board|plan/)) return 'fas fa-square-check';
   if (t.match(/security|auth|login|password|protect|guard|verif/)) return 'fas fa-shield-halved';
   if (t.match(/setting|config|prefer|manage|gear|admin|control/)) return 'fas fa-gear';
   if (t.match(/dashboard|overview|home|main|hub|portal/)) return 'fas fa-gauge-high';
   if (t.match(/recruit|hire|scout|talent|staffing/)) return 'fas fa-user-plus';
-  if (t.match(/saas|platform|tool|software|service|app/)) return 'fas fa-layer-group';
+  if (t.match(/saas|platform|tool|software|service/)) return 'fas fa-layer-group';
   if (t.match(/law|legal|contract|case|court|attorney|firm/)) return 'fas fa-scale-balanced';
-  if (t.match(/logistic|deliver|supply|fleet|route|ship|track/)) return 'fas fa-truck';
-  if (t.match(/doctor|clinic|hospital|patient|prescr|diagnos/)) return 'fas fa-stethoscope';
-  if (t.match(/crypto|nft|blockchain|token|wallet|defi/)) return 'fas fa-bitcoin-sign';
-  if (t.match(/star|rate|review|feedback|rating/)) return 'fas fa-star';
-  if (t.match(/fire|trend|hot|viral|popular/)) return 'fas fa-fire';
-  if (t.match(/rocket|launch|deploy|ship|release/)) return 'fas fa-rocket';
-  if (t.match(/plus|add|create|new|build/)) return 'fas fa-plus-circle';
-  if (t.match(/list|item|entry|record|row/)) return 'fas fa-list';
-  if (t.match(/filter|sort|organize/)) return 'fas fa-filter';
-  if (t.match(/share|export|send/)) return 'fas fa-share-nodes';
-  if (t.match(/game|gaming|play|level|score|leaderboard/)) return 'fas fa-gamepad';
-  if (t.match(/pet|animal|vet|shelter/)) return 'fas fa-paw';
-  if (t.match(/cloud|server|hosting|infra|devops/)) return 'fas fa-server';
-  if (t.match(/book|read|library|publish|author/)) return 'fas fa-book-open';
-  const fallbacks = ['fas fa-bolt','fas fa-wand-magic-sparkles','fas fa-gem','fas fa-trophy','fas fa-flag','fas fa-cube'];
-  return fallbacks[Math.abs((text||'').length) % fallbacks.length];
+  if (t.match(/game|arcade|play|score|level|quest/)) return 'fas fa-gamepad';
+  if (t.match(/delivery|dispatch|truck|logistics|ship|freight/)) return 'fas fa-truck';
+  if (t.match(/book|read|librar|publish|author|chapter/)) return 'fas fa-book';
+  return 'fas fa-layer-group';
 }
 
-// ── Detect project domain with scoring ────────────────────────────────────
+// ── Domain detector ──────────────────────────────────────────────────────
 function detectDomain(fields, projectName) {
-  const all = [
-    fields.app_name, fields.audience, fields.problem_statement,
-    fields.workflows, fields.core_features, fields.category,
-    fields.apis_tools, fields.additional_comments, projectName
-  ].filter(Boolean).join(' ').toLowerCase();
+  const haystack = [
+    fields.app_name || '', fields.problem_statement || '', fields.workflows || '',
+    fields.core_features || '', fields.audience || '', projectName || '',
+  ].join(' ').toLowerCase();
 
   const scores = {
-    sports_film: /film|football|coach|formation|blitz|nfl|athlete|playbook|gridiron|sport|game\s+film|breakdown|scouting|roster|hudl/g,
-    music:       /music|song|playlist|audio|track|album|beat|listen|streaming|spotify|sound|band|artist|concert/g,
-    health:      /health|medic|patient|doctor|clinic|hospital|vital|fitness|workout|appointment|prescr|wellness|diet/g,
-    finance:     /financ|invest|portfolio|crypto|budget|stock|trade|bank|money|revenue|wealth|wallet|payment|invoice/g,
-    ecommerce:   /shop|cart|store|product|order|inventory|retail|ecom|customer|purchase|checkout|merchant/g,
-    education:   /educat|learn|course|lesson|student|quiz|tutor|school|class|curriculum|teacher|study|grade/g,
-    logistics:   /logistic|deliver|supply|fleet|route|ship|track|warehouse|cargo|dispatch|driver|transport/g,
-    legal:       /law|legal|contract|case|court|attorney|firm|compliance|document|clause|litigation/g,
-    social:      /social|network|post|feed|follow|like|share|community|connect|profile|creator|influencer/g,
-    realestate:  /real\s*estate|property|house|rent|home|listing|agent|mortgage|apartment|landlord/g,
-    travel:      /travel|trip|flight|hotel|booking|tourism|itinerar|destination|vacation|resort/g,
-    food:        /food|recipe|cook|restaurant|meal|dish|menu|eat|chef|delivery|order\s+food/g,
-    creative:    /design|creative|draw|sketch|canvas|paint|art|illustrat|photo|video\s*edit|motion/g,
-    ai_tool:     /ai\s*tool|automat|machine\s*learn|neural|nlp|predict|generat|gpt|llm|intelligence/g,
-    saas:        /saas|platform|b2b|enterprise|dashboard|admin|crm|erp|management\s*system/g,
-    gaming:      /game|gaming|level|score|leaderboard|player|quest|multiplayer|achievement/g,
+    sports_film: 0, music: 0, health: 0, finance: 0, ecommerce: 0,
+    education: 0, logistics: 0, legal: 0, social: 0, realestate: 0,
+    travel: 0, food: 0, creative: 0, ai_tool: 0, saas: 0, gaming: 0,
   };
+  // Sports / film
+  if (/film|footage|playback|highlight|reel/.test(haystack)) scores.sports_film += 4;
+  if (/football|soccer|nfl|nba|basketball|coach|athletic|sport/.test(haystack)) scores.sports_film += 3;
+  // Music
+  if (/\bmusic\b|song|playlist|album|spotify|listen|audio.*play|play.*audio|music.*app|streaming.*app/.test(haystack)) scores.music += 5;
+  // Health
+  if (/health|medic|patient|doctor|clinic|vital|prescription|fitnes|workout/.test(haystack)) scores.health += 5;
+  // Finance
+  if (/financ|invest|portfolio|crypto|trading|stock|budget|bank|wealth|revenue/.test(haystack)) scores.finance += 5;
+  // E-commerce
+  if (/shop|store|cart|checkout|product|ecommerce|retail|order|inventory/.test(haystack)) scores.ecommerce += 5;
+  // Education
+  if (/educat|course|lesson|student|tutor|learn|quiz|school|class|lms/.test(haystack)) scores.education += 5;
+  // Logistics
+  if (/logistic|delivery|dispatch|truck|freight|shipping|route|driver|fleet/.test(haystack)) scores.logistics += 5;
+  // Legal
+  if (/legal|law|attorney|case|contract|court|firm|compli|clause/.test(haystack)) scores.legal += 5;
+  // Social
+  if (/social|network|post|feed|follow|like|share|community|influencer/.test(haystack)) scores.social += 5;
+  // Real estate
+  if (/real estate|property|house|rent|listing|agent|mortgage|home/.test(haystack)) scores.realestate += 5;
+  // Travel
+  if (/travel|trip|flight|hotel|tourism|itinerar|destination|vacation/.test(haystack)) scores.travel += 5;
+  // Food
+  if (/food|recipe|cook|restaurant|meal|dish|\bmenu\b|kitchen|chef|cuisine|eat\b|dining/.test(haystack)) scores.food += 6;
+  // Creative
+  if (/design|sketch|canvas|illustrat|creative|brand|graphic|print/.test(haystack)) scores.creative += 5;
+  // AI tool
+  if (/\bai\b|automat|machine learn|neural|gpt|llm|chatbot|intelligence|predict/.test(haystack)) scores.ai_tool += 5;
+  // SaaS
+  if (/saas|\bcrm\b|\berp\b|b2b|enterprise|\bpipeline\b|\bdashboard\b/.test(haystack)) scores.saas += 3;
+  if (/customer.*manage|lead.*track|deal.*close|contact.*manage/.test(haystack)) scores.saas += 4;
+  // Gaming
+  if (/game|arcade|play|score|level|quest|rpg|pvp|leaderboard/.test(haystack)) scores.gaming += 5;
 
-  let best = 'generic', bestCount = 0;
-  for (const [domain, re] of Object.entries(scores)) {
-    const matches = (all.match(re) || []).length;
-    if (matches > bestCount) { bestCount = matches; best = domain; }
+  let best = 'generic', bestScore = 0;
+  for (const [k, v] of Object.entries(scores)) {
+    if (v > bestScore) { bestScore = v; best = k; }
   }
   return best;
 }
 
-// ── Color themes — each domain/hash gets a unique visual identity ──────────
+// ── Theme selector ────────────────────────────────────────────────────────
 function getDomainTheme(domain, fields, projectName) {
-  const explicit = (fields.color_scheme || '').toLowerCase().trim();
-
   const themes = {
-    // Dark professional themes
-    midnight:   { bg:'#080d1a', sidebar:'#0a1020', header:'#0c1428', card:'#101830', card2:'#131d38', accent:'#06b6d4', accent2:'#0891b2', glow:'rgba(6,182,212,0.15)', text:'#f0f9ff', sub:'#7ea9c9', muted:'#3a5a73', border:'rgba(6,182,212,0.12)', badge:'rgba(6,182,212,0.15)', badgeText:'#06b6d4' },
-    ocean:      { bg:'#020c1e', sidebar:'#030e24', header:'#040f28', card:'#071629', card2:'#0a1c34', accent:'#3b82f6', accent2:'#1d4ed8', glow:'rgba(59,130,246,0.15)', text:'#eff6ff', sub:'#7ba7d4', muted:'#2a4870', border:'rgba(59,130,246,0.12)', badge:'rgba(59,130,246,0.15)', badgeText:'#60a5fa' },
-    forest:     { bg:'#030e06', sidebar:'#041209', card:'#06180b', card2:'#081d0e', header:'#05150a', accent:'#22c55e', accent2:'#16a34a', glow:'rgba(34,197,94,0.15)',  text:'#f0fdf4', sub:'#74c78a', muted:'#1a4d2a', border:'rgba(34,197,94,0.12)', badge:'rgba(34,197,94,0.15)', badgeText:'#4ade80' },
-    sunset:     { bg:'#110404', sidebar:'#180606', header:'#1e0808', card:'#220a0a', card2:'#2d0d0d', accent:'#f97316', accent2:'#dc2626', glow:'rgba(249,115,22,0.15)', text:'#fff7ed', sub:'#d97c59', muted:'#6b2e12', border:'rgba(249,115,22,0.12)', badge:'rgba(249,115,22,0.15)', badgeText:'#fb923c' },
-    purple:     { bg:'#0a0614', sidebar:'#0d0820', header:'#100a28', card:'#130c2e', card2:'#180f38', accent:'#a855f7', accent2:'#7c3aed', glow:'rgba(168,85,247,0.15)', text:'#faf5ff', sub:'#b490d4', muted:'#4a2570', border:'rgba(168,85,247,0.12)', badge:'rgba(168,85,247,0.15)', badgeText:'#c084fc' },
-    rose:       { bg:'#110306', sidebar:'#180408', header:'#1e0509', card:'#200607', card2:'#2a0808', accent:'#f43f5e', accent2:'#be123c', glow:'rgba(244,63,94,0.15)',  text:'#fff1f2', sub:'#c97a8c', muted:'#6b1a2a', border:'rgba(244,63,94,0.12)', badge:'rgba(244,63,94,0.15)', badgeText:'#fb7185' },
-    amber:      { bg:'#0e0900', sidebar:'#150d00', header:'#1b1100', card:'#1f1500', card2:'#2a1c00', accent:'#f59e0b', accent2:'#d97706', glow:'rgba(245,158,11,0.15)', text:'#fffbeb', sub:'#c29c5c', muted:'#6b4600', border:'rgba(245,158,11,0.12)', badge:'rgba(245,158,11,0.15)', badgeText:'#fbbf24' },
-    slate:      { bg:'#070b10', sidebar:'#0b1018', header:'#0e1520', card:'#111a24', card2:'#161f2c', accent:'#64748b', accent2:'#475569', glow:'rgba(100,116,139,0.15)',text:'#f8fafc', sub:'#94a3b8', muted:'#2a3545', border:'rgba(100,116,139,0.12)', badge:'rgba(100,116,139,0.2)', badgeText:'#94a3b8' },
-    // Specialized domain themes
-    cyan_sport: { bg:'#030f18', sidebar:'#041420', header:'#051928', card:'#071c30', card2:'#0a2238', accent:'#06b6d4', accent2:'#0284c7', glow:'rgba(6,182,212,0.2)', text:'#f0f9ff', sub:'#7cb8d4', muted:'#1a4060', border:'rgba(6,182,212,0.15)', badge:'rgba(6,182,212,0.2)', badgeText:'#22d3ee' },
-    emerald_med:{ bg:'#030f08', sidebar:'#041410', header:'#051918', card:'#071c12', card2:'#0a2218', accent:'#10b981', accent2:'#059669', glow:'rgba(16,185,129,0.2)', text:'#ecfdf5', sub:'#6cd4a6', muted:'#1a4030', border:'rgba(16,185,129,0.15)', badge:'rgba(16,185,129,0.2)', badgeText:'#34d399' },
-    gold_fin:   { bg:'#0e0b00', sidebar:'#151000', header:'#1c1500', card:'#221900', card2:'#2d2100', accent:'#eab308', accent2:'#ca8a04', glow:'rgba(234,179,8,0.2)',   text:'#fefce8', sub:'#c4a835', muted:'#5a4800', border:'rgba(234,179,8,0.15)', badge:'rgba(234,179,8,0.2)', badgeText:'#facc15' },
-    violet_ai:  { bg:'#080514', sidebar:'#0c071e', header:'#100a28', card:'#130d2c', card2:'#181238', accent:'#8b5cf6', accent2:'#6d28d9', glow:'rgba(139,92,246,0.2)',  text:'#f5f3ff', sub:'#a78bcc', muted:'#3d206a', border:'rgba(139,92,246,0.15)', badge:'rgba(139,92,246,0.2)', badgeText:'#a78bfa' },
-    teal_edu:   { bg:'#030f10', sidebar:'#041418', header:'#051920', card:'#071c22', card2:'#0a222a', accent:'#14b8a6', accent2:'#0d9488', glow:'rgba(20,184,166,0.2)',  text:'#f0fdfa', sub:'#5fcbb8', muted:'#1a4040', border:'rgba(20,184,166,0.15)', badge:'rgba(20,184,166,0.2)', badgeText:'#2dd4bf' },
-    red_law:    { bg:'#100303', sidebar:'#180404', header:'#1e0505', card:'#220606', card2:'#2d0808', accent:'#ef4444', accent2:'#b91c1c', glow:'rgba(239,68,68,0.2)',   text:'#fef2f2', sub:'#d07070', muted:'#6b1515', border:'rgba(239,68,68,0.15)', badge:'rgba(239,68,68,0.2)', badgeText:'#f87171' },
-    indigo_saas:{ bg:'#06040f', sidebar:'#090618', header:'#0d0820', card:'#100a25', card2:'#150e30', accent:'#6366f1', accent2:'#4f46e5', glow:'rgba(99,102,241,0.2)',  text:'#eef2ff', sub:'#8f93d8', muted:'#2a266a', border:'rgba(99,102,241,0.15)', badge:'rgba(99,102,241,0.2)', badgeText:'#818cf8' },
+    midnight:    { bg:'#050810', sb:'#080c1a', hd:'#0c1225', card:'#0f1628', card2:'#141d32', acc:'#22d3ee', acc2:'#0891b2', glow:'rgba(34,211,238,0.15)', text:'#f0f9ff', sub:'#64a0bb', muted:'#1e3045', brd:'rgba(34,211,238,0.12)', badge:'rgba(34,211,238,0.15)', badgeTxt:'#22d3ee' },
+    ocean:       { bg:'#020c18', sb:'#041220', hd:'#051828', card:'#071c30', card2:'#0a2038', acc:'#0ea5e9', acc2:'#0284c7', glow:'rgba(14,165,233,0.15)', text:'#f0f9ff', sub:'#6baad0', muted:'#1a3550', brd:'rgba(14,165,233,0.12)', badge:'rgba(14,165,233,0.15)', badgeTxt:'#38bdf8' },
+    forest:      { bg:'#040e08', sb:'#061410', hd:'#081918', card:'#0a1e14', card2:'#0d2418', acc:'#22c55e', acc2:'#16a34a', glow:'rgba(34,197,94,0.15)',  text:'#f0fdf4', sub:'#5aad78', muted:'#1a3825', brd:'rgba(34,197,94,0.12)',  badge:'rgba(34,197,94,0.15)',  badgeTxt:'#4ade80' },
+    sunset:      { bg:'#0f0800', sb:'#180e00', hd:'#1e1200', card:'#221600', card2:'#2a1c00', acc:'#f97316', acc2:'#ea580c', glow:'rgba(249,115,22,0.15)', text:'#fff7ed', sub:'#c4845a', muted:'#5c2e00', brd:'rgba(249,115,22,0.12)', badge:'rgba(249,115,22,0.15)', badgeTxt:'#fb923c' },
+    purple:      { bg:'#080510', sb:'#0e0820', hd:'#140c2c', card:'#180f30', card2:'#1e1438', acc:'#a855f7', acc2:'#7c3aed', glow:'rgba(168,85,247,0.15)', text:'#faf5ff', sub:'#9370c8', muted:'#3d1a60', brd:'rgba(168,85,247,0.12)', badge:'rgba(168,85,247,0.15)', badgeTxt:'#c084fc' },
+    rose:        { bg:'#0f0408', sb:'#180608', hd:'#1e0810', card:'#22090e', card2:'#2d0b12', acc:'#f43f5e', acc2:'#e11d48', glow:'rgba(244,63,94,0.15)',  text:'#fff1f2', sub:'#cc6070', muted:'#6b1225', brd:'rgba(244,63,94,0.12)',  badge:'rgba(244,63,94,0.15)',  badgeTxt:'#fb7185' },
+    amber:       { bg:'#0e0900', sb:'#150d00', hd:'#1b1100', card:'#1f1500', card2:'#2a1c00', acc:'#f59e0b', acc2:'#d97706', glow:'rgba(245,158,11,0.15)', text:'#fffbeb', sub:'#c29c5c', muted:'#6b4600', brd:'rgba(245,158,11,0.12)', badge:'rgba(245,158,11,0.15)', badgeTxt:'#fbbf24' },
+    slate:       { bg:'#070b10', sb:'#0b1018', hd:'#0e1520', card:'#111a24', card2:'#161f2c', acc:'#64748b', acc2:'#475569', glow:'rgba(100,116,139,0.15)',text:'#f8fafc', sub:'#94a3b8', muted:'#2a3545', brd:'rgba(100,116,139,0.12)', badge:'rgba(100,116,139,0.2)', badgeTxt:'#94a3b8' },
+    cyan_sport:  { bg:'#030f18', sb:'#041420', hd:'#051928', card:'#071c30', card2:'#0a2238', acc:'#06b6d4', acc2:'#0284c7', glow:'rgba(6,182,212,0.2)',   text:'#f0f9ff', sub:'#7cb8d4', muted:'#1a4060', brd:'rgba(6,182,212,0.15)',  badge:'rgba(6,182,212,0.2)',  badgeTxt:'#22d3ee' },
+    emerald_med: { bg:'#030f08', sb:'#041410', hd:'#051918', card:'#071c12', card2:'#0a2218', acc:'#10b981', acc2:'#059669', glow:'rgba(16,185,129,0.2)',  text:'#ecfdf5', sub:'#6cd4a6', muted:'#1a4030', brd:'rgba(16,185,129,0.15)', badge:'rgba(16,185,129,0.2)', badgeTxt:'#34d399' },
+    gold_fin:    { bg:'#0e0b00', sb:'#151000', hd:'#1c1500', card:'#221900', card2:'#2d2100', acc:'#eab308', acc2:'#ca8a04', glow:'rgba(234,179,8,0.2)',   text:'#fefce8', sub:'#c4a835', muted:'#5a4800', brd:'rgba(234,179,8,0.15)',  badge:'rgba(234,179,8,0.2)',  badgeTxt:'#facc15' },
+    violet_ai:   { bg:'#080514', sb:'#0c071e', hd:'#100a28', card:'#130d2c', card2:'#181238', acc:'#8b5cf6', acc2:'#6d28d9', glow:'rgba(139,92,246,0.2)',  text:'#f5f3ff', sub:'#a78bcc', muted:'#3d206a', brd:'rgba(139,92,246,0.15)', badge:'rgba(139,92,246,0.2)', badgeTxt:'#a78bfa' },
+    teal_edu:    { bg:'#030f10', sb:'#041418', hd:'#051920', card:'#071c22', card2:'#0a222a', acc:'#14b8a6', acc2:'#0d9488', glow:'rgba(20,184,166,0.2)',  text:'#f0fdfa', sub:'#5fcbb8', muted:'#1a4040', brd:'rgba(20,184,166,0.15)', badge:'rgba(20,184,166,0.2)', badgeTxt:'#2dd4bf' },
+    red_law:     { bg:'#100303', sb:'#180404', hd:'#1e0505', card:'#220606', card2:'#2d0808', acc:'#ef4444', acc2:'#b91c1c', glow:'rgba(239,68,68,0.2)',   text:'#fef2f2', sub:'#d07070', muted:'#6b1515', brd:'rgba(239,68,68,0.15)',  badge:'rgba(239,68,68,0.2)',  badgeTxt:'#f87171' },
+    indigo_saas: { bg:'#06040f', sb:'#090618', hd:'#0d0820', card:'#100a25', card2:'#150e30', acc:'#6366f1', acc2:'#4f46e5', glow:'rgba(99,102,241,0.2)',  text:'#eef2ff', sub:'#8f93d8', muted:'#2a266a', brd:'rgba(99,102,241,0.15)', badge:'rgba(99,102,241,0.2)', badgeTxt:'#818cf8' },
   };
 
-  // Explicit scheme overrides everything
-  if (explicit && themes[explicit]) return themes[explicit];
-
-  // Domain → theme mapping (each domain gets a unique theme)
-  const domainThemes = {
-    sports_film: themes.cyan_sport,
-    music:       themes.purple,
-    health:      themes.emerald_med,
-    finance:     themes.gold_fin,
-    ecommerce:   themes.sunset,
-    education:   themes.teal_edu,
-    logistics:   themes.slate,
-    legal:       themes.red_law,
-    social:      themes.rose,
-    realestate:  themes.forest,
-    travel:      themes.ocean,
-    food:        themes.amber,
-    creative:    themes.violet_ai,
-    ai_tool:     themes.violet_ai,
-    saas:        themes.indigo_saas,
-    gaming:      themes.midnight,
-    generic:     null, // fall through to hash
+  const domainMap = {
+    sports_film: themes.cyan_sport, music: themes.purple, health: themes.emerald_med,
+    finance: themes.gold_fin, ecommerce: themes.sunset, education: themes.teal_edu,
+    logistics: themes.slate, legal: themes.red_law, social: themes.rose,
+    realestate: themes.forest, travel: themes.ocean, food: themes.amber,
+    creative: themes.violet_ai, ai_tool: themes.violet_ai, saas: themes.indigo_saas,
+    gaming: themes.midnight,
   };
+  if (domainMap[domain]) return domainMap[domain];
 
-  if (domainThemes[domain]) return domainThemes[domain];
-
-  // Hash the project name for guaranteed uniqueness between same-domain apps
   let hash = 0;
   for (const c of (projectName || '')) hash = ((hash << 5) - hash) + c.charCodeAt(0);
   const keys = ['midnight','ocean','forest','sunset','purple','rose','amber','slate'];
   return themes[keys[Math.abs(hash) % keys.length]];
 }
 
-// ── Layout type selector — each domain uses a completely different layout ──
-function getDomainLayout(domain, fields, projectName) {
-  // Each domain gets a UNIQUE layout structure
-  const layouts = {
-    sports_film: 'film_analysis',   // Dark cinema UI — sidebar timeline, video card grid
-    music:       'music_player',    // Player-centric — album art, waveform, queue panel
-    health:      'clinical',        // Clean white-ish medical — appointment calendar, vitals
-    finance:     'trading',         // Dense data — portfolio widget, chart, positions table
-    ecommerce:   'storefront',      // Product grid — category sidebar, product cards, cart
-    education:   'lms',             // Course platform — progress sidebar, lesson cards
-    logistics:   'dispatch',        // Map-centric — route cards, driver list, status board
-    legal:       'case_manager',    // Document-heavy — case list, timeline, filing status
-    social:      'feed',            // Feed layout — stories bar, post cards, trending
-    realestate:  'property_portal', // Property grid — map half, listing cards
-    travel:      'itinerary',       // Trip planner — destination cards, map, booking
-    food:        'kitchen',         // Recipe/order — menu grid, order panel, ratings
-    creative:    'design_studio',   // Tool panels — canvas preview, layer list, toolbar
-    ai_tool:     'ai_console',      // Terminal-like — prompt input, output panel, history
-    saas:        'command_center',  // CRM/ERP — table, metric bar, sidebar nav
-    gaming:      'arcade',          // Leaderboard, achievements, game cards
-    generic:     'app_dashboard',   // Generic but clean — metric cards, activity feed
+// ── Layout selector ───────────────────────────────────────────────────────
+function getDomainLayout(domain) {
+  const map = {
+    sports_film:'film', music:'music', health:'health', finance:'finance',
+    ecommerce:'store', education:'lms', logistics:'dispatch', legal:'legal',
+    social:'social', realestate:'property', travel:'travel', food:'food',
+    creative:'creative', ai_tool:'ai', saas:'saas', gaming:'gaming',
   };
-  return layouts[domain] || 'app_dashboard';
+  return map[domain] || 'generic';
 }
 
-// ── Main dashboard generator ──────────────────────────────────────────────
-function generateProjectDashboard(d, projectId, rawProjectName) {
-  const fields  = d.fields  || {};
-  const spec    = d.spec    || {};
-  const project = d.project || {};
+// ── CSS helpers (all inline) ──────────────────────────────────────────────
+// s_ = inline style helpers
+function s_flex(extra) { return `display:flex;${extra||''}`; }
+function s_col(extra)  { return `display:flex;flex-direction:column;${extra||''}`; }
+function s_grid(cols, gap) { return `display:grid;grid-template-columns:repeat(${cols},1fr);gap:${gap||'12px'}`; }
+function s_card(t, extra) { return `background:${t.card};border:1px solid ${t.brd};border-radius:16px;${extra||''}`; }
+function s_card2(t, extra){ return `background:${t.card2};border:1px solid ${t.brd};border-radius:12px;${extra||''}`; }
+function s_btn_primary(t, extra) { return `background:linear-gradient(135deg,${t.acc},${t.acc2});color:white;border:none;border-radius:10px;padding:8px 16px;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px;${extra||''}`; }
+function s_btn_ghost(t, extra) { return `background:transparent;border:1px solid ${t.brd};color:${t.sub};border-radius:10px;padding:8px 16px;font-size:12px;font-weight:600;cursor:pointer;${extra||''}`; }
 
-  const appName   = fields.app_name || spec.app_name || project.name || rawProjectName || 'My App';
-  const audience  = fields.audience || spec.target_audience || 'Users';
-  const problem   = fields.problem_statement || spec.problem_statement || '';
-  const workflows = fields.workflows || '';
-  const features  = parseFeatureList(fields.core_features || spec.key_features || '[]');
-  const roles     = (fields.roles_permissions || 'User').split(/[,/]/).map(s => s.trim()).filter(Boolean);
-  const bizModel  = fields.business_model || '';
-  const category  = fields.category || project.category || '';
-  const apis      = (fields.apis_tools || '').split(',').map(s => s.trim()).filter(Boolean);
-  const addlNotes = fields.additional_comments || '';
+// ── Shared top-bar ────────────────────────────────────────────────────────
+function vTopBar(t, appName, appIcon, pid) {
+  return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 20px;background:${t.hd};border-bottom:1px solid ${t.brd};flex-shrink:0;min-height:52px">
+    <div style="display:flex;align-items:center;gap:12px">
+      <button onclick="closeViewModal()" style="display:flex;align-items:center;gap:6px;color:${t.sub};font-size:12px;background:none;border:none;cursor:pointer;padding:4px 8px;border-radius:8px" onmouseover="this.style.background='${t.card}'" onmouseout="this.style.background='none'">
+        <i class="fas fa-arrow-left" style="font-size:11px"></i> Back
+      </button>
+      <div style="width:1px;height:20px;background:${t.brd}"></div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <div style="width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,${t.acc},${t.acc2});display:flex;align-items:center;justify-content:center">
+          <i class="${appIcon}" style="font-size:12px;color:white"></i>
+        </div>
+        <span style="font-weight:700;font-size:13px;color:${t.text}">${escHtml(truncate(appName,30))}</span>
+        <span style="background:${t.badge};color:${t.badgeTxt};border-radius:20px;padding:2px 8px;font-size:10px;font-weight:700">PREVIEW</span>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <button onclick="closeViewModal(); setTimeout(()=>openTestingModal(null,VIEW_PROJECT.id,VIEW_PROJECT.name),100)" style="${s_btn_ghost(t)}">
+        <i class="fas fa-flask"></i> Revise
+      </button>
+      <button onclick="closeViewModal(); setTimeout(()=>openPublishModal(VIEW_PROJECT.id),100)" style="${s_btn_primary(t)}">
+        <i class="fas fa-rocket"></i> Publish
+      </button>
+      <button onclick="closeViewModal()" style="background:none;border:none;color:${t.sub};cursor:pointer;width:32px;height:32px;display:flex;align-items:center;justify-content:center;border-radius:8px" onmouseover="this.style.background='${t.card}'" onmouseout="this.style.background='none'">
+        <i class="fas fa-xmark" style="font-size:16px"></i>
+      </button>
+    </div>
+  </div>`;
+}
 
-  const domain  = detectDomain(fields, appName);
-  const theme   = getDomainTheme(domain, fields, appName);
-  const layout  = getDomainLayout(domain, fields, appName);
-  const appIcon = resolveIcon(appName + ' ' + problem + ' ' + (features[0] || '') + ' ' + audience);
+// ── Sidebar builder ───────────────────────────────────────────────────────
+function vSidebar(t, items, w) {
+  w = w || '200px';
+  return `<div style="width:${w};flex-shrink:0;background:${t.sb};border-right:1px solid ${t.brd};overflow-y:auto;display:flex;flex-direction:column">
+    <div style="padding:12px;display:flex;flex-direction:column;gap:2px">
+      ${items.map((item, i) => `
+      <div style="${i===0 ? `background:${t.badge};` : ''}border-radius:10px;padding:8px 10px;display:flex;align-items:center;gap:10px;cursor:pointer" onmouseover="if(${i}!==0)this.style.background='${t.card2}'" onmouseout="if(${i}!==0)this.style.background='transparent'">
+        <i class="${item.icon}" style="font-size:13px;color:${i===0 ? t.acc : t.sub};width:16px;text-align:center"></i>
+        <span style="font-size:12px;font-weight:${i===0?700:500};color:${i===0 ? t.acc : t.sub};flex:1">${escHtml(item.label)}</span>
+        ${item.badge ? `<span style="background:${t.badge};color:${t.badgeTxt};border-radius:10px;padding:1px 6px;font-size:10px;font-weight:700">${item.badge}</span>` : ''}
+      </div>`).join('')}
+    </div>
+  </div>`;
+}
 
-  // Derive nav items from actual feature names
+// ── KPI card ──────────────────────────────────────────────────────────────
+function vKpi(t, icon, label, value, note, change) {
+  return `<div style="${s_card(t,'padding:16px;display:flex;flex-direction:column;gap:10px')}">
+    <div style="display:flex;align-items:center;justify-content:space-between">
+      <div style="width:36px;height:36px;border-radius:10px;background:${t.badge};display:flex;align-items:center;justify-content:center">
+        <i class="${icon}" style="font-size:14px;color:${t.acc}"></i>
+      </div>
+      ${change !== undefined ? `<span style="font-size:11px;font-weight:700;color:${change>=0?'#22c55e':'#ef4444'}">${change>=0?'+':''}${change}%</span>` : ''}
+    </div>
+    <div>
+      <div style="font-size:22px;font-weight:900;color:${t.text};line-height:1">${escHtml(String(value))}</div>
+      <div style="font-size:11px;font-weight:600;color:${t.sub};margin-top:2px">${escHtml(label)}</div>
+      ${note ? `<div style="font-size:10px;color:${t.muted};margin-top:1px">${escHtml(note)}</div>` : ''}
+    </div>
+  </div>`;
+}
+
+// ── Activity item ─────────────────────────────────────────────────────────
+function vActivity(t, icon, label, time, color) {
+  return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid ${t.brd}">
+    <div style="width:30px;height:30px;border-radius:8px;background:${color}22;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+      <i class="${icon}" style="font-size:12px;color:${color}"></i>
+    </div>
+    <div style="flex:1;min-width:0">
+      <div style="font-size:12px;font-weight:500;color:${t.text};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(label)}</div>
+      <div style="font-size:10px;color:${t.muted}">${escHtml(time)}</div>
+    </div>
+  </div>`;
+}
+
+// ── Badge ─────────────────────────────────────────────────────────────────
+function vBadge(t, text, color) {
+  color = color || t.acc;
+  return `<span style="background:${color}22;color:${color};border-radius:20px;padding:2px 8px;font-size:10px;font-weight:700">${escHtml(text)}</span>`;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  MAIN DASHBOARD GENERATOR
+// ══════════════════════════════════════════════════════════════════════════
+function generateProjectDashboard(d, projectId, rawName) {
+  const fields  = (d && d.fields)  || {};
+  const spec    = (d && d.spec)    || {};
+  const project = (d && d.project) || {};
+
+  const appName  = fields.app_name || spec.app_name || project.name || rawName || 'My App';
+  const audience = fields.audience || spec.target_audience || 'Users';
+  const problem  = fields.problem_statement || spec.problem_statement || '';
+  const workflows= fields.workflows || '';
+  const features = parseFeatureList(fields.core_features || spec.key_features || '[]');
+  const roles    = (fields.roles_permissions || 'Admin/User').split(/[,/]/).map(s => s.trim()).filter(Boolean);
+  const bizModel = fields.business_model || '';
+  const apis     = (fields.apis_tools || '').split(',').map(s => s.trim()).filter(Boolean);
+
+  const domain   = detectDomain(fields, appName);
+  const t        = getDomainTheme(domain, fields, appName);
+  const layout   = getDomainLayout(domain);
+  const appIcon  = resolveIcon(appName + ' ' + problem + ' ' + (features[0] || ''));
+
   const feat0 = features[0] || (workflows.split(/[,.;]/)[0] || '').trim() || 'Main';
   const feat1 = features[1] || (workflows.split(/[,.;]/)[1] || '').trim() || 'Analytics';
   const feat2 = features[2] || roles[0] || 'Profile';
+  const wfItems = workflows.split(/[,.;]/).map(s => s.trim()).filter(s => s.length > 2).slice(0, 5);
 
-  // Generate the dashboard based on layout type
   switch (layout) {
-    case 'film_analysis':    return renderFilmAnalysisDashboard(theme, appName, appIcon, fields, features, workflows, audience, problem, bizModel, apis, feat0, feat1, feat2, projectId);
-    case 'music_player':     return renderMusicPlayerDashboard(theme, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId);
-    case 'clinical':         return renderClinicalDashboard(theme, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId);
-    case 'trading':          return renderTradingDashboard(theme, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId);
-    case 'storefront':       return renderStorefrontDashboard(theme, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId);
-    case 'lms':              return renderLMSDashboard(theme, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId);
-    case 'dispatch':         return renderDispatchDashboard(theme, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId);
-    case 'case_manager':     return renderCaseManagerDashboard(theme, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId);
-    case 'feed':             return renderSocialFeedDashboard(theme, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId);
-    case 'property_portal':  return renderPropertyPortalDashboard(theme, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId);
-    case 'itinerary':        return renderItineraryDashboard(theme, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId);
-    case 'kitchen':          return renderKitchenDashboard(theme, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId);
-    case 'design_studio':    return renderDesignStudioDashboard(theme, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId);
-    case 'ai_console':       return renderAIConsoleDashboard(theme, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId);
-    case 'command_center':   return renderCommandCenterDashboard(theme, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId);
-    case 'arcade':           return renderArcadeDashboard(theme, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId);
-    default:                 return renderAppDashboard(theme, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId);
+    case 'film':     return renderFilm(t, appName, appIcon, features, wfItems, audience, problem, feat0, feat1, feat2, projectId);
+    case 'music':    return renderMusic(t, appName, appIcon, features, wfItems, audience, problem, feat0, feat1, feat2, projectId);
+    case 'health':   return renderHealth(t, appName, appIcon, features, wfItems, audience, problem, roles, feat0, feat1, feat2, projectId);
+    case 'finance':  return renderFinance(t, appName, appIcon, features, wfItems, audience, problem, feat0, feat1, feat2, projectId);
+    case 'store':    return renderStore(t, appName, appIcon, features, wfItems, audience, problem, feat0, feat1, feat2, projectId);
+    case 'lms':      return renderLMS(t, appName, appIcon, features, wfItems, audience, problem, feat0, feat1, feat2, projectId);
+    case 'legal':    return renderLegal(t, appName, appIcon, features, wfItems, audience, problem, roles, feat0, feat1, feat2, projectId);
+    case 'ai':       return renderAI(t, appName, appIcon, features, wfItems, audience, problem, apis, feat0, feat1, feat2, projectId);
+    case 'saas':     return renderSaaS(t, appName, appIcon, features, wfItems, audience, problem, feat0, feat1, feat2, projectId);
+    case 'dispatch': return renderDispatch(t, appName, appIcon, features, wfItems, audience, problem, feat0, feat1, feat2, projectId);
+    case 'social':   return renderSocial(t, appName, appIcon, features, wfItems, audience, problem, feat0, feat1, feat2, projectId);
+    case 'food':     return renderFood(t, appName, appIcon, features, wfItems, audience, problem, feat0, feat1, feat2, projectId);
+    default:         return renderGeneric(t, appName, appIcon, features, wfItems, audience, problem, feat0, feat1, feat2, projectId);
   }
 }
 
-// ── Shared top-bar builder ─────────────────────────────────────────────────
-function viewTopBar(theme, appName, appIcon, projectId, rightContent = '') {
-  const t = theme;
-  return `<div class="flex items-center justify-between px-5 py-3 flex-shrink-0" style="background:${t.header};border-bottom:1px solid ${t.border}">
-    <div class="flex items-center gap-3">
-      <button onclick="closeViewModal()" style="color:${t.sub};font-size:11px" class="flex items-center gap-1.5 hover:opacity-80 transition-opacity">
-        <i class="fas fa-arrow-left"></i><span>Back</span>
-      </button>
-      <div style="width:1px;height:18px;background:${t.border}"></div>
-      <div class="flex items-center gap-2">
-        <div class="w-7 h-7 rounded-lg flex items-center justify-center" style="background:linear-gradient(135deg,${t.accent},${t.accent2})">
-          <i class="${appIcon}" style="font-size:12px;color:white"></i>
-        </div>
-        <span class="font-bold text-sm" style="color:${t.text}">${escHtml(appName)}</span>
-        <span class="text-xs px-2 py-0.5 rounded-full font-semibold" style="background:${t.badge};color:${t.badgeText}">PREVIEW</span>
-      </div>
-    </div>
-    <div class="flex items-center gap-2">
-      ${rightContent}
-      <button onclick="closeViewModal(); openTestingModal(null, VIEW_PROJECT.id, VIEW_PROJECT.name)"
-        class="text-xs px-3 py-1.5 rounded-lg font-semibold flex items-center gap-1.5 transition-opacity hover:opacity-80"
-        style="border:1px solid ${t.border};color:${t.sub}">
-        <i class="fas fa-flask"></i> Revise
-      </button>
-      <button onclick="closeViewModal(); openPublishModal(VIEW_PROJECT.id)"
-        class="text-xs px-3 py-1.5 rounded-lg font-semibold text-white flex items-center gap-1.5"
-        style="background:linear-gradient(135deg,${t.accent},${t.accent2})">
-        <i class="fas fa-rocket"></i> Publish
-      </button>
-      <button onclick="closeViewModal()" style="color:${t.sub}" class="w-8 h-8 flex items-center justify-center rounded-lg hover:opacity-80">
-        <i class="fas fa-xmark text-sm"></i>
-      </button>
-    </div>
-  </div>`;
-}
-
-// ── Sidebar nav builder ────────────────────────────────────────────────────
-function viewSidebar(theme, items, activeIdx = 0, width = '200px') {
-  const t = theme;
-  return `<div class="flex flex-col flex-shrink-0 overflow-y-auto" style="width:${width};background:${t.sidebar};border-right:1px solid ${t.border}">
-    <div class="flex-1 p-3 space-y-1">
-      ${items.map((item, i) => `
-      <button class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all text-left"
-        style="${i === activeIdx ? `background:${t.badge};color:${t.accent}` : `color:${t.sub}`}">
-        <i class="${item.icon}" style="font-size:13px;width:16px;text-align:center"></i>
-        <span style="font-size:12px;font-weight:${i===activeIdx?700:500}">${escHtml(item.label)}</span>
-        ${item.badge ? `<span class="ml-auto text-xs px-1.5 py-0.5 rounded-full" style="background:${t.badge};color:${t.badgeText}">${item.badge}</span>` : ''}
-      </button>`).join('')}
-    </div>
-  </div>`;
-}
-
-// ── KPI card builder ───────────────────────────────────────────────────────
-function kpiCard(theme, icon, label, value, note, change = null) {
-  const t = theme;
-  return `<div class="rounded-2xl p-4 flex flex-col gap-2" style="background:${t.card};border:1px solid ${t.border}">
-    <div class="flex items-center justify-between">
-      <div class="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style="background:${t.badge}">
-        <i class="${icon}" style="font-size:14px;color:${t.accent}"></i>
-      </div>
-      ${change !== null ? `<span class="text-xs font-semibold" style="color:${change >= 0 ? '#22c55e' : '#ef4444'}">${change >= 0 ? '+' : ''}${change}%</span>` : ''}
-    </div>
-    <div>
-      <p class="text-2xl font-black" style="color:${t.text}">${escHtml(value)}</p>
-      <p class="text-xs font-medium" style="color:${t.sub}">${escHtml(label)}</p>
-      ${note ? `<p class="text-xs mt-0.5" style="color:${t.muted}">${escHtml(note)}</p>` : ''}
-    </div>
-  </div>`;
-}
-
 // ══════════════════════════════════════════════════════════════════════════
-//  LAYOUT 1: FILM ANALYSIS DASHBOARD
-//  Sports/Film AI tool — dark cinema vibes, breakdown panels, film grid
+//  LAYOUT 1 — FILM / SPORTS ANALYSIS
 // ══════════════════════════════════════════════════════════════════════════
-function renderFilmAnalysisDashboard(t, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId) {
-  const roles = (fields.roles_permissions || 'Coaches/Players').split(/[,/]/).map(s=>s.trim());
-  const wfItems = workflows.split(/[,.;]/).map(s=>s.trim()).filter(s=>s.length>3).slice(0,4);
-
+function renderFilm(t, appName, appIcon, features, wfItems, audience, problem, feat0, feat1, feat2, pid) {
   const sidebarItems = [
-    { icon:'fas fa-gauge-high',  label:'Dashboard',   badge: null },
-    { icon:'fas fa-film',        label:'Film Library', badge: '3 New' },
-    { icon:'fas fa-brain',       label:'AI Breakdown', badge: null },
-    { icon:'fas fa-chart-bar',   label:'Analytics',    badge: null },
-    { icon:'fas fa-users',       label: truncate(roles[0]||'Team', 12), badge: null },
-    { icon:'fas fa-gear',        label:'Settings',     badge: null },
+    { icon:'fas fa-gauge-high', label:'Dashboard', badge:null },
+    { icon:'fas fa-film',       label:'Film Library', badge:'3 New' },
+    { icon:'fas fa-brain',      label:'AI Breakdown', badge:null },
+    { icon:'fas fa-chart-bar',  label:'Analytics', badge:null },
+    { icon:'fas fa-users',      label:truncate(feat2,14), badge:null },
+    { icon:'fas fa-gear',       label:'Settings', badge:null },
   ];
-
   const filmCards = [
-    { title: truncate(wfItems[0] || 'Week 12 vs Eagles', 28), tag: 'Offense', pct: '72%', color: t.accent },
-    { title: truncate(wfItems[1] || 'Red Zone Package', 28), tag: 'Defense', pct: '58%', color: '#a855f7' },
-    { title: 'Formation Tendencies', tag: 'Special Teams', pct: '41%', color: '#f59e0b' },
-    { title: truncate(features[0] || 'Pass Rush Schemes', 28), tag: 'AI Ready', pct: '–', color: '#22c55e' },
+    { title: truncate(wfItems[0]||'Week 12 vs Eagles',30), tag:'Offense', pct:72, color:t.acc },
+    { title: truncate(wfItems[1]||'Red Zone Package',30), tag:'Defense', pct:58, color:'#a855f7' },
+    { title: 'Formation Tendencies', tag:'Special Teams', pct:41, color:'#f59e0b' },
+    { title: truncate(features[0]||'Pass Rush Schemes',30), tag:'AI Ready', pct:0, color:'#22c55e' },
   ];
-
-  return `<div class="flex flex-col h-full" style="background:${t.bg};font-family:'Inter',sans-serif">
-    ${viewTopBar(t, appName, appIcon, projectId)}
-    <div class="flex flex-1 overflow-hidden">
-      ${viewSidebar(t, sidebarItems, 0, '200px')}
-      <!-- Main content -->
-      <div class="flex-1 overflow-y-auto p-5 space-y-5">
-        <!-- Header row -->
-        <div class="flex items-center justify-between">
+  return `<div style="display:flex;flex-direction:column;height:100%;background:${t.bg};font-family:'Inter',sans-serif;color:${t.text}">
+    ${vTopBar(t,appName,appIcon,pid)}
+    <div style="display:flex;flex:1;overflow:hidden">
+      ${vSidebar(t,sidebarItems,'200px')}
+      <div style="flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:20px">
+        <!-- Header -->
+        <div style="display:flex;align-items:center;justify-content:space-between">
           <div>
-            <h1 class="text-xl font-black" style="color:${t.text}">Film Dashboard</h1>
-            <p class="text-xs" style="color:${t.sub}">${escHtml(truncate(problem || `AI-powered analysis for ${audience}`, 70))}</p>
+            <h1 style="font-size:20px;font-weight:900;color:${t.text};margin:0 0 4px">Film Dashboard</h1>
+            <p style="font-size:12px;color:${t.sub};margin:0">${escHtml(truncate(problem||`AI-powered analysis for ${audience}`,70))}</p>
           </div>
-          <div class="flex gap-2">
-            <button class="text-xs px-4 py-2 rounded-xl font-bold flex items-center gap-2" style="background:linear-gradient(135deg,${t.accent},${t.accent2});color:white">
-              <i class="fas fa-cloud-arrow-up"></i> Upload Film
-            </button>
-          </div>
+          <button style="${s_btn_primary(t)}"><i class="fas fa-cloud-arrow-up"></i> Upload Film</button>
         </div>
-
-        <!-- KPI row -->
-        <div class="grid grid-cols-4 gap-3">
-          ${kpiCard(t, 'fas fa-film', 'Film Sessions', '0', 'Uploaded', 0)}
-          ${kpiCard(t, 'fas fa-brain', 'AI Breakdowns', '0', 'Generated', 0)}
-          ${kpiCard(t, 'fas fa-chart-bar', 'Formations Found', '–', 'Detected')}
-          ${kpiCard(t, 'fas fa-users', truncate(audience.split(/[,/]/)[0]||'Team Members', 14), '0', 'Active')}
+        <!-- KPIs -->
+        <div style="${s_grid(4,'12px')}">
+          ${vKpi(t,'fas fa-film','Film Sessions','0','Uploaded',0)}
+          ${vKpi(t,'fas fa-brain','AI Breakdowns','0','Generated',0)}
+          ${vKpi(t,'fas fa-chart-bar','Formations','—','Detected')}
+          ${vKpi(t,'fas fa-users',truncate(audience.split(/[,/]/)[0]||'Team Members',16),'0','Active')}
         </div>
-
-        <!-- Film grid + breakdown panel -->
-        <div class="grid grid-cols-3 gap-4">
-          <!-- Film cards -->
-          <div class="col-span-2 space-y-3">
-            <h3 class="text-sm font-bold" style="color:${t.text}">Film Library</h3>
-            <div class="grid grid-cols-2 gap-3">
+        <!-- Film grid + breakdown -->
+        <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px">
+          <div style="display:flex;flex-direction:column;gap:12px">
+            <h3 style="font-size:13px;font-weight:700;color:${t.text};margin:0">Film Library</h3>
+            <div style="${s_grid(2,'12px')}">
               ${filmCards.map(fc => `
-              <div class="rounded-2xl overflow-hidden" style="background:${t.card};border:1px solid ${t.border}">
-                <!-- Film thumbnail placeholder -->
-                <div class="h-28 flex items-center justify-center relative" style="background:linear-gradient(135deg,${t.card2},${t.bg})">
-                  <i class="fas fa-film" style="font-size:32px;color:${fc.color};opacity:0.3"></i>
-                  <div class="absolute top-2 right-2">
-                    <span class="text-xs px-2 py-0.5 rounded-full font-bold" style="background:${t.badge};color:${fc.color}">${fc.tag}</span>
+              <div style="${s_card(t,'overflow:hidden')}">
+                <div style="height:100px;display:flex;align-items:center;justify-content:center;position:relative;background:linear-gradient(135deg,${t.card2},${t.bg})">
+                  <i class="fas fa-film" style="font-size:30px;color:${fc.color};opacity:0.3"></i>
+                  <div style="position:absolute;top:8px;right:8px">
+                    ${vBadge(t,fc.tag,fc.color)}
                   </div>
-                  <div class="absolute bottom-2 left-2 right-2">
-                    <div class="h-1 rounded-full" style="background:${t.border}">
-                      <div class="h-1 rounded-full" style="width:${fc.pct === '–' ? '0' : fc.pct};background:${fc.color}"></div>
+                  <div style="position:absolute;bottom:8px;left:8px;right:8px">
+                    <div style="height:3px;background:${t.brd};border-radius:2px">
+                      <div style="height:3px;background:${fc.color};border-radius:2px;width:${fc.pct}%"></div>
                     </div>
                   </div>
                 </div>
-                <div class="p-3">
-                  <p class="text-xs font-bold" style="color:${t.text}">${escHtml(fc.title)}</p>
-                  <p class="text-xs" style="color:${t.sub}">AI Analysis ${fc.pct === '–' ? 'Pending' : 'Complete'}</p>
+                <div style="padding:10px">
+                  <div style="font-size:12px;font-weight:700;color:${t.text}">${escHtml(fc.title)}</div>
+                  <div style="font-size:10px;color:${t.sub};margin-top:2px">AI Analysis ${fc.pct===0?'Pending':'Complete'}</div>
                 </div>
               </div>`).join('')}
             </div>
           </div>
-
           <!-- AI Breakdown panel -->
-          <div class="rounded-2xl p-4 space-y-3" style="background:${t.card};border:1px solid ${t.border}">
-            <div class="flex items-center gap-2">
-              <div class="w-8 h-8 rounded-xl flex items-center justify-center" style="background:${t.badge}">
-                <i class="fas fa-brain" style="color:${t.accent};font-size:13px"></i>
+          <div style="${s_card(t,'padding:16px;display:flex;flex-direction:column;gap:12px')}">
+            <div style="display:flex;align-items:center;gap:8px">
+              <div style="width:32px;height:32px;border-radius:10px;background:${t.badge};display:flex;align-items:center;justify-content:center">
+                <i class="fas fa-brain" style="color:${t.acc};font-size:13px"></i>
               </div>
               <div>
-                <p class="text-xs font-bold" style="color:${t.text}">AI Breakdown</p>
-                <p class="text-xs" style="color:${t.sub}">Latest Result</p>
+                <div style="font-size:12px;font-weight:700;color:${t.text}">AI Breakdown</div>
+                <div style="font-size:10px;color:${t.sub}">Latest Result</div>
               </div>
             </div>
-            <div class="space-y-2">
-              ${[
-                { label: 'Run %', val: '–', icon: 'fas fa-arrow-right' },
-                { label: 'Pass %', val: '–', icon: 'fas fa-arrow-up-right' },
-                { label: 'Blitz Rate', val: '–', icon: 'fas fa-bolt' },
-                { label: 'Formations', val: '–', icon: 'fas fa-grip-dots-vertical' },
-                { label: 'Tendencies', val: '–', icon: 'fas fa-chart-line' },
-              ].map(item => `
-              <div class="flex items-center justify-between py-1.5 border-b" style="border-color:${t.border}">
-                <div class="flex items-center gap-2">
-                  <i class="${item.icon}" style="font-size:10px;color:${t.muted}"></i>
-                  <span class="text-xs" style="color:${t.sub}">${item.label}</span>
-                </div>
-                <span class="text-xs font-bold" style="color:${t.text}">${item.val}</span>
-              </div>`).join('')}
-            </div>
-            <button class="w-full py-2.5 rounded-xl text-xs font-bold" style="background:linear-gradient(135deg,${t.accent},${t.accent2});color:white">
-              <i class="fas fa-play mr-1"></i> Run Analysis
+            ${[['Run %','—','fas fa-arrow-right'],['Pass %','—','fas fa-arrow-up-right'],['Blitz Rate','—','fas fa-bolt'],['Formations','—','fas fa-grip-dots-vertical'],['Tendencies','—','fas fa-chart-line']].map(([l,v,ic])=>`
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid ${t.brd}">
+              <div style="display:flex;align-items:center;gap:6px">
+                <i class="${ic}" style="font-size:10px;color:${t.muted}"></i>
+                <span style="font-size:11px;color:${t.sub}">${l}</span>
+              </div>
+              <span style="font-size:12px;font-weight:700;color:${t.text}">${v}</span>
+            </div>`).join('')}
+            <button style="${s_btn_primary(t,'width:100%;justify-content:center;margin-top:4px')}">
+              <i class="fas fa-brain"></i> Run Analysis
             </button>
           </div>
         </div>
-
         <!-- Workflow steps -->
-        ${wfItems.length ? `<div class="rounded-2xl p-4" style="background:${t.card};border:1px solid ${t.border}">
-          <h3 class="text-sm font-bold mb-3" style="color:${t.text}">Workflow</h3>
-          <div class="flex gap-3 overflow-x-auto pb-1">
-            ${wfItems.map((w, i) => `
-            <div class="flex-shrink-0 flex items-center gap-2">
-              <div class="w-7 h-7 rounded-full flex items-center justify-center text-xs font-black" style="background:${t.badge};color:${t.accent}">${i+1}</div>
-              <span class="text-xs whitespace-nowrap" style="color:${t.sub}">${escHtml(truncate(w, 30))}</span>
-              ${i < wfItems.length-1 ? `<i class="fas fa-chevron-right text-xs" style="color:${t.muted}"></i>` : ''}
+        ${wfItems.length ? `
+        <div style="${s_card(t,'padding:16px')}">
+          <div style="font-size:13px;font-weight:700;color:${t.text};margin-bottom:12px">Workflow Steps</div>
+          <div style="display:flex;align-items:center;gap:8px;overflow-x:auto">
+            ${wfItems.map((w,i)=>`
+            <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+              <div style="width:28px;height:28px;border-radius:50%;background:${t.badge};color:${t.acc};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900">${i+1}</div>
+              <span style="font-size:11px;color:${t.sub};white-space:nowrap">${escHtml(truncate(w,25))}</span>
+              ${i<wfItems.length-1?`<i class="fas fa-chevron-right" style="font-size:10px;color:${t.muted}"></i>`:''}
             </div>`).join('')}
           </div>
         </div>` : ''}
@@ -4076,102 +4043,79 @@ function renderFilmAnalysisDashboard(t, appName, appIcon, fields, features, work
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-//  LAYOUT 2: MUSIC PLAYER DASHBOARD
-//  Music app — player panel, queue, discover grid, stats
+//  LAYOUT 2 — MUSIC PLAYER
 // ══════════════════════════════════════════════════════════════════════════
-function renderMusicPlayerDashboard(t, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId) {
-  const wfItems = workflows.split(/[,.;]/).map(s=>s.trim()).filter(s=>s.length>3).slice(0,4);
-
+function renderMusic(t, appName, appIcon, features, wfItems, audience, problem, feat0, feat1, feat2, pid) {
   const sidebarItems = [
-    { icon:'fas fa-house',       label:'Home',      badge: null },
-    { icon:'fas fa-magnifying-glass', label:'Discover', badge: null },
-    { icon:'fas fa-list',        label:'Library',   badge: null },
-    { icon:'fas fa-heart',       label:'Favorites', badge: null },
-    { icon:'fas fa-music',       label: truncate(feat0, 12), badge: 'New' },
-    { icon:'fas fa-gear',        label:'Settings',  badge: null },
+    { icon:'fas fa-house',           label:'Home', badge:null },
+    { icon:'fas fa-magnifying-glass',label:'Discover', badge:null },
+    { icon:'fas fa-list',            label:'Library', badge:null },
+    { icon:'fas fa-heart',           label:'Favorites', badge:null },
+    { icon:'fas fa-music',           label:truncate(feat0,14), badge:'New' },
+    { icon:'fas fa-gear',            label:'Settings', badge:null },
   ];
-
-  const genres = ['Hip-Hop', 'Electronic', 'R&B', 'Pop', 'Indie', 'Jazz'];
   const tracks = [
-    { title: truncate(wfItems[0] || 'Top Picks', 24), artist: truncate(audience.split(/[,/]/)[0]||'Featured', 18), dur: '3:42' },
-    { title: truncate(wfItems[1] || 'New Releases', 24), artist: 'Trending Now', dur: '4:15' },
-    { title: truncate(features[0] || 'Featured Mix', 24), artist: 'Editor\'s Choice', dur: '2:58' },
-    { title: 'Discover Weekly', artist: 'Personalized', dur: '5:01' },
+    { title:truncate(wfItems[0]||'Top Picks',26), artist:truncate(audience.split(/[,/]/)[0]||'Featured',18), dur:'3:42' },
+    { title:truncate(wfItems[1]||'New Releases',26), artist:'Trending Now', dur:'4:15' },
+    { title:truncate(features[0]||'Featured Mix',26), artist:"Editor's Choice", dur:'2:58' },
+    { title:'Discover Weekly', artist:'Personalized', dur:'5:01' },
   ];
-
-  return `<div class="flex flex-col h-full" style="background:${t.bg};font-family:'Inter',sans-serif">
-    ${viewTopBar(t, appName, appIcon, projectId)}
-    <div class="flex flex-1 overflow-hidden">
-      ${viewSidebar(t, sidebarItems, 0, '190px')}
-      <!-- Main content -->
-      <div class="flex-1 overflow-y-auto p-5 space-y-5">
-        <!-- Hero now-playing card -->
-        <div class="rounded-3xl p-6 relative overflow-hidden" style="background:linear-gradient(135deg,${t.accent}22,${t.accent2}33);border:1px solid ${t.border}">
-          <div class="absolute inset-0" style="background:radial-gradient(ellipse at 70% 50%,${t.glow},transparent)"></div>
-          <div class="relative flex items-center gap-6">
-            <!-- Album art -->
-            <div class="w-24 h-24 rounded-2xl flex items-center justify-center flex-shrink-0 shadow-2xl" style="background:linear-gradient(135deg,${t.accent},${t.accent2})">
+  const genres = ['Hip-Hop','Electronic','R&B','Pop','Indie','Jazz'];
+  return `<div style="display:flex;flex-direction:column;height:100%;background:${t.bg};font-family:'Inter',sans-serif;color:${t.text}">
+    ${vTopBar(t,appName,appIcon,pid)}
+    <div style="display:flex;flex:1;overflow:hidden">
+      ${vSidebar(t,sidebarItems,'190px')}
+      <div style="flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:20px">
+        <!-- Hero now-playing -->
+        <div style="border-radius:20px;padding:24px;position:relative;overflow:hidden;background:linear-gradient(135deg,${t.acc}22,${t.acc2}33);border:1px solid ${t.brd}">
+          <div style="position:absolute;inset:0;background:radial-gradient(ellipse at 70% 50%,${t.glow},transparent);pointer-events:none"></div>
+          <div style="display:flex;align-items:center;gap:24px;position:relative">
+            <div style="width:96px;height:96px;border-radius:16px;background:linear-gradient(135deg,${t.acc},${t.acc2});display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 8px 32px ${t.glow}">
               <i class="${appIcon}" style="font-size:36px;color:white;opacity:0.9"></i>
             </div>
-            <div class="flex-1">
-              <p class="text-xs font-semibold mb-1" style="color:${t.badgeText}">NOW PLAYING</p>
-              <h2 class="text-xl font-black mb-0.5" style="color:${t.text}">${escHtml(truncate(appName, 28))}</h2>
-              <p class="text-sm" style="color:${t.sub}">${escHtml(truncate(problem || `For ${audience}`, 50))}</p>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:11px;color:${t.sub};margin-bottom:4px;text-transform:uppercase;letter-spacing:1px">Now Playing</div>
+              <div style="font-size:20px;font-weight:900;color:${t.text};margin-bottom:4px">${escHtml(truncate(feat0||appName,30))}</div>
+              <div style="font-size:13px;color:${t.sub};margin-bottom:16px">${escHtml(truncate(audience.split(/[,/]/)[0]||'Featured Artist',24))}</div>
               <!-- Progress bar -->
-              <div class="mt-3 space-y-1">
-                <div class="h-1.5 rounded-full" style="background:${t.border}">
-                  <div class="h-1.5 rounded-full w-1/3" style="background:linear-gradient(90deg,${t.accent},${t.accent2})"></div>
-                </div>
-                <div class="flex justify-between text-xs" style="color:${t.muted}"><span>1:24</span><span>4:10</span></div>
+              <div style="height:4px;background:${t.brd};border-radius:2px;margin-bottom:8px">
+                <div style="height:4px;background:linear-gradient(90deg,${t.acc},${t.acc2});border-radius:2px;width:42%"></div>
+              </div>
+              <!-- Controls -->
+              <div style="display:flex;align-items:center;gap:16px">
+                <button style="background:none;border:none;color:${t.sub};cursor:pointer;font-size:16px;padding:4px" title="Previous"><i class="fas fa-backward-step"></i></button>
+                <button style="width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,${t.acc},${t.acc2});border:none;cursor:pointer;color:white;font-size:14px;display:flex;align-items:center;justify-content:center" title="Play/Pause"><i class="fas fa-play"></i></button>
+                <button style="background:none;border:none;color:${t.sub};cursor:pointer;font-size:16px;padding:4px" title="Next"><i class="fas fa-forward-step"></i></button>
+                <button style="background:none;border:none;color:${t.sub};cursor:pointer;font-size:14px;padding:4px;margin-left:8px" title="Like"><i class="fas fa-heart"></i></button>
               </div>
             </div>
-            <!-- Controls -->
-            <div class="flex items-center gap-4 flex-shrink-0">
-              <button style="color:${t.sub}"><i class="fas fa-backward-step text-lg"></i></button>
-              <button class="w-12 h-12 rounded-full flex items-center justify-center shadow-lg" style="background:linear-gradient(135deg,${t.accent},${t.accent2})">
-                <i class="fas fa-pause text-white text-lg"></i>
-              </button>
-              <button style="color:${t.sub}"><i class="fas fa-forward-step text-lg"></i></button>
-            </div>
           </div>
         </div>
-
-        <!-- Stats + genres row -->
-        <div class="grid grid-cols-4 gap-3">
-          ${kpiCard(t, 'fas fa-music', 'Tracks', '0', 'Available', 0)}
-          ${kpiCard(t, 'fas fa-list', 'Playlists', '0', 'Created', 0)}
-          ${kpiCard(t, 'fas fa-headphones', 'Listening Time', '0h', 'This week')}
-          ${kpiCard(t, 'fas fa-heart', 'Favorites', '0', 'Saved')}
+        <!-- Genres row -->
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          ${genres.map((g,i)=>`<button style="border-radius:20px;padding:6px 14px;font-size:12px;font-weight:600;background:${i===0?`linear-gradient(135deg,${t.acc},${t.acc2})`:`${t.card2}`};color:${i===0?'white':t.sub};border:1px solid ${t.brd};cursor:pointer">${g}</button>`).join('')}
         </div>
-
-        <!-- Genre tags + track list -->
-        <div class="grid grid-cols-3 gap-4">
-          <div class="col-span-2 rounded-2xl p-4" style="background:${t.card};border:1px solid ${t.border}">
-            <h3 class="text-sm font-bold mb-3" style="color:${t.text}">Queue</h3>
-            <div class="space-y-2">
-              ${tracks.map((tr, i) => `
-              <div class="flex items-center gap-3 p-2 rounded-xl ${i===0?'':''}" style="${i===0?`background:${t.badge};`:''}" >
-                <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style="background:${t.card2}">
-                  ${i===0 ? `<i class="fas fa-volume-high" style="font-size:10px;color:${t.accent}"></i>` : `<span class="text-xs" style="color:${t.muted}">${i+1}</span>`}
-                </div>
-                <div class="flex-1">
-                  <p class="text-xs font-bold" style="color:${t.text}">${escHtml(tr.title)}</p>
-                  <p class="text-xs" style="color:${t.sub}">${escHtml(tr.artist)}</p>
-                </div>
-                <span class="text-xs" style="color:${t.muted}">${tr.dur}</span>
-              </div>`).join('')}
-            </div>
+        <!-- Track list + stats -->
+        <div style="display:grid;grid-template-columns:3fr 2fr;gap:16px">
+          <div style="${s_card(t,'padding:16px;display:flex;flex-direction:column;gap:4px')}">
+            <div style="font-size:13px;font-weight:700;color:${t.text};margin-bottom:10px">Trending Tracks</div>
+            ${tracks.map((tr,i)=>`
+            <div style="display:flex;align-items:center;gap:12px;padding:8px;border-radius:10px;cursor:pointer" onmouseover="this.style.background='${t.card2}'" onmouseout="this.style.background='transparent'">
+              <span style="font-size:12px;color:${t.muted};width:14px;text-align:center">${i+1}</span>
+              <div style="width:36px;height:36px;border-radius:8px;background:linear-gradient(135deg,${t.acc}${30+i*10},${t.acc2});display:flex;align-items:center;justify-content:center;flex-shrink:0">
+                <i class="fas fa-music" style="font-size:12px;color:white"></i>
+              </div>
+              <div style="flex:1;min-width:0">
+                <div style="font-size:12px;font-weight:600;color:${t.text};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(tr.title)}</div>
+                <div style="font-size:10px;color:${t.sub}">${escHtml(tr.artist)}</div>
+              </div>
+              <span style="font-size:11px;color:${t.muted}">${tr.dur}</span>
+            </div>`).join('')}
           </div>
-          <!-- Genre chips -->
-          <div class="rounded-2xl p-4" style="background:${t.card};border:1px solid ${t.border}">
-            <h3 class="text-sm font-bold mb-3" style="color:${t.text}">Genres</h3>
-            <div class="flex flex-wrap gap-2">
-              ${genres.map((g,i) => `<span class="text-xs px-3 py-1.5 rounded-full font-semibold cursor-pointer" style="background:${i===0?`linear-gradient(135deg,${t.accent},${t.accent2})`:t.card2};color:${i===0?'white':t.sub}">${g}</span>`).join('')}
-            </div>
-            ${wfItems.length ? `<div class="mt-4 space-y-2">
-              <p class="text-xs font-bold" style="color:${t.sub}">Features</p>
-              ${wfItems.slice(0,3).map(w => `<p class="text-xs flex items-center gap-2" style="color:${t.muted}"><i class="fas fa-check" style="color:${t.accent}"></i>${escHtml(truncate(w,30))}</p>`).join('')}
-            </div>` : ''}
+          <div style="display:flex;flex-direction:column;gap:12px">
+            ${vKpi(t,'fas fa-music','Tracks',wfItems.length||'0','In library',0)}
+            ${vKpi(t,'fas fa-users',truncate(audience.split(/[,/]/)[0]||'Listeners',14),'0','Active')}
+            ${vKpi(t,'fas fa-fire','Trending','0','This week')}
           </div>
         </div>
       </div>
@@ -4180,98 +4124,84 @@ function renderMusicPlayerDashboard(t, appName, appIcon, fields, features, workf
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-//  LAYOUT 3: CLINICAL / HEALTH DASHBOARD
-//  Medical/Health app — appointment calendar, vitals, patient list
+//  LAYOUT 3 — HEALTH / CLINICAL
 // ══════════════════════════════════════════════════════════════════════════
-function renderClinicalDashboard(t, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId) {
-  const roles = (fields.roles_permissions || 'Patient/Doctor').split(/[,/]/).map(s=>s.trim());
-  const wfItems = workflows.split(/[,.;]/).map(s=>s.trim()).filter(s=>s.length>3).slice(0,4);
-
+function renderHealth(t, appName, appIcon, features, wfItems, audience, problem, roles, feat0, feat1, feat2, pid) {
   const sidebarItems = [
-    { icon:'fas fa-gauge-high',    label:'Dashboard',    badge: null },
-    { icon:'fas fa-calendar-days', label:'Appointments', badge: '2 Today' },
-    { icon:'fas fa-heart-pulse',   label:'Vitals',       badge: null },
-    { icon:'fas fa-file-medical',  label:'Records',      badge: null },
-    { icon:'fas fa-pills',         label: truncate(feat0, 12), badge: null },
-    { icon:'fas fa-user-doctor',   label: truncate(roles[0]||'Provider', 12), badge: null },
+    { icon:'fas fa-gauge-high',    label:'Dashboard', badge:null },
+    { icon:'fas fa-calendar-days', label:'Appointments', badge:'2 Today' },
+    { icon:'fas fa-heart-pulse',   label:'Vitals', badge:null },
+    { icon:'fas fa-file-medical',  label:'Records', badge:null },
+    { icon:'fas fa-pills',         label:truncate(feat0,14), badge:null },
+    { icon:'fas fa-user-doctor',   label:truncate(roles[0]||'Provider',14), badge:null },
   ];
-
   const vitals = [
-    { label:'Heart Rate', val:'– BPM', icon:'fas fa-heart', color:'#ef4444' },
-    { label:'Blood Pressure', val:'–/–', icon:'fas fa-stethoscope', color:'#3b82f6' },
-    { label:'Oxygen', val:'–%', icon:'fas fa-lungs', color:'#06b6d4' },
-    { label:'Temperature', val:'–°F', icon:'fas fa-thermometer', color:'#f97316' },
+    {label:'Heart Rate',val:'— BPM',icon:'fas fa-heart',color:'#ef4444'},
+    {label:'Blood Pressure',val:'—/—',icon:'fas fa-stethoscope',color:'#3b82f6'},
+    {label:'Oxygen',val:'—%',icon:'fas fa-lungs',color:'#06b6d4'},
+    {label:'Temperature',val:'—°F',icon:'fas fa-thermometer',color:'#f97316'},
   ];
-
-  return `<div class="flex flex-col h-full" style="background:${t.bg};font-family:'Inter',sans-serif">
-    ${viewTopBar(t, appName, appIcon, projectId)}
-    <div class="flex flex-1 overflow-hidden">
-      ${viewSidebar(t, sidebarItems, 0, '195px')}
-      <div class="flex-1 overflow-y-auto p-5 space-y-5">
-        <div class="flex items-center justify-between">
+  const appointments = [
+    {name:'Patient A',time:'9:00 AM',type:truncate(feat0||'Check-up',20),status:'Confirmed'},
+    {name:'Patient B',time:'10:30 AM',type:truncate(wfItems[0]||'Follow-up',20),status:'Pending'},
+    {name:'Patient C',time:'2:00 PM',type:truncate(features[1]||'Consultation',20),status:'Confirmed'},
+  ];
+  return `<div style="display:flex;flex-direction:column;height:100%;background:${t.bg};font-family:'Inter',sans-serif;color:${t.text}">
+    ${vTopBar(t,appName,appIcon,pid)}
+    <div style="display:flex;flex:1;overflow:hidden">
+      ${vSidebar(t,sidebarItems,'195px')}
+      <div style="flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:20px">
+        <div style="display:flex;align-items:center;justify-content:space-between">
           <div>
-            <h1 class="text-xl font-black" style="color:${t.text}">${escHtml(appName)}</h1>
-            <p class="text-xs" style="color:${t.sub}">${escHtml(truncate(problem || `Healthcare platform for ${audience}`, 70))}</p>
+            <h1 style="font-size:20px;font-weight:900;color:${t.text};margin:0 0 4px">${escHtml(appName)}</h1>
+            <p style="font-size:12px;color:${t.sub};margin:0">${escHtml(truncate(problem||`Healthcare platform for ${audience}`,70))}</p>
           </div>
-          <button class="text-xs px-4 py-2 rounded-xl font-bold flex items-center gap-2" style="background:linear-gradient(135deg,${t.accent},${t.accent2});color:white">
-            <i class="fas fa-calendar-plus"></i> New Appointment
-          </button>
+          <button style="${s_btn_primary(t)}"><i class="fas fa-calendar-plus"></i> New Appointment</button>
         </div>
-
-        <div class="grid grid-cols-4 gap-3">
-          ${kpiCard(t, 'fas fa-calendar-days', 'Appointments', '0', 'This week', 0)}
-          ${kpiCard(t, 'fas fa-file-medical', 'Records', '0', 'Total', 0)}
-          ${kpiCard(t, 'fas fa-pills', 'Prescriptions', '0', 'Active')}
-          ${kpiCard(t, 'fas fa-chart-line', 'Health Score', '–', 'Overall')}
+        <div style="${s_grid(4,'12px')}">
+          ${vKpi(t,'fas fa-calendar-days','Appointments','0','This week',0)}
+          ${vKpi(t,'fas fa-file-medical','Records','0','Total',0)}
+          ${vKpi(t,'fas fa-pills','Prescriptions','0','Active')}
+          ${vKpi(t,'fas fa-chart-line','Health Score','—','Overall')}
         </div>
-
-        <div class="grid grid-cols-3 gap-4">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
           <!-- Vitals -->
-          <div class="col-span-1 space-y-3">
-            <h3 class="text-sm font-bold" style="color:${t.text}">Vital Signs</h3>
-            ${vitals.map(v => `
-            <div class="rounded-xl p-3 flex items-center gap-3" style="background:${t.card};border:1px solid ${t.border}">
-              <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style="background:${v.color}22">
-                <i class="${v.icon}" style="font-size:12px;color:${v.color}"></i>
+          <div style="${s_card(t,'padding:16px')}">
+            <div style="font-size:13px;font-weight:700;color:${t.text};margin-bottom:14px">Current Vitals</div>
+            <div style="${s_grid(2,'10px')}">
+              ${vitals.map(v=>`
+              <div style="background:${v.color}18;border:1px solid ${v.color}30;border-radius:12px;padding:12px">
+                <i class="${v.icon}" style="color:${v.color};font-size:16px;margin-bottom:6px;display:block"></i>
+                <div style="font-size:16px;font-weight:800;color:${t.text}">${v.val}</div>
+                <div style="font-size:10px;color:${t.sub};margin-top:2px">${v.label}</div>
+              </div>`).join('')}
+            </div>
+          </div>
+          <!-- Appointments -->
+          <div style="${s_card(t,'padding:16px')}">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+              <div style="font-size:13px;font-weight:700;color:${t.text}">Today's Appointments</div>
+              ${vBadge(t,'3 Total',t.acc)}
+            </div>
+            ${appointments.map(a=>`
+            <div style="display:flex;align-items:center;gap:10px;padding:8px;border-radius:10px;margin-bottom:6px;background:${t.card2}">
+              <div style="width:36px;height:36px;border-radius:50%;background:${t.badge};display:flex;align-items:center;justify-content:center;flex-shrink:0">
+                <i class="fas fa-user" style="font-size:13px;color:${t.acc}"></i>
               </div>
-              <div>
-                <p class="text-xs" style="color:${t.sub}">${v.label}</p>
-                <p class="text-sm font-bold" style="color:${t.text}">${v.val}</p>
+              <div style="flex:1;min-width:0">
+                <div style="font-size:12px;font-weight:600;color:${t.text}">${escHtml(a.name)}</div>
+                <div style="font-size:10px;color:${t.sub}">${escHtml(a.type)} · ${a.time}</div>
               </div>
+              ${vBadge(t,a.status,a.status==='Confirmed'?t.acc:'#f59e0b')}
             </div>`).join('')}
           </div>
-
-          <!-- Appointments + workflow -->
-          <div class="col-span-2 space-y-4">
-            <div class="rounded-2xl p-4" style="background:${t.card};border:1px solid ${t.border}">
-              <h3 class="text-sm font-bold mb-3" style="color:${t.text}">Upcoming Appointments</h3>
-              <div class="space-y-2">
-                ${[
-                  { time: 'Today 10:00 AM', label: truncate(wfItems[0]||'Routine Checkup', 28), type: 'Virtual', color: t.accent },
-                  { time: 'Tomorrow 2:30 PM', label: truncate(wfItems[1]||'Follow-up', 28), type: 'In-Person', color: '#a855f7' },
-                  { time: 'Fri 9:00 AM', label: truncate(features[0]||'Specialist Consultation', 28), type: 'Pending', color: '#f59e0b' },
-                ].map(a => `
-                <div class="flex items-center gap-3 p-2 rounded-xl" style="background:${t.card2}">
-                  <div class="w-1.5 rounded-full h-full self-stretch" style="background:${a.color};min-height:36px"></div>
-                  <div class="flex-1">
-                    <p class="text-xs font-bold" style="color:${t.text}">${escHtml(a.label)}</p>
-                    <p class="text-xs" style="color:${t.sub}">${a.time}</p>
-                  </div>
-                  <span class="text-xs px-2 py-0.5 rounded-full" style="background:${a.color}22;color:${a.color}">${a.type}</span>
-                </div>`).join('')}
-              </div>
-            </div>
-            ${wfItems.length ? `
-            <div class="rounded-2xl p-4" style="background:${t.card};border:1px solid ${t.border}">
-              <h3 class="text-sm font-bold mb-2" style="color:${t.text}">Care Workflow</h3>
-              <div class="space-y-1.5">
-                ${wfItems.map((w, i) => `
-                <div class="flex items-center gap-2 text-xs" style="color:${t.sub}">
-                  <i class="fas fa-circle-check" style="color:${i<1?t.accent:t.muted};font-size:10px"></i>
-                  ${escHtml(truncate(w, 50))}
-                </div>`).join('')}
-              </div>
-            </div>` : ''}
+        </div>
+        <!-- Quick actions -->
+        <div style="${s_card(t,'padding:16px')}">
+          <div style="font-size:13px;font-weight:700;color:${t.text};margin-bottom:12px">Quick Actions</div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            ${[['fas fa-calendar-plus','Schedule Appointment'],['fas fa-file-medical','New Record'],['fas fa-pills','Add Prescription'],['fas fa-message','Send Message']].map(([ic,l])=>`
+            <button style="${s_btn_ghost(t,'display:flex;align-items:center;gap:6px')}">${'<i class="'+ic+'"></i>'} ${l}</button>`).join('')}
           </div>
         </div>
       </div>
@@ -4280,100 +4210,759 @@ function renderClinicalDashboard(t, appName, appIcon, fields, features, workflow
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-//  LAYOUT 4: TRADING / FINANCE DASHBOARD
-//  Finance app — portfolio bar, chart area, positions table
+//  LAYOUT 4 — FINANCE / TRADING
 // ══════════════════════════════════════════════════════════════════════════
-function renderTradingDashboard(t, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId) {
-  const wfItems = workflows.split(/[,.;]/).map(s=>s.trim()).filter(s=>s.length>3).slice(0,4);
-
+function renderFinance(t, appName, appIcon, features, wfItems, audience, problem, feat0, feat1, feat2, pid) {
   const sidebarItems = [
-    { icon:'fas fa-gauge-high',      label:'Portfolio',  badge: null },
-    { icon:'fas fa-chart-line',      label:'Markets',    badge: null },
-    { icon:'fas fa-arrow-trend-up',  label: truncate(feat0,12), badge: null },
-    { icon:'fas fa-wallet',          label:'Wallet',     badge: null },
-    { icon:'fas fa-chart-pie',       label:'Analytics',  badge: null },
-    { icon:'fas fa-gear',            label:'Settings',   badge: null },
+    { icon:'fas fa-gauge-high',   label:'Dashboard', badge:null },
+    { icon:'fas fa-chart-line',   label:'Portfolio', badge:null },
+    { icon:'fas fa-coins',        label:truncate(feat0,14), badge:'Live' },
+    { icon:'fas fa-receipt',      label:'Transactions', badge:null },
+    { icon:'fas fa-chart-pie',    label:'Analytics', badge:null },
+    { icon:'fas fa-gear',         label:'Settings', badge:null },
   ];
-
-  const assets = [
-    { symbol:'BTC', name:'Bitcoin', val:'–', chg:'+0.0%', up:true },
-    { symbol:'ETH', name:'Ethereum', val:'–', chg:'+0.0%', up:true },
-    { symbol:'S&P', name:'S&P 500', val:'–', chg:'-0.0%', up:false },
-    { symbol:'GOLD', name:'Gold', val:'–', chg:'+0.0%', up:true },
+  const positions = [
+    {sym:'BTC',name:'Bitcoin',price:'$0.00',chg:'+0.0%',up:true},
+    {sym:'ETH',name:'Ethereum',price:'$0.00',chg:'+0.0%',up:true},
+    {sym:'AAPL',name:'Apple Inc.',price:'$0.00',chg:'-0.0%',up:false},
+    {sym:'GOOGL',name:'Alphabet',price:'$0.00',chg:'+0.0%',up:true},
   ];
-
-  // Mini sparkline-like bars (purely decorative SVG)
-  const sparkline = `<svg width="80" height="30" viewBox="0 0 80 30">
-    <polyline points="0,20 10,18 20,22 30,15 40,17 50,10 60,12 70,8 80,6" stroke="${t.accent}" stroke-width="1.5" fill="none"/>
+  // Simple SVG chart bars
+  const bars = [35,55,40,70,60,80,50,75,65,90,70,85];
+  const chartSVG = `<svg viewBox="0 0 240 80" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:80px">
+    ${bars.map((h,i)=>`<rect x="${i*20+1}" y="${80-h}" width="16" height="${h}" rx="3" fill="${t.acc}" opacity="${0.3+i*0.06}"/>`).join('')}
+    <polyline points="${bars.map((h,i)=>`${i*20+9},${80-h}`).join(' ')}" fill="none" stroke="${t.acc}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
   </svg>`;
-
-  return `<div class="flex flex-col h-full" style="background:${t.bg};font-family:'Inter',sans-serif">
-    ${viewTopBar(t, appName, appIcon, projectId)}
-    <div class="flex flex-1 overflow-hidden">
-      ${viewSidebar(t, sidebarItems, 0, '185px')}
-      <div class="flex-1 overflow-y-auto p-5 space-y-5">
-        <!-- Portfolio hero -->
-        <div class="rounded-3xl p-6 relative overflow-hidden" style="background:linear-gradient(135deg,${t.card},${t.card2});border:1px solid ${t.border}">
-          <div class="absolute right-0 top-0 bottom-0 flex items-center px-8 opacity-20">
-            ${sparkline}
+  return `<div style="display:flex;flex-direction:column;height:100%;background:${t.bg};font-family:'Inter',sans-serif;color:${t.text}">
+    ${vTopBar(t,appName,appIcon,pid)}
+    <div style="display:flex;flex:1;overflow:hidden">
+      ${vSidebar(t,sidebarItems,'200px')}
+      <div style="flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:20px">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <div>
+            <h1 style="font-size:20px;font-weight:900;color:${t.text};margin:0 0 4px">${escHtml(appName)}</h1>
+            <p style="font-size:12px;color:${t.sub};margin:0">${escHtml(truncate(problem||`Financial platform for ${audience}`,70))}</p>
           </div>
-          <p class="text-xs font-semibold mb-1" style="color:${t.sub}">TOTAL PORTFOLIO VALUE</p>
-          <h1 class="text-4xl font-black mb-1" style="color:${t.text}">$0.00</h1>
-          <div class="flex items-center gap-2">
-            <span class="text-sm font-semibold" style="color:#22c55e">+$0.00 (0.0%)</span>
-            <span class="text-xs" style="color:${t.muted}">All time</span>
+          <button style="${s_btn_primary(t)}"><i class="fas fa-plus"></i> New Trade</button>
+        </div>
+        <!-- Portfolio value hero -->
+        <div style="border-radius:20px;padding:24px;position:relative;overflow:hidden;background:linear-gradient(135deg,${t.acc}18,${t.acc2}28);border:1px solid ${t.brd}">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px">
+            <div>
+              <div style="font-size:12px;color:${t.sub};text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Total Portfolio Value</div>
+              <div style="font-size:36px;font-weight:900;color:${t.text}">$0.00</div>
+              <div style="font-size:13px;color:#22c55e;margin-top:4px"><i class="fas fa-arrow-trend-up"></i> +0.00% Today</div>
+            </div>
+            <button style="${s_btn_primary(t)}"><i class="fas fa-download"></i> Export</button>
           </div>
-          <p class="text-xs mt-2" style="color:${t.sub}">${escHtml(truncate(problem || `Finance platform for ${audience}`, 60))}</p>
+          ${chartSVG}
         </div>
-
-        <div class="grid grid-cols-4 gap-3">
-          ${kpiCard(t, 'fas fa-wallet', 'Net Worth', '$0', 'Current', 0)}
-          ${kpiCard(t, 'fas fa-arrow-trend-up', 'Return YTD', '0%', 'Year to date', 0)}
-          ${kpiCard(t, 'fas fa-chart-pie', 'Budget Used', '0%', 'This month')}
-          ${kpiCard(t, 'fas fa-coins', 'Savings Rate', '0%', 'Of income')}
+        <div style="${s_grid(4,'12px')}">
+          ${vKpi(t,'fas fa-wallet','Balance','$0.00','Available',0)}
+          ${vKpi(t,'fas fa-coins','Assets','0','Holdings',0)}
+          ${vKpi(t,'fas fa-arrow-trend-up','Returns','+0%','All time')}
+          ${vKpi(t,'fas fa-chart-pie','Risk Score','—','Assessment')}
         </div>
+        <!-- Positions table -->
+        <div style="${s_card(t,'padding:16px')}">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+            <div style="font-size:13px;font-weight:700;color:${t.text}">Positions</div>
+            <button style="${s_btn_ghost(t,'font-size:11px;padding:4px 10px')}">View All</button>
+          </div>
+          <table style="width:100%;border-collapse:collapse;font-size:12px">
+            <thead>
+              <tr style="border-bottom:1px solid ${t.brd}">
+                <th style="text-align:left;padding:6px 8px;color:${t.muted};font-weight:600">Asset</th>
+                <th style="text-align:right;padding:6px 8px;color:${t.muted};font-weight:600">Price</th>
+                <th style="text-align:right;padding:6px 8px;color:${t.muted};font-weight:600">Change</th>
+                <th style="text-align:right;padding:6px 8px;color:${t.muted};font-weight:600">Value</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${positions.map(p=>`
+              <tr style="border-bottom:1px solid ${t.brd}">
+                <td style="padding:10px 8px">
+                  <div style="display:flex;align-items:center;gap:8px">
+                    <div style="width:30px;height:30px;border-radius:8px;background:${t.badge};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:${t.acc}">${p.sym.slice(0,2)}</div>
+                    <div>
+                      <div style="font-weight:700;color:${t.text}">${p.sym}</div>
+                      <div style="font-size:10px;color:${t.sub}">${p.name}</div>
+                    </div>
+                  </div>
+                </td>
+                <td style="text-align:right;padding:10px 8px;color:${t.text};font-weight:600">${p.price}</td>
+                <td style="text-align:right;padding:10px 8px;color:${p.up?'#22c55e':'#ef4444'};font-weight:700">${p.chg}</td>
+                <td style="text-align:right;padding:10px 8px;color:${t.sub}">$0.00</td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
 
-        <!-- Chart + positions -->
-        <div class="grid grid-cols-3 gap-4">
-          <!-- Fake chart area -->
-          <div class="col-span-2 rounded-2xl p-4" style="background:${t.card};border:1px solid ${t.border}">
-            <div class="flex items-center justify-between mb-3">
-              <h3 class="text-sm font-bold" style="color:${t.text}">Portfolio Performance</h3>
-              <div class="flex gap-1">
-                ${['1D','1W','1M','1Y'].map((p,i) => `<button class="text-xs px-2 py-1 rounded-lg" style="${i===2?`background:${t.badge};color:${t.accent}`:`color:${t.muted}`}">${p}</button>`).join('')}
+// ══════════════════════════════════════════════════════════════════════════
+//  LAYOUT 5 — E-COMMERCE / STOREFRONT
+// ══════════════════════════════════════════════════════════════════════════
+function renderStore(t, appName, appIcon, features, wfItems, audience, problem, feat0, feat1, feat2, pid) {
+  const sidebarItems = [
+    { icon:'fas fa-gauge-high',   label:'Dashboard', badge:null },
+    { icon:'fas fa-bag-shopping', label:'Products', badge:null },
+    { icon:'fas fa-list-check',   label:'Orders', badge:'5 New' },
+    { icon:'fas fa-users',        label:'Customers', badge:null },
+    { icon:'fas fa-tag',          label:truncate(feat0,14), badge:null },
+    { icon:'fas fa-gear',         label:'Settings', badge:null },
+  ];
+  const products = [
+    {name:truncate(wfItems[0]||'Premium Product A',22),price:'$0.00',stock:'0',cat:truncate(feat0||'Category',12)},
+    {name:truncate(wfItems[1]||'Essential Item B',22),price:'$0.00',stock:'0',cat:truncate(feat1||'Category',12)},
+    {name:truncate(features[0]||'Best Seller C',22),price:'$0.00',stock:'0',cat:'Featured'},
+    {name:truncate(features[1]||'New Arrival D',22),price:'$0.00',stock:'0',cat:'New'},
+  ];
+  return `<div style="display:flex;flex-direction:column;height:100%;background:${t.bg};font-family:'Inter',sans-serif;color:${t.text}">
+    ${vTopBar(t,appName,appIcon,pid)}
+    <div style="display:flex;flex:1;overflow:hidden">
+      ${vSidebar(t,sidebarItems,'200px')}
+      <div style="flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:20px">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <div>
+            <h1 style="font-size:20px;font-weight:900;color:${t.text};margin:0 0 4px">${escHtml(appName)}</h1>
+            <p style="font-size:12px;color:${t.sub};margin:0">${escHtml(truncate(problem||`Storefront for ${audience}`,70))}</p>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button style="${s_btn_ghost(t,'display:flex;align-items:center;gap:6px')}"><i class="fas fa-download"></i> Export</button>
+            <button style="${s_btn_primary(t)}"><i class="fas fa-plus"></i> Add Product</button>
+          </div>
+        </div>
+        <div style="${s_grid(4,'12px')}">
+          ${vKpi(t,'fas fa-dollar-sign','Revenue','$0.00','This month',0)}
+          ${vKpi(t,'fas fa-shopping-cart','Orders','0','Today',5)}
+          ${vKpi(t,'fas fa-box','Products','0','Active',0)}
+          ${vKpi(t,'fas fa-users','Customers','0','Total',0)}
+        </div>
+        <!-- Product grid -->
+        <div style="${s_card(t,'padding:16px')}">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+            <div style="font-size:13px;font-weight:700;color:${t.text}">Product Catalog</div>
+            <div style="display:flex;gap:8px">
+              <input placeholder="Search products..." style="background:${t.card2};border:1px solid ${t.brd};border-radius:8px;padding:6px 12px;font-size:12px;color:${t.text};outline:none;width:160px">
+              ${vBadge(t,'4 items',t.acc)}
+            </div>
+          </div>
+          <div style="${s_grid(2,'10px')}">
+            ${products.map(p=>`
+            <div style="${s_card2(t,'padding:14px;cursor:pointer')}" onmouseover="this.style.borderColor='${t.acc}'" onmouseout="this.style.borderColor='${t.brd}'">
+              <div style="width:100%;height:80px;background:linear-gradient(135deg,${t.card},${t.muted}22);border-radius:10px;display:flex;align-items:center;justify-content:center;margin-bottom:10px">
+                <i class="fas fa-box" style="font-size:24px;color:${t.acc};opacity:0.5"></i>
+              </div>
+              <div style="font-size:12px;font-weight:700;color:${t.text};margin-bottom:4px">${escHtml(p.name)}</div>
+              <div style="display:flex;align-items:center;justify-content:space-between">
+                <span style="font-size:13px;font-weight:800;color:${t.acc}">${p.price}</span>
+                ${vBadge(t,p.cat)}
+              </div>
+            </div>`).join('')}
+          </div>
+        </div>
+        <!-- Recent orders -->
+        <div style="${s_card(t,'padding:16px')}">
+          <div style="font-size:13px;font-weight:700;color:${t.text};margin-bottom:12px">Recent Orders</div>
+          ${['#001','#002','#003'].map((o,i)=>`
+          <div style="display:flex;align-items:center;gap:12px;padding:8px;border-radius:10px;margin-bottom:4px" onmouseover="this.style.background='${t.card2}'" onmouseout="this.style.background='transparent'">
+            <div style="width:32px;height:32px;border-radius:8px;background:${t.badge};display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:11px;font-weight:800;color:${t.acc}">${o}</div>
+            <div style="flex:1">
+              <div style="font-size:12px;font-weight:600;color:${t.text}">Order ${o}</div>
+              <div style="font-size:10px;color:${t.sub}">${['Just now','5m ago','12m ago'][i]}</div>
+            </div>
+            ${vBadge(t,['Processing','Shipped','Delivered'][i],['#f59e0b',t.acc,'#22c55e'][i])}
+            <span style="font-size:12px;font-weight:700;color:${t.text}">$0.00</span>
+          </div>`).join('')}
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  LAYOUT 6 — LMS / EDUCATION
+// ══════════════════════════════════════════════════════════════════════════
+function renderLMS(t, appName, appIcon, features, wfItems, audience, problem, feat0, feat1, feat2, pid) {
+  const sidebarItems = [
+    { icon:'fas fa-gauge-high',    label:'Dashboard', badge:null },
+    { icon:'fas fa-graduation-cap',label:'Courses', badge:null },
+    { icon:'fas fa-chart-line',    label:'Progress', badge:null },
+    { icon:'fas fa-certificate',   label:'Certificates', badge:null },
+    { icon:'fas fa-book',          label:truncate(feat0,14), badge:'New' },
+    { icon:'fas fa-users',         label:truncate(audience.split(/[,/]/)[0]||'Students',14), badge:null },
+  ];
+  const courses = [
+    {title:truncate(wfItems[0]||'Introduction to '+feat0,30),students:'0',progress:65,color:t.acc},
+    {title:truncate(wfItems[1]||feat1+' Fundamentals',30),students:'0',progress:40,color:'#a855f7'},
+    {title:truncate(features[0]||'Advanced Module',30),students:'0',progress:20,color:'#f59e0b'},
+  ];
+  return `<div style="display:flex;flex-direction:column;height:100%;background:${t.bg};font-family:'Inter',sans-serif;color:${t.text}">
+    ${vTopBar(t,appName,appIcon,pid)}
+    <div style="display:flex;flex:1;overflow:hidden">
+      ${vSidebar(t,sidebarItems,'200px')}
+      <div style="flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:20px">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <div>
+            <h1 style="font-size:20px;font-weight:900;color:${t.text};margin:0 0 4px">${escHtml(appName)}</h1>
+            <p style="font-size:12px;color:${t.sub};margin:0">${escHtml(truncate(problem||`Learning platform for ${audience}`,70))}</p>
+          </div>
+          <button style="${s_btn_primary(t)}"><i class="fas fa-plus"></i> New Course</button>
+        </div>
+        <div style="${s_grid(4,'12px')}">
+          ${vKpi(t,'fas fa-graduation-cap','Courses','0','Published',0)}
+          ${vKpi(t,'fas fa-users','Students','0','Enrolled',0)}
+          ${vKpi(t,'fas fa-certificate','Certificates','0','Issued',0)}
+          ${vKpi(t,'fas fa-chart-line','Completion','0%','Rate',0)}
+        </div>
+        <!-- Course cards -->
+        <div style="${s_card(t,'padding:16px')}">
+          <div style="font-size:13px;font-weight:700;color:${t.text};margin-bottom:14px">Course Catalog</div>
+          <div style="display:flex;flex-direction:column;gap:12px">
+            ${courses.map(c=>`
+            <div style="background:${t.card2};border:1px solid ${t.brd};border-radius:14px;padding:14px;cursor:pointer" onmouseover="this.style.borderColor='${c.color}'" onmouseout="this.style.borderColor='${t.brd}'">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+                <div style="font-size:13px;font-weight:700;color:${t.text}">${escHtml(c.title)}</div>
+                ${vBadge(t,c.students+' Students',c.color)}
+              </div>
+              <div style="display:flex;align-items:center;gap:10px">
+                <div style="flex:1;height:6px;background:${t.brd};border-radius:3px">
+                  <div style="height:6px;background:linear-gradient(90deg,${c.color},${c.color}88);border-radius:3px;width:${c.progress}%"></div>
+                </div>
+                <span style="font-size:11px;font-weight:700;color:${c.color}">${c.progress}%</span>
+              </div>
+            </div>`).join('')}
+          </div>
+        </div>
+        <!-- Recent activity -->
+        <div style="${s_card(t,'padding:16px')}">
+          <div style="font-size:13px;font-weight:700;color:${t.text};margin-bottom:12px">Recent Activity</div>
+          ${wfItems.slice(0,4).map((w,i)=>vActivity(t,resolveIcon(w),truncate(w,45),['Just now','5m ago','1h ago','3h ago'][i]||'Today',[t.acc,'#a855f7','#f59e0b','#22c55e'][i]||t.acc)).join('')}
+          ${vActivity(t,'fas fa-graduation-cap','Course completed by student','Yesterday',t.acc2)}
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  LAYOUT 7 — LEGAL / LAW FIRM
+// ══════════════════════════════════════════════════════════════════════════
+function renderLegal(t, appName, appIcon, features, wfItems, audience, problem, roles, feat0, feat1, feat2, pid) {
+  const sidebarItems = [
+    { icon:'fas fa-gauge-high',       label:'Dashboard', badge:null },
+    { icon:'fas fa-folder-open',      label:'Cases', badge:'3 Active' },
+    { icon:'fas fa-file-contract',    label:'Documents', badge:null },
+    { icon:'fas fa-calendar-check',   label:'Hearings', badge:'2 This Week' },
+    { icon:'fas fa-clock',            label:'Billing', badge:null },
+    { icon:'fas fa-scale-balanced',   label:truncate(feat0,14), badge:null },
+  ];
+  const cases = [
+    {id:'C-001',name:truncate(wfItems[0]||'Estate Planning Matter',30),client:'Client A',status:'Active',date:'Mar 28'},
+    {id:'C-002',name:truncate(wfItems[1]||'Contract Dispute',30),client:'Client B',status:'Review',date:'Mar 25'},
+    {id:'C-003',name:truncate(features[0]||'Corporate Formation',30),client:'Client C',status:'Closed',date:'Mar 20'},
+  ];
+  return `<div style="display:flex;flex-direction:column;height:100%;background:${t.bg};font-family:'Inter',sans-serif;color:${t.text}">
+    ${vTopBar(t,appName,appIcon,pid)}
+    <div style="display:flex;flex:1;overflow:hidden">
+      ${vSidebar(t,sidebarItems,'205px')}
+      <div style="flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:20px">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <div>
+            <h1 style="font-size:20px;font-weight:900;color:${t.text};margin:0 0 4px">${escHtml(appName)}</h1>
+            <p style="font-size:12px;color:${t.sub};margin:0">${escHtml(truncate(problem||`Legal management for ${audience}`,70))}</p>
+          </div>
+          <button style="${s_btn_primary(t)}"><i class="fas fa-folder-plus"></i> New Case</button>
+        </div>
+        <div style="${s_grid(4,'12px')}">
+          ${vKpi(t,'fas fa-folder-open','Open Cases','0','Active',0)}
+          ${vKpi(t,'fas fa-file-contract','Documents','0','Filed',0)}
+          ${vKpi(t,'fas fa-calendar-check','Hearings','0','Scheduled')}
+          ${vKpi(t,'fas fa-clock','Billable Hours','0h','This month')}
+        </div>
+        <!-- Case list -->
+        <div style="${s_card(t,'padding:16px')}">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+            <div style="font-size:13px;font-weight:700;color:${t.text}">Case Management</div>
+            <button style="${s_btn_ghost(t,'font-size:11px;padding:4px 10px')}">View All</button>
+          </div>
+          ${cases.map(c=>`
+          <div style="display:flex;align-items:center;gap:12px;padding:10px;border-radius:12px;margin-bottom:6px;background:${t.card2}">
+            <div style="width:36px;height:36px;border-radius:10px;background:${t.badge};display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:11px;font-weight:800;color:${t.acc}">${c.id}</div>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:12px;font-weight:700;color:${t.text};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(c.name)}</div>
+              <div style="font-size:10px;color:${t.sub}">${c.client} · ${c.date}</div>
+            </div>
+            ${vBadge(t,c.status,c.status==='Active'?t.acc:c.status==='Review'?'#f59e0b':'#64748b')}
+          </div>`).join('')}
+        </div>
+        <!-- Upcoming hearings -->
+        <div style="${s_card(t,'padding:16px')}">
+          <div style="font-size:13px;font-weight:700;color:${t.text};margin-bottom:12px">Upcoming Hearings</div>
+          ${wfItems.slice(0,3).map((w,i)=>`
+          <div style="display:flex;align-items:center;gap:12px;padding:8px;border-radius:10px;margin-bottom:4px;background:${t.card2}">
+            <div style="min-width:48px;text-align:center;background:${t.acc}22;border-radius:8px;padding:6px">
+              <div style="font-size:14px;font-weight:900;color:${t.acc}">${28+i}</div>
+              <div style="font-size:9px;color:${t.sub}">MAR</div>
+            </div>
+            <div>
+              <div style="font-size:12px;font-weight:600;color:${t.text}">${escHtml(truncate(w,35))}</div>
+              <div style="font-size:10px;color:${t.sub}">${['9:00 AM','2:00 PM','10:30 AM'][i]} · ${['Room 201','Room 105','Zoom'][i]}</div>
+            </div>
+          </div>`).join('')}
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  LAYOUT 8 — AI TOOL / AI CONSOLE
+// ══════════════════════════════════════════════════════════════════════════
+function renderAI(t, appName, appIcon, features, wfItems, audience, problem, apis, feat0, feat1, feat2, pid) {
+  const sidebarItems = [
+    { icon:'fas fa-gauge-high',  label:'Dashboard', badge:null },
+    { icon:'fas fa-terminal',    label:'Console', badge:null },
+    { icon:'fas fa-brain',       label:'Models', badge:'New' },
+    { icon:'fas fa-chart-bar',   label:'Analytics', badge:null },
+    { icon:'fas fa-key',         label:'API Keys', badge:null },
+    { icon:'fas fa-gear',        label:'Settings', badge:null },
+  ];
+  const modelItems = apis.length ? apis.slice(0,4) : [feat0||'GPT-4',feat1||'Claude','Gemini','Custom Model'];
+  return `<div style="display:flex;flex-direction:column;height:100%;background:${t.bg};font-family:'Inter',sans-serif;color:${t.text}">
+    ${vTopBar(t,appName,appIcon,pid)}
+    <div style="display:flex;flex:1;overflow:hidden">
+      ${vSidebar(t,sidebarItems,'195px')}
+      <div style="flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:20px">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <div>
+            <h1 style="font-size:20px;font-weight:900;color:${t.text};margin:0 0 4px">${escHtml(appName)}</h1>
+            <p style="font-size:12px;color:${t.sub};margin:0">${escHtml(truncate(problem||`AI automation platform for ${audience}`,70))}</p>
+          </div>
+          <button style="${s_btn_primary(t)}"><i class="fas fa-play"></i> Run Pipeline</button>
+        </div>
+        <div style="${s_grid(4,'12px')}">
+          ${vKpi(t,'fas fa-bolt','API Calls','0','Today',0)}
+          ${vKpi(t,'fas fa-brain','Models',''+modelItems.length,'Connected',0)}
+          ${vKpi(t,'fas fa-chart-line','Accuracy','—%','Avg')}
+          ${vKpi(t,'fas fa-clock','Avg Latency','—ms','Response')}
+        </div>
+        <!-- Terminal-style console -->
+        <div style="${s_card(t,'padding:0;overflow:hidden')}">
+          <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:${t.card2};border-bottom:1px solid ${t.brd}">
+            <div style="width:10px;height:10px;border-radius:50%;background:#ef4444"></div>
+            <div style="width:10px;height:10px;border-radius:50%;background:#f59e0b"></div>
+            <div style="width:10px;height:10px;border-radius:50%;background:#22c55e"></div>
+            <span style="font-size:11px;color:${t.muted};margin-left:8px">AI Console — ${escHtml(truncate(appName,20))}</span>
+          </div>
+          <div style="padding:16px;font-family:'JetBrains Mono','Fira Code',monospace;font-size:12px;min-height:120px;background:${t.bg}">
+            <div style="color:${t.acc};margin-bottom:4px">$ initializing ${escHtml(truncate(appName.toLowerCase().replace(/\s+/g,'-'),20))}...</div>
+            <div style="color:${t.muted};margin-bottom:4px">✓ Connected to ${modelItems[0]||'AI Model'}</div>
+            <div style="color:${t.muted};margin-bottom:4px">✓ Pipeline ready — ${wfItems.length||0} workflows loaded</div>
+            <div style="color:${t.sub};margin-bottom:8px">✓ System initialized</div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="color:${t.acc}">&gt;</span>
+              <span style="color:${t.text}">Ready to process prompts</span>
+              <span style="width:8px;height:14px;background:${t.acc};display:inline-block;animation:blink 1s infinite"></span>
+            </div>
+          </div>
+          <div style="padding:10px 14px;border-top:1px solid ${t.brd};display:flex;gap:8px">
+            <input placeholder="Enter prompt or command..." style="flex:1;background:transparent;border:none;color:${t.text};font-size:12px;font-family:monospace;outline:none" />
+            <button style="${s_btn_primary(t,'padding:6px 12px')}">&gt; Run</button>
+          </div>
+        </div>
+        <!-- Models + workflows -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+          <div style="${s_card(t,'padding:16px')}">
+            <div style="font-size:13px;font-weight:700;color:${t.text};margin-bottom:12px">Connected Models</div>
+            ${modelItems.map((m,i)=>`
+            <div style="display:flex;align-items:center;gap:10px;padding:8px;border-radius:10px;margin-bottom:4px;background:${t.card2}">
+              <div style="width:8px;height:8px;border-radius:50%;background:${i===0?'#22c55e':'#64748b'}"></div>
+              <span style="font-size:12px;font-weight:600;color:${t.text};flex:1">${escHtml(truncate(m,22))}</span>
+              ${vBadge(t,i===0?'Active':'Standby',i===0?'#22c55e':'#64748b')}
+            </div>`).join('')}
+          </div>
+          <div style="${s_card(t,'padding:16px')}">
+            <div style="font-size:13px;font-weight:700;color:${t.text};margin-bottom:12px">Workflows</div>
+            ${(wfItems.length ? wfItems : [feat0||'Process Input',feat1||'Analyze','Generate Output']).slice(0,4).map((w,i)=>vActivity(t,resolveIcon(w),truncate(w,40),['Active','Idle','Running','Queued'][i]||'Idle',[t.acc,'#64748b',t.acc2,'#f59e0b'][i]||t.acc)).join('')}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  LAYOUT 9 — SAAS / COMMAND CENTER (CRM / ERP)
+// ══════════════════════════════════════════════════════════════════════════
+function renderSaaS(t, appName, appIcon, features, wfItems, audience, problem, feat0, feat1, feat2, pid) {
+  const sidebarItems = [
+    { icon:'fas fa-gauge-high',  label:'Overview', badge:null },
+    { icon:'fas fa-users',       label:'Customers', badge:null },
+    { icon:'fas fa-handshake',   label:'Deals', badge:'5 Open' },
+    { icon:'fas fa-chart-bar',   label:'Reports', badge:null },
+    { icon:'fas fa-bell',        label:'Notifications', badge:'3' },
+    { icon:'fas fa-gear',        label:'Settings', badge:null },
+  ];
+  const bars2 = [40,60,45,75,55,80,65,90,70,85,60,95];
+  const chartSVG2 = `<svg viewBox="0 0 280 60" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:60px">
+    ${bars2.map((h,i)=>`<rect x="${i*23+1}" y="${60-h*0.6}" width="20" height="${h*0.6}" rx="4" fill="${t.acc}" opacity="${0.2+i*0.06}"/>`).join('')}
+  </svg>`;
+  return `<div style="display:flex;flex-direction:column;height:100%;background:${t.bg};font-family:'Inter',sans-serif;color:${t.text}">
+    ${vTopBar(t,appName,appIcon,pid)}
+    <div style="display:flex;flex:1;overflow:hidden">
+      ${vSidebar(t,sidebarItems,'195px')}
+      <div style="flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:20px">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <div>
+            <h1 style="font-size:20px;font-weight:900;color:${t.text};margin:0 0 4px">${escHtml(appName)}</h1>
+            <p style="font-size:12px;color:${t.sub};margin:0">${escHtml(truncate(problem||`SaaS platform for ${audience}`,70))}</p>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button style="${s_btn_ghost(t,'display:flex;align-items:center;gap:6px')}"><i class="fas fa-download"></i> Report</button>
+            <button style="${s_btn_primary(t)}"><i class="fas fa-plus"></i> New ${escHtml(truncate(feat0,12))}</button>
+          </div>
+        </div>
+        <!-- Metric strip -->
+        <div style="${s_grid(4,'12px')}">
+          ${vKpi(t,'fas fa-dollar-sign','MRR','$0.00','Monthly',12)}
+          ${vKpi(t,'fas fa-users','Active Users','0','This month',5)}
+          ${vKpi(t,'fas fa-handshake','Deals','0','Open',0)}
+          ${vKpi(t,'fas fa-chart-line','Churn','0%','Monthly',-2)}
+        </div>
+        <!-- Chart + quick actions -->
+        <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px">
+          <div style="${s_card(t,'padding:16px')}">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+              <div style="font-size:13px;font-weight:700;color:${t.text}">Revenue Overview</div>
+              ${vBadge(t,'Last 12 months',t.acc)}
+            </div>
+            ${chartSVG2}
+          </div>
+          <div style="${s_card(t,'padding:16px')}">
+            <div style="font-size:13px;font-weight:700;color:${t.text};margin-bottom:12px">Quick Actions</div>
+            <div style="display:flex;flex-direction:column;gap:8px">
+              ${[['fas fa-user-plus','Add Customer'],['fas fa-file-invoice','New Invoice'],['fas fa-envelope','Send Email'],['fas fa-chart-pie','View Report']].map(([ic,l])=>`
+              <button style="${s_btn_ghost(t,'width:100%;display:flex;align-items:center;gap:8px;justify-content:flex-start')}">${'<i class="'+ic+'" style="color:'+t.acc+'"></i>'} <span style="font-size:12px">${l}</span></button>`).join('')}
+            </div>
+          </div>
+        </div>
+        <!-- Customer table -->
+        <div style="${s_card(t,'padding:16px')}">
+          <div style="font-size:13px;font-weight:700;color:${t.text};margin-bottom:12px">Recent Customers</div>
+          <table style="width:100%;border-collapse:collapse;font-size:12px">
+            <thead><tr style="border-bottom:1px solid ${t.brd}">
+              <th style="text-align:left;padding:6px 8px;color:${t.muted};font-weight:600">Name</th>
+              <th style="text-align:left;padding:6px 8px;color:${t.muted};font-weight:600">Plan</th>
+              <th style="text-align:right;padding:6px 8px;color:${t.muted};font-weight:600">MRR</th>
+              <th style="text-align:right;padding:6px 8px;color:${t.muted};font-weight:600">Status</th>
+            </tr></thead>
+            <tbody>
+              ${['Acme Corp','Beta Inc','Gamma LLC','Delta Ltd'].map((n,i)=>`
+              <tr style="border-bottom:1px solid ${t.brd}">
+                <td style="padding:8px;color:${t.text};font-weight:600">${n}</td>
+                <td style="padding:8px;color:${t.sub}">${['Pro','Starter','Enterprise','Pro'][i]}</td>
+                <td style="padding:8px;text-align:right;color:${t.text};font-weight:700">$0</td>
+                <td style="padding:8px;text-align:right">${vBadge(t,['Active','Trial','Active','Churned'][i],['#22c55e','#f59e0b','#22c55e','#ef4444'][i])}</td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  LAYOUT 10 — LOGISTICS / DISPATCH
+// ══════════════════════════════════════════════════════════════════════════
+function renderDispatch(t, appName, appIcon, features, wfItems, audience, problem, feat0, feat1, feat2, pid) {
+  const sidebarItems = [
+    { icon:'fas fa-gauge-high',       label:'Dashboard', badge:null },
+    { icon:'fas fa-truck',            label:'Active Routes', badge:'0' },
+    { icon:'fas fa-map-location-dot', label:'Live Map', badge:null },
+    { icon:'fas fa-users',            label:'Drivers', badge:null },
+    { icon:'fas fa-list-check',       label:'Deliveries', badge:null },
+    { icon:'fas fa-gear',             label:'Settings', badge:null },
+  ];
+  return `<div style="display:flex;flex-direction:column;height:100%;background:${t.bg};font-family:'Inter',sans-serif;color:${t.text}">
+    ${vTopBar(t,appName,appIcon,pid)}
+    <div style="display:flex;flex:1;overflow:hidden">
+      ${vSidebar(t,sidebarItems,'200px')}
+      <div style="flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:20px">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <div>
+            <h1 style="font-size:20px;font-weight:900;color:${t.text};margin:0 0 4px">${escHtml(appName)}</h1>
+            <p style="font-size:12px;color:${t.sub};margin:0">${escHtml(truncate(problem||`Dispatch management for ${audience}`,70))}</p>
+          </div>
+          <button style="${s_btn_primary(t)}"><i class="fas fa-plus"></i> New Route</button>
+        </div>
+        <div style="${s_grid(4,'12px')}">
+          ${vKpi(t,'fas fa-truck','Active Routes','0','Now',0)}
+          ${vKpi(t,'fas fa-map-location-dot','Deliveries','0','Today',0)}
+          ${vKpi(t,'fas fa-users','Drivers','0','Online')}
+          ${vKpi(t,'fas fa-check-circle','Completed','0','Today',0)}
+        </div>
+        <!-- Map placeholder + routes -->
+        <div style="display:grid;grid-template-columns:3fr 2fr;gap:16px">
+          <div style="${s_card(t,'padding:0;overflow:hidden')}">
+            <div style="height:200px;background:linear-gradient(135deg,${t.card2},${t.bg});display:flex;align-items:center;justify-content:center;position:relative">
+              <i class="fas fa-map" style="font-size:48px;color:${t.acc};opacity:0.15"></i>
+              <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center">
+                <div style="text-align:center">
+                  <i class="fas fa-location-dot" style="font-size:24px;color:${t.acc};margin-bottom:8px;display:block"></i>
+                  <div style="font-size:12px;color:${t.sub}">Live Map View</div>
+                  <div style="font-size:10px;color:${t.muted}">Routes appear here in production</div>
+                </div>
               </div>
             </div>
-            <!-- SVG Chart -->
-            <svg width="100%" height="120" viewBox="0 0 400 120" preserveAspectRatio="none">
-              <defs>
-                <linearGradient id="chartGrad_${appName.length}" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stop-color="${t.accent}" stop-opacity="0.3"/>
-                  <stop offset="100%" stop-color="${t.accent}" stop-opacity="0"/>
-                </linearGradient>
-              </defs>
-              <polygon points="0,100 40,85 80,90 120,70 160,75 200,55 240,60 280,40 320,45 360,25 400,20 400,120 0,120" fill="url(#chartGrad_${appName.length})"/>
-              <polyline points="0,100 40,85 80,90 120,70 160,75 200,55 240,60 280,40 320,45 360,25 400,20" stroke="${t.accent}" stroke-width="2" fill="none"/>
-            </svg>
-          </div>
-
-          <!-- Positions -->
-          <div class="rounded-2xl p-4" style="background:${t.card};border:1px solid ${t.border}">
-            <h3 class="text-sm font-bold mb-3" style="color:${t.text}">Positions</h3>
-            <div class="space-y-3">
-              ${assets.map(a => `
-              <div class="flex items-center justify-between">
-                <div>
-                  <p class="text-xs font-bold" style="color:${t.text}">${a.symbol}</p>
-                  <p class="text-xs" style="color:${t.sub}">${a.name}</p>
-                </div>
-                <div class="text-right">
-                  <p class="text-xs font-bold" style="color:${t.text}">${a.val}</p>
-                  <p class="text-xs font-semibold" style="color:${a.up?'#22c55e':'#ef4444'}">${a.chg}</p>
-                </div>
-              </div>`).join('')}
+            <div style="padding:12px">
+              <div style="font-size:12px;font-weight:600;color:${t.text}">Route Overview</div>
             </div>
-            ${wfItems.length ? `<div class="mt-4 pt-3 space-y-1.5 border-t" style="border-color:${t.border}">
-              ${wfItems.slice(0,2).map(w => `<p class="text-xs" style="color:${t.muted}"><i class="fas fa-check mr-1" style="color:${t.accent}"></i>${escHtml(truncate(w,30))}</p>`).join('')}
+          </div>
+          <div style="${s_card(t,'padding:16px;display:flex;flex-direction:column;gap:10px')}">
+            <div style="font-size:13px;font-weight:700;color:${t.text}">Active Drivers</div>
+            ${['Driver A','Driver B','Driver C'].map((d,i)=>`
+            <div style="display:flex;align-items:center;gap:10px;padding:8px;border-radius:10px;background:${t.card2}">
+              <div style="width:32px;height:32px;border-radius:50%;background:${t.badge};display:flex;align-items:center;justify-content:center;flex-shrink:0">
+                <i class="fas fa-user" style="font-size:12px;color:${t.acc}"></i>
+              </div>
+              <div style="flex:1">
+                <div style="font-size:11px;font-weight:600;color:${t.text}">${d}</div>
+                <div style="font-size:10px;color:${t.sub}">Route ${i+1}</div>
+              </div>
+              ${vBadge(t,['En Route','Loading','Delivered'][i],['#22c55e','#f59e0b',t.acc][i])}
+            </div>`).join('')}
+          </div>
+        </div>
+        <!-- Recent deliveries -->
+        <div style="${s_card(t,'padding:16px')}">
+          <div style="font-size:13px;font-weight:700;color:${t.text};margin-bottom:12px">Recent Deliveries</div>
+          ${wfItems.slice(0,4).map((w,i)=>vActivity(t,'fas fa-truck',truncate(w,45),['Just now','8m ago','1h ago','3h ago'][i]||'Today',[t.acc,'#22c55e','#f59e0b',t.acc2][i]||t.acc)).join('')}
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  LAYOUT 11 — SOCIAL FEED
+// ══════════════════════════════════════════════════════════════════════════
+function renderSocial(t, appName, appIcon, features, wfItems, audience, problem, feat0, feat1, feat2, pid) {
+  const sidebarItems = [
+    { icon:'fas fa-house',       label:'Home', badge:null },
+    { icon:'fas fa-magnifying-glass',label:'Explore', badge:null },
+    { icon:'fas fa-bell',        label:'Notifications', badge:'5' },
+    { icon:'fas fa-comment',     label:'Messages', badge:null },
+    { icon:'fas fa-heart',       label:truncate(feat0,14), badge:'New' },
+    { icon:'fas fa-user',        label:'Profile', badge:null },
+  ];
+  const posts = [
+    {author:'User A',time:'2m ago',content:truncate(wfItems[0]||'Posted an update about '+feat0,90),likes:'0',comments:'0'},
+    {author:'User B',time:'15m ago',content:truncate(wfItems[1]||'Shared a new '+feat1,90),likes:'0',comments:'0'},
+    {author:'User C',time:'1h ago',content:truncate(features[0]||'Exploring the platform features',90),likes:'0',comments:'0'},
+  ];
+  return `<div style="display:flex;flex-direction:column;height:100%;background:${t.bg};font-family:'Inter',sans-serif;color:${t.text}">
+    ${vTopBar(t,appName,appIcon,pid)}
+    <div style="display:flex;flex:1;overflow:hidden">
+      ${vSidebar(t,sidebarItems,'190px')}
+      <div style="flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:16px">
+        <!-- Search bar -->
+        <div style="position:relative">
+          <i class="fas fa-magnifying-glass" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:${t.muted};font-size:13px"></i>
+          <input placeholder="Search ${escHtml(truncate(appName,20))}..." style="width:100%;background:${t.card};border:1px solid ${t.brd};border-radius:12px;padding:10px 12px 10px 36px;font-size:13px;color:${t.text};outline:none;box-sizing:border-box">
+        </div>
+        <!-- KPIs -->
+        <div style="${s_grid(3,'12px')}">
+          ${vKpi(t,'fas fa-users','Followers','0','Total',0)}
+          ${vKpi(t,'fas fa-heart','Likes','0','All posts',0)}
+          ${vKpi(t,'fas fa-eye','Views','0','This week',0)}
+        </div>
+        <!-- Feed -->
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <!-- Create post -->
+          <div style="${s_card(t,'padding:14px')}">
+            <div style="display:flex;align-items:center;gap:10px">
+              <div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,${t.acc},${t.acc2});flex-shrink:0"></div>
+              <input placeholder="What's on your mind?" style="flex:1;background:${t.card2};border:1px solid ${t.brd};border-radius:20px;padding:8px 14px;font-size:13px;color:${t.text};outline:none">
+              <button style="${s_btn_primary(t,'padding:8px 14px')}">Post</button>
+            </div>
+          </div>
+          ${posts.map(p=>`
+          <div style="${s_card(t,'padding:16px')}">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+              <div style="width:36px;height:36px;border-radius:50%;background:${t.badge};display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:14px;font-weight:800;color:${t.acc}">${p.author[0]}</div>
+              <div>
+                <div style="font-size:13px;font-weight:700;color:${t.text}">${p.author}</div>
+                <div style="font-size:10px;color:${t.muted}">${p.time}</div>
+              </div>
+            </div>
+            <p style="font-size:13px;color:${t.sub};margin:0 0 12px;line-height:1.5">${escHtml(p.content)}</p>
+            <div style="display:flex;gap:16px;padding-top:10px;border-top:1px solid ${t.brd}">
+              <button style="background:none;border:none;color:${t.muted};cursor:pointer;font-size:12px;display:flex;align-items:center;gap:4px" onmouseover="this.style.color='${t.acc}'" onmouseout="this.style.color='${t.muted}'"><i class="fas fa-heart"></i> ${p.likes}</button>
+              <button style="background:none;border:none;color:${t.muted};cursor:pointer;font-size:12px;display:flex;align-items:center;gap:4px" onmouseover="this.style.color='${t.acc}'" onmouseout="this.style.color='${t.muted}'"><i class="fas fa-comment"></i> ${p.comments}</button>
+              <button style="background:none;border:none;color:${t.muted};cursor:pointer;font-size:12px;display:flex;align-items:center;gap:4px" onmouseover="this.style.color='${t.acc}'" onmouseout="this.style.color='${t.muted}'"><i class="fas fa-share"></i> Share</button>
+            </div>
+          </div>`).join('')}
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  LAYOUT 12 — FOOD / RESTAURANT
+// ══════════════════════════════════════════════════════════════════════════
+function renderFood(t, appName, appIcon, features, wfItems, audience, problem, feat0, feat1, feat2, pid) {
+  const sidebarItems = [
+    { icon:'fas fa-gauge-high',   label:'Dashboard', badge:null },
+    { icon:'fas fa-utensils',     label:'Menu', badge:null },
+    { icon:'fas fa-list-check',   label:'Orders', badge:'3 New' },
+    { icon:'fas fa-star',         label:'Reviews', badge:null },
+    { icon:'fas fa-chart-pie',    label:'Analytics', badge:null },
+    { icon:'fas fa-gear',         label:'Settings', badge:null },
+  ];
+  const menuItems = [
+    {name:truncate(wfItems[0]||feat0||'Signature Dish',22),price:'$0.00',orders:0,rating:'4.8'},
+    {name:truncate(wfItems[1]||feat1||'House Special',22),price:'$0.00',orders:0,rating:'4.6'},
+    {name:truncate(features[0]||'Chef Recommendation',22),price:'$0.00',orders:0,rating:'4.9'},
+    {name:'Daily Special',price:'$0.00',orders:0,rating:'4.7'},
+  ];
+  return `<div style="display:flex;flex-direction:column;height:100%;background:${t.bg};font-family:'Inter',sans-serif;color:${t.text}">
+    ${vTopBar(t,appName,appIcon,pid)}
+    <div style="display:flex;flex:1;overflow:hidden">
+      ${vSidebar(t,sidebarItems,'195px')}
+      <div style="flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:20px">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <div>
+            <h1 style="font-size:20px;font-weight:900;color:${t.text};margin:0 0 4px">${escHtml(appName)}</h1>
+            <p style="font-size:12px;color:${t.sub};margin:0">${escHtml(truncate(problem||`Food platform for ${audience}`,70))}</p>
+          </div>
+          <button style="${s_btn_primary(t)}"><i class="fas fa-plus"></i> Add Item</button>
+        </div>
+        <div style="${s_grid(4,'12px')}">
+          ${vKpi(t,'fas fa-utensils','Menu Items',''+menuItems.length,'Available',0)}
+          ${vKpi(t,'fas fa-list-check','Orders Today','0','New',5)}
+          ${vKpi(t,'fas fa-star','Avg Rating','4.8','Stars')}
+          ${vKpi(t,'fas fa-dollar-sign','Revenue','$0','Today',0)}
+        </div>
+        <!-- Menu grid -->
+        <div style="${s_card(t,'padding:16px')}">
+          <div style="font-size:13px;font-weight:700;color:${t.text};margin-bottom:14px">Menu Items</div>
+          <div style="${s_grid(2,'10px')}">
+            ${menuItems.map(m=>`
+            <div style="${s_card2(t,'padding:14px;cursor:pointer')}" onmouseover="this.style.borderColor='${t.acc}'" onmouseout="this.style.borderColor='${t.brd}'">
+              <div style="width:100%;height:72px;background:linear-gradient(135deg,${t.acc}18,${t.acc2}28);border-radius:10px;display:flex;align-items:center;justify-content:center;margin-bottom:10px">
+                <i class="${appIcon}" style="font-size:24px;color:${t.acc};opacity:0.5"></i>
+              </div>
+              <div style="font-size:12px;font-weight:700;color:${t.text};margin-bottom:6px">${escHtml(m.name)}</div>
+              <div style="display:flex;align-items:center;justify-content:space-between">
+                <span style="font-size:13px;font-weight:800;color:${t.acc}">${m.price}</span>
+                <span style="font-size:11px;color:${t.sub}"><i class="fas fa-star" style="color:#f59e0b"></i> ${m.rating}</span>
+              </div>
+            </div>`).join('')}
+          </div>
+        </div>
+        <!-- Recent orders -->
+        <div style="${s_card(t,'padding:16px')}">
+          <div style="font-size:13px;font-weight:700;color:${t.text};margin-bottom:12px">Recent Orders</div>
+          ${['#T01','#T02','#T03'].map((o,i)=>`
+          <div style="display:flex;align-items:center;gap:12px;padding:8px;border-radius:10px;margin-bottom:4px" onmouseover="this.style.background='${t.card2}'" onmouseout="this.style.background='transparent'">
+            <div style="width:32px;height:32px;border-radius:8px;background:${t.badge};display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:10px;font-weight:800;color:${t.acc}">${o}</div>
+            <div style="flex:1">
+              <div style="font-size:12px;font-weight:600;color:${t.text}">Table ${i+1} Order</div>
+              <div style="font-size:10px;color:${t.sub}">${['Just now','5m ago','12m ago'][i]}</div>
+            </div>
+            ${vBadge(t,['New','Preparing','Ready'][i],['#f59e0b',t.acc,'#22c55e'][i])}
+          </div>`).join('')}
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  LAYOUT GENERIC — Versatile dashboard for any project
+// ══════════════════════════════════════════════════════════════════════════
+function renderGeneric(t, appName, appIcon, features, wfItems, audience, problem, feat0, feat1, feat2, pid) {
+  const sidebarItems = [
+    { icon:'fas fa-gauge-high',     label:'Dashboard', badge:null },
+    { icon:resolveIcon(feat0),      label:truncate(feat0||'Main',14), badge:'New' },
+    { icon:resolveIcon(feat1),      label:truncate(feat1||'Analytics',14), badge:null },
+    { icon:'fas fa-users',          label:truncate(audience.split(/[,/]/)[0]||'Users',14), badge:null },
+    { icon:'fas fa-bell',           label:'Notifications', badge:'3' },
+    { icon:'fas fa-gear',           label:'Settings', badge:null },
+  ];
+  return `<div style="display:flex;flex-direction:column;height:100%;background:${t.bg};font-family:'Inter',sans-serif;color:${t.text}">
+    ${vTopBar(t,appName,appIcon,pid)}
+    <div style="display:flex;flex:1;overflow:hidden">
+      ${vSidebar(t,sidebarItems,'190px')}
+      <div style="flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:20px">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <div>
+            <h1 style="font-size:20px;font-weight:900;color:${t.text};margin:0 0 4px">${escHtml(appName)}</h1>
+            <p style="font-size:12px;color:${t.sub};margin:0">${escHtml(truncate(problem||`Platform for ${audience}`,70))}</p>
+          </div>
+          <div style="display:flex;gap:8px">
+            <input placeholder="Search…" style="background:${t.card};border:1px solid ${t.brd};border-radius:8px;padding:8px 12px;font-size:12px;color:${t.text};outline:none;width:150px">
+            <button style="${s_btn_primary(t)}"><i class="${resolveIcon(feat0)}"></i> New ${escHtml(truncate(feat0,12))}</button>
+          </div>
+        </div>
+        <div style="${s_grid(4,'12px')}">
+          ${vKpi(t,resolveIcon(feat0),truncate(feat0||'Items',16),'0','Total',0)}
+          ${vKpi(t,'fas fa-users',truncate(audience.split(/[,/]/)[0]||'Users',16),'0','Active',0)}
+          ${vKpi(t,'fas fa-bolt','Automations','0','Running')}
+          ${vKpi(t,'fas fa-chart-line','Growth','0%','Monthly')}
+        </div>
+        <!-- Hero feature -->
+        <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px">
+          <div style="${s_card(t,'padding:16px')}">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+              <div style="font-size:13px;font-weight:700;color:${t.text}">${escHtml(truncate(feat0||'Overview',30))}</div>
+              ${vBadge(t,'Live',t.acc)}
+            </div>
+            <!-- Feature card -->
+            <div style="border-radius:16px;padding:16px;margin-bottom:12px;position:relative;overflow:hidden;background:linear-gradient(135deg,${t.acc}18,${t.acc2}22);border:1px solid ${t.brd}">
+              <div style="position:absolute;right:12px;top:12px;opacity:0.1;pointer-events:none">
+                <i class="${appIcon}" style="font-size:48px;color:${t.acc}"></i>
+              </div>
+              <div style="width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,${t.acc},${t.acc2});display:flex;align-items:center;justify-content:center;margin-bottom:12px">
+                <i class="${appIcon}" style="font-size:16px;color:white"></i>
+              </div>
+              <div style="font-size:14px;font-weight:800;color:${t.text};margin-bottom:4px">${escHtml(truncate(feat0||appName,36))}</div>
+              <div style="font-size:12px;color:${t.sub};margin-bottom:12px">${escHtml(truncate(problem||`Core feature for ${audience}`,80))}</div>
+              <div style="display:flex;gap:8px">
+                <button style="${s_btn_primary(t,'padding:6px 14px')}">Get Started</button>
+                <button style="${s_btn_ghost(t,'padding:6px 14px')}">Learn More</button>
+              </div>
+            </div>
+            <!-- Feature items -->
+            ${(features.length > 1 ? features : wfItems).slice(0,3).map((item,i)=>`
+            <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:10px;background:${t.card2};margin-bottom:6px">
+              <div style="width:28px;height:28px;border-radius:8px;background:${t.badge};display:flex;align-items:center;justify-content:center;flex-shrink:0">
+                <i class="${resolveIcon(item)}" style="font-size:11px;color:${t.acc}"></i>
+              </div>
+              <span style="font-size:12px;font-weight:500;color:${t.sub};flex:1">${escHtml(truncate(item,40))}</span>
+              ${vBadge(t,['Active','Configured','Ready'][i]||'Ready',i===0?t.acc:t.sub)}
+            </div>`).join('')}
+          </div>
+          <!-- Activity panel -->
+          <div style="${s_card(t,'padding:16px')}">
+            <div style="font-size:13px;font-weight:700;color:${t.text};margin-bottom:12px">Recent Activity</div>
+            ${wfItems.slice(0,3).map((w,i)=>vActivity(t,resolveIcon(w),truncate(w,40),['Just now','5m ago','1h ago'][i]||'Today',[t.acc,'#a855f7','#f59e0b'][i]||t.acc)).join('')}
+            ${features.slice(0,2).map((f,i)=>vActivity(t,resolveIcon(f),truncate(f+' updated',38),['2h ago','Yesterday'][i]||'',[t.acc2,'#22c55e'][i]||t.acc2)).join('')}
+            <!-- Workflow steps -->
+            ${wfItems.length > 1 ? `
+            <div style="margin-top:12px;padding-top:12px;border-top:1px solid ${t.brd}">
+              <div style="font-size:11px;font-weight:700;color:${t.sub};margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px">Workflow</div>
+              ${wfItems.slice(0,3).map((w,i)=>`
+              <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+                <div style="width:16px;height:16px;border-radius:50%;background:${t.badge};color:${t.acc};display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:900;flex-shrink:0">${i+1}</div>
+                <span style="font-size:10px;color:${t.muted}">${escHtml(truncate(w,30))}</span>
+              </div>`).join('')}
             </div>` : ''}
           </div>
         </div>
@@ -4382,656 +4971,7 @@ function renderTradingDashboard(t, appName, appIcon, fields, features, workflows
   </div>`;
 }
 
-// ══════════════════════════════════════════════════════════════════════════
-//  LAYOUT 5: STOREFRONT / E-COMMERCE DASHBOARD
-// ══════════════════════════════════════════════════════════════════════════
-function renderStorefrontDashboard(t, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId) {
-  const wfItems = workflows.split(/[,.;]/).map(s=>s.trim()).filter(s=>s.length>3).slice(0,4);
-  const cats = ['All', ...(features.slice(0,4).length ? features.slice(0,4) : ['Electronics', 'Clothing', 'Home', 'Sports'])];
-
-  const sidebarItems = [
-    { icon:'fas fa-gauge-high',    label:'Dashboard',  badge: null },
-    { icon:'fas fa-bag-shopping',  label:'Products',   badge: '12' },
-    { icon:'fas fa-list-check',    label:'Orders',     badge: '3 New' },
-    { icon:'fas fa-users',         label:'Customers',  badge: null },
-    { icon:'fas fa-chart-bar',     label:'Analytics',  badge: null },
-    { icon:'fas fa-gear',          label:'Settings',   badge: null },
-  ];
-
-  const products = [
-    { name: truncate(wfItems[0]||feat0||'Featured Product', 22), price: '$0', badge: 'New', color: t.accent },
-    { name: truncate(wfItems[1]||features[1]||'Best Seller', 22), price: '$0', badge: 'Hot', color: '#f97316' },
-    { name: truncate(features[0]||'Premium Item', 22), price: '$0', badge: 'Sale', color: '#22c55e' },
-    { name: 'Staff Pick', price: '$0', badge: null, color: t.accent2 },
-  ];
-
-  return `<div class="flex flex-col h-full" style="background:${t.bg};font-family:'Inter',sans-serif">
-    ${viewTopBar(t, appName, appIcon, projectId)}
-    <div class="flex flex-1 overflow-hidden">
-      ${viewSidebar(t, sidebarItems, 0, '185px')}
-      <div class="flex-1 overflow-y-auto p-5 space-y-5">
-        <div class="flex items-center justify-between">
-          <div>
-            <h1 class="text-xl font-black" style="color:${t.text}">${escHtml(appName)}</h1>
-            <p class="text-xs" style="color:${t.sub}">${escHtml(truncate(problem || `Shop for ${audience}`, 60))}</p>
-          </div>
-          <div class="flex gap-2">
-            <div class="relative">
-              <input class="text-xs pl-8 pr-4 py-2 rounded-xl outline-none" style="background:${t.card};border:1px solid ${t.border};color:${t.text};width:180px" placeholder="Search products…">
-              <i class="fas fa-magnifying-glass absolute left-2.5 top-2.5 text-xs" style="color:${t.muted}"></i>
-            </div>
-            <button class="text-xs px-4 py-2 rounded-xl font-bold flex items-center gap-2" style="background:linear-gradient(135deg,${t.accent},${t.accent2});color:white">
-              <i class="fas fa-plus"></i> Add Product
-            </button>
-          </div>
-        </div>
-
-        <div class="grid grid-cols-4 gap-3">
-          ${kpiCard(t, 'fas fa-bag-shopping', 'Orders Today', '0', 'New', 0)}
-          ${kpiCard(t, 'fas fa-dollar-sign', 'Revenue', '$0', 'This month', 0)}
-          ${kpiCard(t, 'fas fa-star', 'Avg Rating', '–', 'Out of 5')}
-          ${kpiCard(t, 'fas fa-users', 'Customers', '0', 'Active')}
-        </div>
-
-        <!-- Category filter + product grid -->
-        <div>
-          <div class="flex gap-2 mb-3 overflow-x-auto pb-1">
-            ${cats.slice(0,5).map((c,i) => `<button class="flex-shrink-0 text-xs px-3 py-1.5 rounded-full font-semibold" style="${i===0?`background:linear-gradient(135deg,${t.accent},${t.accent2});color:white`:`background:${t.card2};color:${t.sub}`}">${escHtml(truncate(c,14))}</button>`).join('')}
-          </div>
-          <div class="grid grid-cols-4 gap-3">
-            ${products.map(p => `
-            <div class="rounded-2xl overflow-hidden" style="background:${t.card};border:1px solid ${t.border}">
-              <div class="h-32 flex items-center justify-center relative" style="background:linear-gradient(135deg,${p.color}22,${t.card2})">
-                <i class="fas fa-bag-shopping" style="font-size:32px;color:${p.color};opacity:0.4"></i>
-                ${p.badge ? `<span class="absolute top-2 left-2 text-xs px-2 py-0.5 rounded-full font-bold" style="background:${p.color};color:white">${p.badge}</span>` : ''}
-              </div>
-              <div class="p-3">
-                <p class="text-xs font-bold" style="color:${t.text}">${escHtml(p.name)}</p>
-                <div class="flex items-center justify-between mt-1">
-                  <span class="text-sm font-black" style="color:${t.accent}">${p.price}</span>
-                  <button class="w-6 h-6 rounded-full flex items-center justify-center" style="background:${t.badge}">
-                    <i class="fas fa-cart-plus" style="font-size:9px;color:${t.accent}"></i>
-                  </button>
-                </div>
-              </div>
-            </div>`).join('')}
-          </div>
-        </div>
-
-        <!-- Recent orders table -->
-        <div class="rounded-2xl p-4" style="background:${t.card};border:1px solid ${t.border}">
-          <h3 class="text-sm font-bold mb-3" style="color:${t.text}">Recent Orders</h3>
-          <table class="w-full text-xs">
-            <thead>
-              <tr style="color:${t.muted}">
-                <th class="text-left py-1.5 font-semibold">Order ID</th>
-                <th class="text-left py-1.5 font-semibold">Customer</th>
-                <th class="text-left py-1.5 font-semibold">Item</th>
-                <th class="text-left py-1.5 font-semibold">Total</th>
-                <th class="text-left py-1.5 font-semibold">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${[
-                { id:'#001', cust: truncate(audience.split(/[,/]/)[0]||'Customer', 14), item: truncate(products[0].name,18), total:'$0', status:'Delivered', color:'#22c55e' },
-                { id:'#002', cust: 'New User', item: truncate(products[1].name,18), total:'$0', status:'Processing', color:t.accent },
-                { id:'#003', cust: 'Returning', item: truncate(products[2].name,18), total:'$0', status:'Pending', color:'#f59e0b' },
-              ].map(o => `<tr style="border-top:1px solid ${t.border}">
-                <td class="py-2 font-mono" style="color:${t.accent}">${o.id}</td>
-                <td class="py-2" style="color:${t.text}">${escHtml(o.cust)}</td>
-                <td class="py-2" style="color:${t.sub}">${escHtml(o.item)}</td>
-                <td class="py-2 font-bold" style="color:${t.text}">${o.total}</td>
-                <td class="py-2"><span class="px-2 py-0.5 rounded-full" style="background:${o.color}22;color:${o.color}">${o.status}</span></td>
-              </tr>`).join('')}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  </div>`;
-}
-
-// ══════════════════════════════════════════════════════════════════════════
-//  LAYOUT 6: LMS (Learning Management System)
-// ══════════════════════════════════════════════════════════════════════════
-function renderLMSDashboard(t, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId) {
-  const wfItems = workflows.split(/[,.;]/).map(s=>s.trim()).filter(s=>s.length>3).slice(0,4);
-
-  const sidebarItems = [
-    { icon:'fas fa-house',          label:'Dashboard', badge: null },
-    { icon:'fas fa-book-open',      label:'Courses',   badge: '3 New' },
-    { icon:'fas fa-graduation-cap', label: truncate(feat0,12), badge: null },
-    { icon:'fas fa-trophy',         label:'Progress',  badge: null },
-    { icon:'fas fa-users',          label:'Community', badge: null },
-    { icon:'fas fa-gear',           label:'Settings',  badge: null },
-  ];
-
-  const courses = features.slice(0,4).length >= 2 ? features.slice(0,4) : ['Intro Module', 'Core Concepts', 'Advanced Topics', 'Final Project'];
-
-  return `<div class="flex flex-col h-full" style="background:${t.bg};font-family:'Inter',sans-serif">
-    ${viewTopBar(t, appName, appIcon, projectId)}
-    <div class="flex flex-1 overflow-hidden">
-      ${viewSidebar(t, sidebarItems, 0, '190px')}
-      <div class="flex-1 overflow-y-auto p-5 space-y-5">
-        <div class="flex items-center justify-between">
-          <div>
-            <h1 class="text-xl font-black" style="color:${t.text}">Learning Hub</h1>
-            <p class="text-xs" style="color:${t.sub}">${escHtml(truncate(problem || `Education platform for ${audience}`, 60))}</p>
-          </div>
-          <button class="text-xs px-4 py-2 rounded-xl font-bold" style="background:linear-gradient(135deg,${t.accent},${t.accent2});color:white">
-            <i class="fas fa-play mr-1"></i> Continue Learning
-          </button>
-        </div>
-
-        <!-- Progress hero -->
-        <div class="rounded-3xl p-5" style="background:linear-gradient(135deg,${t.card},${t.card2});border:1px solid ${t.border}">
-          <div class="flex items-center gap-4">
-            <div class="w-16 h-16 rounded-2xl flex items-center justify-center flex-shrink-0" style="background:linear-gradient(135deg,${t.accent},${t.accent2})">
-              <i class="${appIcon} text-white text-2xl"></i>
-            </div>
-            <div class="flex-1">
-              <p class="text-xs mb-1" style="color:${t.sub}">Overall Progress</p>
-              <div class="h-3 rounded-full mb-1" style="background:${t.border}">
-                <div class="h-3 rounded-full w-0" style="background:linear-gradient(90deg,${t.accent},${t.accent2})"></div>
-              </div>
-              <div class="flex justify-between text-xs" style="color:${t.muted}"><span>0% Complete</span><span>0 / 0 lessons</span></div>
-            </div>
-          </div>
-        </div>
-
-        <div class="grid grid-cols-4 gap-3">
-          ${kpiCard(t, 'fas fa-book-open', 'Courses', '0', 'Enrolled')}
-          ${kpiCard(t, 'fas fa-check-circle', 'Completed', '0', 'Lessons')}
-          ${kpiCard(t, 'fas fa-clock', 'Study Time', '0h', 'This week')}
-          ${kpiCard(t, 'fas fa-trophy', 'Streak', '0 days', 'Current')}
-        </div>
-
-        <!-- Course cards -->
-        <div>
-          <h3 class="text-sm font-bold mb-3" style="color:${t.text}">Your Courses</h3>
-          <div class="grid grid-cols-2 gap-3">
-            ${courses.slice(0,4).map((c, i) => `
-            <div class="rounded-2xl p-4" style="background:${t.card};border:1px solid ${t.border}">
-              <div class="flex items-center gap-3 mb-3">
-                <div class="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style="background:${t.badge}">
-                  <i class="${resolveIcon(c)}" style="font-size:14px;color:${t.accent}"></i>
-                </div>
-                <div>
-                  <p class="text-xs font-bold" style="color:${t.text}">${escHtml(truncate(c, 28))}</p>
-                  <p class="text-xs" style="color:${t.sub}">${i === 0 ? 'In Progress' : i === 1 ? 'Not Started' : 'Locked'}</p>
-                </div>
-              </div>
-              <div class="h-1.5 rounded-full" style="background:${t.border}">
-                <div class="h-1.5 rounded-full" style="width:${i===0?'30%':'0%'};background:linear-gradient(90deg,${t.accent},${t.accent2})"></div>
-              </div>
-              <p class="text-xs mt-1" style="color:${t.muted}">${i===0?'30%':i===1?'0%':'–'} complete</p>
-            </div>`).join('')}
-          </div>
-        </div>
-
-        ${wfItems.length ? `<div class="rounded-2xl p-4" style="background:${t.card};border:1px solid ${t.border}">
-          <h3 class="text-sm font-bold mb-2" style="color:${t.text}">Learning Path</h3>
-          <div class="flex gap-3 overflow-x-auto">
-            ${wfItems.map((w,i) => `<div class="flex-shrink-0 flex items-center gap-2">
-              <div class="w-6 h-6 rounded-full flex items-center justify-center text-xs font-black" style="background:${i===0?`linear-gradient(135deg,${t.accent},${t.accent2})`:t.card2};color:${i===0?'white':t.sub}">${i+1}</div>
-              <span class="text-xs whitespace-nowrap" style="color:${t.sub}">${escHtml(truncate(w,24))}</span>
-              ${i<wfItems.length-1?`<i class="fas fa-arrow-right text-xs" style="color:${t.muted}"></i>`:''}
-            </div>`).join('')}
-          </div>
-        </div>` : ''}
-      </div>
-    </div>
-  </div>`;
-}
-
-// ══════════════════════════════════════════════════════════════════════════
-//  LAYOUT 7: AI CONSOLE DASHBOARD
-//  AI/Automation tool — terminal-inspired, prompt input, output panel
-// ══════════════════════════════════════════════════════════════════════════
-function renderAIConsoleDashboard(t, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId) {
-  const wfItems = workflows.split(/[,.;]/).map(s=>s.trim()).filter(s=>s.length>3).slice(0,4);
-
-  const sidebarItems = [
-    { icon:'fas fa-terminal',       label:'Console',    badge: null },
-    { icon:'fas fa-brain',          label: truncate(feat0,12), badge: 'AI' },
-    { icon:'fas fa-history',        label:'History',    badge: null },
-    { icon:'fas fa-chart-bar',      label:'Analytics',  badge: null },
-    { icon:'fas fa-key',            label:'API Keys',   badge: null },
-    { icon:'fas fa-gear',           label:'Settings',   badge: null },
-  ];
-
-  const prompts = [
-    { input: truncate(wfItems[0]||'Analyze this data and give me insights', 45), time: '2m ago', status: 'Done' },
-    { input: truncate(wfItems[1]||'Generate a summary report', 45), time: '15m ago', status: 'Done' },
-    { input: truncate(features[0]||'Process the latest batch', 45), time: '1h ago', status: 'Done' },
-  ];
-
-  return `<div class="flex flex-col h-full" style="background:${t.bg};font-family:'JetBrains Mono','Courier New',monospace">
-    ${viewTopBar(t, appName, appIcon, projectId)}
-    <div class="flex flex-1 overflow-hidden">
-      ${viewSidebar(t, sidebarItems, 0, '185px')}
-      <div class="flex-1 flex flex-col overflow-hidden p-5 gap-4">
-        <!-- Header -->
-        <div>
-          <h1 class="text-xl font-black" style="color:${t.text};font-family:'Inter',sans-serif">${escHtml(appName)}</h1>
-          <p class="text-xs" style="color:${t.sub};font-family:'Inter',sans-serif">${escHtml(truncate(problem || `AI automation for ${audience}`, 70))}</p>
-        </div>
-
-        <!-- KPIs -->
-        <div class="grid grid-cols-4 gap-3 flex-shrink-0" style="font-family:'Inter',sans-serif">
-          ${kpiCard(t, 'fas fa-bolt', 'Runs Today', '0', 'Executions')}
-          ${kpiCard(t, 'fas fa-check-circle', 'Success Rate', '–%', 'Avg')}
-          ${kpiCard(t, 'fas fa-clock', 'Avg Latency', '–ms', 'Per call')}
-          ${kpiCard(t, 'fas fa-coins', 'Tokens Used', '–', 'Today')}
-        </div>
-
-        <!-- Terminal + history panel -->
-        <div class="flex gap-4 flex-1 overflow-hidden">
-          <!-- Terminal -->
-          <div class="flex-1 rounded-2xl overflow-hidden flex flex-col" style="background:#050810;border:1px solid ${t.border}">
-            <div class="flex items-center gap-2 px-4 py-2 border-b" style="background:${t.card};border-color:${t.border}">
-              <span class="w-3 h-3 rounded-full bg-red-500 opacity-70"></span>
-              <span class="w-3 h-3 rounded-full bg-amber-500 opacity-70"></span>
-              <span class="w-3 h-3 rounded-full bg-green-500 opacity-70"></span>
-              <span class="text-xs ml-2" style="color:${t.muted}">${escHtml(appName)} Console</span>
-            </div>
-            <div class="flex-1 p-4 overflow-y-auto text-xs space-y-2" style="color:${t.sub}">
-              <p style="color:${t.accent}">$ ${escHtml(appName.toLowerCase().replace(/\s+/g,'-'))} init</p>
-              <p style="color:#22c55e">✓ Initialized. Ready for input.</p>
-              <p style="color:${t.muted}"># ${escHtml(truncate(problem||`AI tool for ${audience}`,60))}</p>
-              <p style="color:${t.accent}">$ ${escHtml(truncate(feat0||'run --analyze',30))}</p>
-              <p style="color:${t.sub}">Processing... </p>
-              <p style="color:#22c55e">✓ Complete. Results ready.</p>
-              ${features.slice(0,2).map(f => `<p style="color:${t.muted}">  • ${escHtml(truncate(f,40))}</p>`).join('')}
-              <p style="color:${t.accent}">$ <span class="border-r border-current animate-pulse">&nbsp;</span></p>
-            </div>
-            <!-- Input -->
-            <div class="flex items-center gap-2 px-4 py-3 border-t" style="border-color:${t.border}">
-              <span style="color:${t.accent}">$</span>
-              <input class="flex-1 bg-transparent outline-none text-xs" style="color:${t.text}" placeholder="Enter command…">
-              <button class="text-xs px-3 py-1 rounded-lg" style="background:${t.badge};color:${t.accent}">Run</button>
-            </div>
-          </div>
-
-          <!-- History panel -->
-          <div class="w-56 flex-shrink-0 rounded-2xl overflow-hidden flex flex-col" style="background:${t.card};border:1px solid ${t.border};font-family:'Inter',sans-serif">
-            <div class="px-4 py-3 border-b" style="border-color:${t.border}">
-              <p class="text-xs font-bold" style="color:${t.text}">Run History</p>
-            </div>
-            <div class="flex-1 overflow-y-auto p-3 space-y-2">
-              ${prompts.map(pr => `
-              <div class="p-2 rounded-xl" style="background:${t.card2}">
-                <p class="text-xs" style="color:${t.text}">${escHtml(pr.input)}</p>
-                <div class="flex items-center justify-between mt-1">
-                  <span class="text-xs" style="color:${t.muted}">${pr.time}</span>
-                  <span class="text-xs px-1.5 rounded-full" style="background:#22c55e22;color:#22c55e">${pr.status}</span>
-                </div>
-              </div>`).join('')}
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>`;
-}
-
-// ══════════════════════════════════════════════════════════════════════════
-//  LAYOUT 8: COMMAND CENTER (SaaS / CRM)
-// ══════════════════════════════════════════════════════════════════════════
-function renderCommandCenterDashboard(t, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId) {
-  const wfItems = workflows.split(/[,.;]/).map(s=>s.trim()).filter(s=>s.length>3).slice(0,4);
-  const roles = (fields.roles_permissions || 'Admin/User').split(/[,/]/).map(s=>s.trim());
-
-  const sidebarItems = [
-    { icon:'fas fa-gauge-high',   label:'Dashboard',  badge: null },
-    { icon: resolveIcon(feat0),   label: truncate(feat0,12), badge: 'New' },
-    { icon:'fas fa-users',        label:'Contacts',   badge: null },
-    { icon:'fas fa-chart-bar',    label:'Reports',    badge: null },
-    { icon:'fas fa-bell',         label:'Alerts',     badge: '3' },
-    { icon:'fas fa-gear',         label:'Settings',   badge: null },
-  ];
-
-  const tableRows = [
-    { name: truncate(audience.split(/[,/]/)[0]||'User', 18), action: truncate(wfItems[0]||feat0||'Completed task', 24), status:'Active', date:'Today' },
-    { name: 'New Account', action: truncate(wfItems[1]||'Started workflow', 24), status:'Pending', date:'Yesterday' },
-    { name: truncate(roles[0]||'Admin', 18), action: truncate(features[0]||'Updated record', 24), status:'Done', date:'2 days ago' },
-    { name: 'Integration', action: 'Sync completed', status:'Active', date:'3 days ago' },
-  ];
-
-  return `<div class="flex flex-col h-full" style="background:${t.bg};font-family:'Inter',sans-serif">
-    ${viewTopBar(t, appName, appIcon, projectId)}
-    <div class="flex flex-1 overflow-hidden">
-      ${viewSidebar(t, sidebarItems, 0, '190px')}
-      <div class="flex-1 overflow-y-auto p-5 space-y-5">
-        <div class="flex items-center justify-between">
-          <div>
-            <h1 class="text-xl font-black" style="color:${t.text}">${escHtml(appName)}</h1>
-            <p class="text-xs" style="color:${t.sub}">${escHtml(truncate(problem || `Command center for ${audience}`, 70))}</p>
-          </div>
-          <div class="flex gap-2">
-            <button class="text-xs px-4 py-2 rounded-xl font-bold flex items-center gap-2" style="background:linear-gradient(135deg,${t.accent},${t.accent2});color:white">
-              <i class="fas fa-plus"></i> New ${escHtml(truncate(feat0,10))}
-            </button>
-          </div>
-        </div>
-
-        <div class="grid grid-cols-4 gap-3">
-          ${kpiCard(t, resolveIcon(feat0), truncate(feat0,14), '0', 'Total', 0)}
-          ${kpiCard(t, 'fas fa-users', truncate(audience.split(/[,/]/)[0]||'Users',14), '0', 'Active', 0)}
-          ${kpiCard(t, 'fas fa-bolt', 'Automations', '0', 'Running')}
-          ${kpiCard(t, 'fas fa-chart-line', 'Growth', '0%', 'This month')}
-        </div>
-
-        <!-- Chart + activity -->
-        <div class="grid grid-cols-3 gap-4">
-          <!-- Activity chart -->
-          <div class="col-span-2 rounded-2xl p-4" style="background:${t.card};border:1px solid ${t.border}">
-            <div class="flex items-center justify-between mb-4">
-              <h3 class="text-sm font-bold" style="color:${t.text}">Activity Overview</h3>
-              <span class="text-xs" style="color:${t.muted}">Last 7 days</span>
-            </div>
-            <!-- Bar chart (decorative) -->
-            <div class="flex items-end gap-2 h-20">
-              ${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map((d,i) => {
-                const h = [30,50,40,70,55,20,45][i];
-                return `<div class="flex-1 flex flex-col items-center gap-1">
-                  <div class="w-full rounded-t" style="height:${h}%;background:${i===4?`linear-gradient(180deg,${t.accent},${t.accent2})`:t.card2};min-height:4px"></div>
-                  <span class="text-xs" style="color:${t.muted}">${d}</span>
-                </div>`;
-              }).join('')}
-            </div>
-          </div>
-
-          <!-- Quick actions -->
-          <div class="rounded-2xl p-4" style="background:${t.card};border:1px solid ${t.border}">
-            <h3 class="text-sm font-bold mb-3" style="color:${t.text}">Quick Actions</h3>
-            <div class="space-y-2">
-              ${features.slice(0,4).map((f,i) => `
-              <button class="w-full flex items-center gap-3 p-2.5 rounded-xl text-left transition-opacity hover:opacity-80" style="background:${t.card2}">
-                <div class="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style="background:${t.badge}">
-                  <i class="${resolveIcon(f)}" style="font-size:11px;color:${t.accent}"></i>
-                </div>
-                <span class="text-xs font-medium" style="color:${t.sub}">${escHtml(truncate(f, 22))}</span>
-              </button>`).join('')}
-              ${features.length < 2 ? wfItems.slice(0,2).map(w => `
-              <button class="w-full flex items-center gap-3 p-2.5 rounded-xl text-left" style="background:${t.card2}">
-                <div class="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style="background:${t.badge}">
-                  <i class="${resolveIcon(w)}" style="font-size:11px;color:${t.accent}"></i>
-                </div>
-                <span class="text-xs font-medium" style="color:${t.sub}">${escHtml(truncate(w, 22))}</span>
-              </button>`).join('') : ''}
-            </div>
-          </div>
-        </div>
-
-        <!-- Table -->
-        <div class="rounded-2xl p-4" style="background:${t.card};border:1px solid ${t.border}">
-          <div class="flex items-center justify-between mb-3">
-            <h3 class="text-sm font-bold" style="color:${t.text}">Recent Activity</h3>
-            <button class="text-xs" style="color:${t.accent}">View all</button>
-          </div>
-          <table class="w-full text-xs">
-            <thead>
-              <tr style="color:${t.muted}">
-                <th class="text-left py-2 font-semibold">Name</th>
-                <th class="text-left py-2 font-semibold">Action</th>
-                <th class="text-left py-2 font-semibold">Status</th>
-                <th class="text-left py-2 font-semibold">Date</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${tableRows.map((r,i) => `
-              <tr style="border-top:1px solid ${t.border}">
-                <td class="py-2"><div class="flex items-center gap-2">
-                  <div class="w-6 h-6 rounded-full flex items-center justify-center text-xs font-black" style="background:${t.badge};color:${t.accent}">${r.name[0]}</div>
-                  <span style="color:${t.text}">${escHtml(r.name)}</span>
-                </div></td>
-                <td class="py-2" style="color:${t.sub}">${escHtml(r.action)}</td>
-                <td class="py-2"><span class="px-2 py-0.5 rounded-full" style="background:${r.status==='Active'?t.accent+'22':r.status==='Done'?'#22c55e22':'#f59e0b22'};color:${r.status==='Active'?t.accent:r.status==='Done'?'#22c55e':'#f59e0b'}">${r.status}</span></td>
-                <td class="py-2" style="color:${t.muted}">${r.date}</td>
-              </tr>`).join('')}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  </div>`;
-}
-
-// ══════════════════════════════════════════════════════════════════════════
-//  REMAINING LAYOUTS — DELEGATED TO renderAppDashboard WITH DOMAIN SKIN
-// ══════════════════════════════════════════════════════════════════════════
-function renderDispatchDashboard(t, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId) {
-  return renderAppDashboard(t, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId, 'Dispatch Center', 'fas fa-truck', [
-    { icon:'fas fa-truck', label:'Active Routes', value:'0', note:'Now' },
-    { icon:'fas fa-map-location-dot', label:'Deliveries', value:'0', note:'Today' },
-    { icon:'fas fa-users', label:'Drivers', value:'0', note:'Online' },
-    { icon:'fas fa-check-circle', label:'Completed', value:'0', note:'Today' },
-  ]);
-}
-function renderCaseManagerDashboard(t, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId) {
-  return renderAppDashboard(t, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId, 'Case Manager', 'fas fa-scale-balanced', [
-    { icon:'fas fa-folder-open', label:'Open Cases', value:'0', note:'Active' },
-    { icon:'fas fa-file-contract', label:'Documents', value:'0', note:'Filed' },
-    { icon:'fas fa-calendar-check', label:'Hearings', value:'0', note:'Scheduled' },
-    { icon:'fas fa-clock', label:'Billable Hours', value:'0h', note:'This month' },
-  ]);
-}
-function renderSocialFeedDashboard(t, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId) {
-  return renderAppDashboard(t, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId, 'Social Feed', 'fas fa-heart', [
-    { icon:'fas fa-users', label:'Followers', value:'0', note:'Total' },
-    { icon:'fas fa-heart', label:'Total Likes', value:'0', note:'All posts' },
-    { icon:'fas fa-eye', label:'Views', value:'0', note:'This week' },
-    { icon:'fas fa-chart-line', label:'Engagement', value:'0%', note:'Rate' },
-  ]);
-}
-function renderPropertyPortalDashboard(t, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId) {
-  return renderAppDashboard(t, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId, 'Property Portal', 'fas fa-house', [
-    { icon:'fas fa-house', label:'Listings', value:'0', note:'Active' },
-    { icon:'fas fa-eye', label:'Views', value:'0', note:'This week' },
-    { icon:'fas fa-handshake', label:'Inquiries', value:'0', note:'Pending' },
-    { icon:'fas fa-dollar-sign', label:'Avg Price', value:'$0', note:'Market avg' },
-  ]);
-}
-function renderItineraryDashboard(t, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId) {
-  return renderAppDashboard(t, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId, 'Travel Planner', 'fas fa-plane', [
-    { icon:'fas fa-plane', label:'Trips Planned', value:'0', note:'Total' },
-    { icon:'fas fa-hotel', label:'Hotels', value:'0', note:'Booked' },
-    { icon:'fas fa-map-pin', label:'Destinations', value:'0', note:'Saved' },
-    { icon:'fas fa-star', label:'Avg Rating', value:'–', note:'Trips' },
-  ]);
-}
-function renderKitchenDashboard(t, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId) {
-  return renderAppDashboard(t, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId, 'Kitchen Manager', 'fas fa-utensils', [
-    { icon:'fas fa-utensils', label:'Menu Items', value:'0', note:'Available' },
-    { icon:'fas fa-list-check', label:'Orders Today', value:'0', note:'New' },
-    { icon:'fas fa-star', label:'Avg Rating', value:'–', note:'Customer' },
-    { icon:'fas fa-dollar-sign', label:'Revenue', value:'$0', note:'Today' },
-  ]);
-}
-function renderDesignStudioDashboard(t, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId) {
-  return renderAppDashboard(t, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId, 'Design Studio', 'fas fa-pen-nib', [
-    { icon:'fas fa-pen-nib', label:'Projects', value:'0', note:'Active' },
-    { icon:'fas fa-layer-group', label:'Assets', value:'0', note:'Library' },
-    { icon:'fas fa-users', label:'Collaborators', value:'0', note:'Online' },
-    { icon:'fas fa-share-nodes', label:'Exports', value:'0', note:'This week' },
-  ]);
-}
-function renderArcadeDashboard(t, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId) {
-  return renderAppDashboard(t, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId, 'Game Hub', 'fas fa-gamepad', [
-    { icon:'fas fa-gamepad', label:'Games', value:'0', note:'Available' },
-    { icon:'fas fa-trophy', label:'Achievements', value:'0', note:'Earned' },
-    { icon:'fas fa-users', label:'Players', value:'0', note:'Online' },
-    { icon:'fas fa-fire', label:'High Score', value:'–', note:'Leaderboard' },
-  ]);
-}
-
-// ══════════════════════════════════════════════════════════════════════════
-//  GENERIC APP DASHBOARD — Flexible layout for any project
-// ══════════════════════════════════════════════════════════════════════════
-function renderAppDashboard(t, appName, appIcon, fields, features, workflows, audience, problem, bizModel, feat0, feat1, feat2, projectId,
-    overrideTitle = null, overrideIcon = null, overrideKPIs = null) {
-
-  const wfItems = workflows.split(/[,.;]/).map(s=>s.trim()).filter(s=>s.length>3).slice(0,4);
-  const roles = (fields.roles_permissions || 'Admin/User').split(/[,/]/).map(s=>s.trim());
-  const apis = (fields.apis_tools || '').split(',').map(s=>s.trim()).filter(Boolean);
-
-  const dashTitle  = overrideTitle || appName;
-  const dashIcon   = overrideIcon  || appIcon;
-
-  const sidebarItems = [
-    { icon:'fas fa-gauge-high',  label:'Dashboard',                badge: null },
-    { icon: resolveIcon(feat0),  label: truncate(feat0||'Main',12),badge: 'New' },
-    { icon: resolveIcon(feat1),  label: truncate(feat1||'Analytics',12), badge: null },
-    { icon:'fas fa-users',       label: truncate(roles[0]||'Users',12), badge: null },
-    { icon:'fas fa-bell',        label:'Notifications',            badge: '3' },
-    { icon:'fas fa-gear',        label:'Settings',                 badge: null },
-  ];
-
-  const kpis = overrideKPIs || [
-    { icon: resolveIcon(feat0), label: truncate(feat0||'Items',14), value:'0', note:'Total', change:0 },
-    { icon:'fas fa-users', label: truncate(audience.split(/[,/]/)[0]||'Users',14), value:'0', note:'Active', change:0 },
-    { icon:'fas fa-bolt', label:'Automations', value:'0', note:'Running' },
-    { icon:'fas fa-chart-line', label:'Growth', value:'0%', note:'This month' },
-  ];
-
-  const activityItems = [
-    ...(wfItems.length ? wfItems.slice(0,3).map((w,i) => ({ label: truncate(w,40), time:['Just now','5m ago','1h ago'][i]||'Today', icon: resolveIcon(w), color: [t.accent,'#a855f7','#f59e0b'][i]||t.accent })) : []),
-    ...(features.slice(0,2).map((f,i) => ({ label: truncate(`${f} updated`,40), time:['2h ago','Yesterday'][i]||'', icon: resolveIcon(f), color:[t.accent2,'#22c55e'][i]||t.accent2 }))),
-  ].slice(0,5);
-
-  return `<div class="flex flex-col h-full" style="background:${t.bg};font-family:'Inter',sans-serif">
-    ${viewTopBar(t, appName, appIcon, projectId)}
-    <div class="flex flex-1 overflow-hidden">
-      ${viewSidebar(t, sidebarItems, 0, '190px')}
-      <div class="flex-1 overflow-y-auto p-5 space-y-5">
-        <!-- Header -->
-        <div class="flex items-center justify-between">
-          <div>
-            <h1 class="text-xl font-black" style="color:${t.text}">${escHtml(dashTitle)}</h1>
-            <p class="text-xs" style="color:${t.sub}">${escHtml(truncate(problem || `Platform for ${audience}`, 70))}</p>
-          </div>
-          <div class="flex gap-2">
-            <div class="relative hidden sm:block">
-              <input class="text-xs pl-8 pr-4 py-2 rounded-xl outline-none" style="background:${t.card};border:1px solid ${t.border};color:${t.text};width:160px" placeholder="Search…">
-              <i class="fas fa-magnifying-glass absolute left-2.5 top-2.5 text-xs" style="color:${t.muted}"></i>
-            </div>
-            <button class="text-xs px-4 py-2 rounded-xl font-bold flex items-center gap-2" style="background:linear-gradient(135deg,${t.accent},${t.accent2});color:white">
-              <i class="${dashIcon}"></i> <span class="hidden sm:inline">New ${escHtml(truncate(feat0,12))}</span>
-            </button>
-          </div>
-        </div>
-
-        <!-- KPIs -->
-        <div class="grid grid-cols-4 gap-3">
-          ${kpis.map(k => kpiCard(t, k.icon, k.label, k.value, k.note, k.change !== undefined ? k.change : null)).join('')}
-        </div>
-
-        <!-- Main content grid -->
-        <div class="grid grid-cols-3 gap-4">
-          <!-- Feature list / main panel -->
-          <div class="col-span-2 rounded-2xl p-4" style="background:${t.card};border:1px solid ${t.border}">
-            <div class="flex items-center justify-between mb-3">
-              <h3 class="text-sm font-bold" style="color:${t.text}">${escHtml(truncate(feat0||'Overview',28))}</h3>
-              <span class="text-xs px-2 py-0.5 rounded-full" style="background:${t.badge};color:${t.badgeText}">Live</span>
-            </div>
-
-            <!-- Hero feature card -->
-            <div class="rounded-2xl p-4 mb-3 relative overflow-hidden" style="background:linear-gradient(135deg,${t.accent}18,${t.accent2}22);border:1px solid ${t.border}">
-              <div class="absolute right-4 top-4 opacity-10">
-                <i class="${dashIcon}" style="font-size:48px;color:${t.accent}"></i>
-              </div>
-              <div class="w-10 h-10 rounded-xl flex items-center justify-center mb-3" style="background:linear-gradient(135deg,${t.accent},${t.accent2})">
-                <i class="${dashIcon} text-white text-sm"></i>
-              </div>
-              <p class="text-sm font-black mb-1" style="color:${t.text}">${escHtml(truncate(feat0||appName, 36))}</p>
-              <p class="text-xs" style="color:${t.sub}">${escHtml(truncate(problem || `Core feature for ${audience}`, 80))}</p>
-              <div class="flex gap-2 mt-3">
-                <button class="text-xs px-3 py-1.5 rounded-lg font-bold" style="background:linear-gradient(135deg,${t.accent},${t.accent2});color:white">Get Started</button>
-                <button class="text-xs px-3 py-1.5 rounded-lg font-semibold" style="background:${t.badge};color:${t.sub}">Learn More</button>
-              </div>
-            </div>
-
-            <!-- Feature items -->
-            <div class="space-y-2">
-              ${(features.length > 1 ? features : wfItems).slice(0,4).map((item, i) => `
-              <div class="flex items-center gap-3 p-2.5 rounded-xl" style="background:${t.card2}">
-                <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style="background:${t.badge}">
-                  <i class="${resolveIcon(item)}" style="font-size:11px;color:${t.accent}"></i>
-                </div>
-                <div class="flex-1">
-                  <p class="text-xs font-semibold" style="color:${t.text}">${escHtml(truncate(item,38))}</p>
-                  <p class="text-xs" style="color:${t.muted}">${['Active', 'In Progress', 'Ready', 'Pending'][i % 4]}</p>
-                </div>
-                <div class="flex items-center gap-1">
-                  <div class="w-16 h-1.5 rounded-full" style="background:${t.border}">
-                    <div class="h-1.5 rounded-full" style="width:${[70,45,90,20][i%4]}%;background:${t.accent}"></div>
-                  </div>
-                </div>
-              </div>`).join('')}
-            </div>
-          </div>
-
-          <!-- Right panel: activity + info -->
-          <div class="space-y-4">
-            <!-- Activity feed -->
-            <div class="rounded-2xl p-4" style="background:${t.card};border:1px solid ${t.border}">
-              <h3 class="text-sm font-bold mb-3" style="color:${t.text}">Activity</h3>
-              <div class="space-y-3">
-                ${activityItems.map(a => `
-                <div class="flex items-start gap-3">
-                  <div class="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5" style="background:${a.color}22">
-                    <i class="${a.icon}" style="font-size:10px;color:${a.color}"></i>
-                  </div>
-                  <div>
-                    <p class="text-xs" style="color:${t.sub}">${escHtml(a.label)}</p>
-                    <p class="text-xs" style="color:${t.muted}">${a.time}</p>
-                  </div>
-                </div>`).join('')}
-              </div>
-            </div>
-
-            <!-- Project info -->
-            <div class="rounded-2xl p-4" style="background:${t.card};border:1px solid ${t.border}">
-              <h3 class="text-sm font-bold mb-3" style="color:${t.text}">App Details</h3>
-              <div class="space-y-2 text-xs">
-                ${[
-                  { label: 'Audience', val: truncate(audience, 24) },
-                  { label: 'Business', val: truncate(bizModel||'–', 24) },
-                  ...(apis.length ? [{ label: 'Integrations', val: truncate(apis.slice(0,2).join(', '), 24) }] : []),
-                  { label: 'Features', val: String(features.length || wfItems.length) },
-                ].map(row => `
-                <div class="flex justify-between items-start gap-2">
-                  <span style="color:${t.muted}">${row.label}</span>
-                  <span class="text-right font-medium" style="color:${t.sub}">${escHtml(row.val)}</span>
-                </div>`).join('')}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Workflow steps if available -->
-        ${wfItems.length >= 2 ? `
-        <div class="rounded-2xl p-4" style="background:${t.card};border:1px solid ${t.border}">
-          <h3 class="text-sm font-bold mb-3" style="color:${t.text}">Workflow</h3>
-          <div class="flex items-center gap-3 overflow-x-auto pb-1">
-            ${wfItems.map((w, i) => `
-            <div class="flex items-center gap-2 flex-shrink-0">
-              <div class="flex items-center gap-2 px-3 py-2 rounded-xl" style="background:${t.card2};border:1px solid ${i===0?t.accent:t.border}">
-                <div class="w-5 h-5 rounded-full flex items-center justify-center text-xs font-black" style="background:${i===0?`linear-gradient(135deg,${t.accent},${t.accent2})`:t.badge};color:${i===0?'white':t.muted}">${i+1}</div>
-                <span class="text-xs whitespace-nowrap" style="color:${i===0?t.text:t.sub}">${escHtml(truncate(w,26))}</span>
-              </div>
-              ${i < wfItems.length-1 ? `<i class="fas fa-chevron-right text-xs" style="color:${t.muted}"></i>` : ''}
-            </div>`).join('')}
-          </div>
-        </div>` : ''}
-      </div>
-    </div>
-  </div>`;
-}
-
-// Legacy compat — setViewMode and renderViewSpecPanel no longer needed
-// but keep stubs in case referenced from old HTML
+// Legacy stub functions — keep for compatibility
 function setViewMode() {}
 function renderViewSpecPanel() {}
 function renderViewSpecMode() {}
@@ -5042,3 +4982,10 @@ function viewGoTo() {}
 function viewGoToIdx() {}
 function buildFallbackScreens(name) { return []; }
 function buildAppScreens(d) { return []; }
+
+// Old names mapped to new — for any old onclick references
+function renderFilmAnalysisDashboard(t,a,b,c,d,e,f,g,h,i,j,k,l,pid){return renderFilm(t,a,b,d,e.split(/[,.;]/).map(s=>s.trim()).filter(s=>s.length>2).slice(0,5),f,g,j,k,l,pid);}
+function renderMusicPlayerDashboard(t,a,b,c,d,e,f,g,h,i,j,k,l,pid){return renderMusic(t,a,b,c,d.split(/[,.;]/).map(s=>s.trim()).filter(s=>s.length>2).slice(0,5),e,f,j,k,l,pid);}
+function renderCommandCenterDashboard(t,a,b,c,d,e,f,g,h,i,j,k,l,pid){return renderSaaS(t,a,b,c,d.split(/[,.;]/).map(s=>s.trim()).filter(s=>s.length>2).slice(0,5),e,f,j,k,l,pid);}
+function renderAIConsoleDashboard(t,a,b,c,d,e,f,g,h,i,j,k,l,pid){return renderAI(t,a,b,c,d.split(/[,.;]/).map(s=>s.trim()).filter(s=>s.length>2).slice(0,5),e,f,[],j,k,l,pid);}
+function renderAppDashboard(t,a,b,c,d,e,f,g,h,i,j,k,l,pid){return renderGeneric(t,a,b,c,d.split(/[,.;]/).map(s=>s.trim()).filter(s=>s.length>2).slice(0,5),e,f,j,k,l,pid);}

@@ -1804,26 +1804,26 @@ function getAppHTML(): string {
 
 <!-- ============================================================
      VIEW PROJECT MODAL — Full-screen interactive prototype viewer
+     Pure inline styles — does NOT depend on Tailwind CSS
      ============================================================ -->
-<div id="modal-view" class="hidden fixed inset-0 z-50" style="background:#060912">
-  <!-- The entire view is injected by generateProjectDashboard() in app.js -->
-  <!-- Loading state — shown by JS when modal opens -->
-  <div id="view-loading" style="display:none;position:absolute;inset:0;align-items:center;justify-content:center;background:#060912;z-index:5">
-    <div class="text-center">
-      <div class="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-5 shadow-2xl" id="view-loading-icon" style="background:linear-gradient(135deg,#06b6d4,#0891b2)">
-        <i class="fas fa-cube text-white text-2xl"></i>
+<div id="modal-view" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;z-index:9999;background:#060912">
+  <!-- Loading overlay — shown while generating dashboard -->
+  <div id="view-loading" style="display:none;position:absolute;top:0;left:0;right:0;bottom:0;align-items:center;justify-content:center;background:#060912;z-index:1">
+    <div style="text-align:center">
+      <div style="width:64px;height:64px;border-radius:16px;background:linear-gradient(135deg,#06b6d4,#0891b2);display:flex;align-items:center;justify-content:center;margin:0 auto 20px;box-shadow:0 8px 32px rgba(6,182,212,0.4)">
+        <i class="fas fa-cube" style="color:white;font-size:24px"></i>
       </div>
-      <p class="text-white font-bold text-lg mb-1">Generating Preview…</p>
-      <p class="text-slate-500 text-sm">Building your unique interface</p>
-      <div class="flex justify-center gap-1.5 mt-5">
-        <div class="w-2 h-2 rounded-full bg-cyan-500 animate-bounce" style="animation-delay:0ms"></div>
-        <div class="w-2 h-2 rounded-full bg-cyan-500 animate-bounce" style="animation-delay:150ms"></div>
-        <div class="w-2 h-2 rounded-full bg-cyan-500 animate-bounce" style="animation-delay:300ms"></div>
+      <p style="color:white;font-weight:700;font-size:18px;margin:0 0 6px;font-family:'Inter',sans-serif">Generating Preview…</p>
+      <p style="color:#64748b;font-size:13px;margin:0 0 20px;font-family:'Inter',sans-serif">Building your unique interface</p>
+      <div style="display:flex;justify-content:center;gap:6px">
+        <div style="width:8px;height:8px;border-radius:50%;background:#06b6d4;animation:bounce 1s ease-in-out 0ms infinite"></div>
+        <div style="width:8px;height:8px;border-radius:50%;background:#06b6d4;animation:bounce 1s ease-in-out 150ms infinite"></div>
+        <div style="width:8px;height:8px;border-radius:50%;background:#06b6d4;animation:bounce 1s ease-in-out 300ms infinite"></div>
       </div>
     </div>
   </div>
-  <!-- Dashboard content injected here — display managed entirely by JS -->
-  <div id="view-content" style="display:none;position:absolute;inset:0;flex-direction:column;z-index:10;overflow:hidden"></div>
+  <!-- Dashboard content — injected by generateProjectDashboard() in app.js -->
+  <div id="view-content" style="display:none;position:absolute;top:0;left:0;right:0;bottom:0;overflow:hidden;z-index:2"></div>
 </div>
 
 <!-- Scripts -->
