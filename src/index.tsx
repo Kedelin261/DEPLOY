@@ -132,6 +132,10 @@ app.get('/api/plans', async (c) => {
 app.get('/admin', (c) => c.html(getAdminHTML()));
 app.get('/admin/*', (c) => c.html(getAdminHTML()));
 
+// Audit report — served as dedicated page
+app.get('/audit-report.html', (c) => c.html(getAuditReportHTML()));
+app.get('/audit', (c) => c.html(getAuditReportHTML()));
+
 // 404 for unknown API routes
 app.notFound((c) => {
   if (c.req.path.startsWith('/api/')) {
@@ -2253,6 +2257,19 @@ function getAdminHTML(): string {
 <script src="/static/admin.js"></script>
 </body>
 </html>`;
+}
+
+function getAuditReportHTML(): string {
+  // Redirect to the static audit-report.html served by Cloudflare Pages CDN
+  // In local dev (wrangler pages dev), public/ files are served at root automatically
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8">
+<meta http-equiv="refresh" content="0; url=/static/audit-report.html">
+<script>window.location.replace('/static/audit-report.html');</script>
+<title>DEPLOY Platform — Audit Report</title></head>
+<body style="background:#0f172a;color:#e2e8f0;font-family:system-ui;display:flex;align-items:center;justify-content:center;min-height:100vh;">
+<div style="text-align:center"><div style="font-size:2rem;margin-bottom:1rem">📊</div>
+<p style="color:#94a3b8">Loading Audit Report…</p>
+<a href="/static/audit-report.html" style="color:#06b6d4">Click here if not redirected</a></div></body></html>`;
 }
 
 export default app;
