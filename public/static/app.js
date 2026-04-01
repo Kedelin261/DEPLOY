@@ -363,6 +363,10 @@ function renderProjects(projects) {
           class="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold border border-indigo-500/40 text-indigo-400 hover:bg-indigo-500/10 transition-colors">
           <i class="fas fa-rocket"></i> Publish
         </button>
+        <button onclick="event.stopPropagation();openAssetsModal('${p.id}','${escHtml(p.name)}')"
+          class="flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg text-xs font-semibold border border-violet-500/40 text-violet-400 hover:bg-violet-500/10 transition-colors">
+          <i class="fas fa-folder-open"></i>
+        </button>
       </div>` : ''}
     </div>
   `).join('');
@@ -3255,9 +3259,10 @@ function openTestingModal(buildId, projectId, projectName) {
 }
 
 function setTestingTab(tab) {
-  ['summary','chat','revisions'].forEach(t => {
-    document.getElementById(`testing-tab-${t}`).classList.toggle('hidden', t !== tab);
+  ['summary','chat','revisions','versions'].forEach(t => {
+    document.getElementById(`testing-tab-${t}`)?.classList.toggle('hidden', t !== tab);
     const btn = document.getElementById(`ttab-${t}`);
+    if (!btn) return;
     if (t === tab) {
       btn.classList.add('bg-slate-700','text-white');
       btn.classList.remove('text-slate-400');
@@ -3266,6 +3271,243 @@ function setTestingTab(tab) {
       btn.classList.add('text-slate-400');
     }
   });
+  // Lazy-load versions list when tab opened
+  if (tab === 'versions') loadVersionsList();
+}
+
+// ── Version History & Diff ──────────────────────────────────────────────────
+let VERSIONS_DATA = [];
+let DIFF_SELECTION = [];
+
+async function loadVersionsList() {
+  const projectId = STATE.activeProjectId;
+  if (!projectId) return;
+  const container = document.getElementById('versions-list');
+  if (!container) return;
+  container.innerHTML = `<p class="text-xs text-slate-600 italic text-center py-4">Loading…</p>`;
+  try {
+    const res = await API.get(`/projects/${projectId}/versions`);
+    if (!res.data.success) throw new Error(res.data.error || 'Failed');
+    VERSIONS_DATA = res.data.data || [];
+    DIFF_SELECTION = [];
+    renderVersionsList();
+  } catch (e) {
+    container.innerHTML = `<p class="text-xs text-red-400 text-center py-4">Failed to load: ${escHtml(e.message)}</p>`;
+  }
+}
+
+function renderVersionsList() {
+  const container = document.getElementById('versions-list');
+  if (!container) return;
+  if (VERSIONS_DATA.length === 0) {
+    container.innerHTML = `<p class="text-xs text-slate-600 italic text-center py-4">No completed builds yet.</p>`;
+    return;
+  }
+  container.innerHTML = VERSIONS_DATA.map((v, i) => {
+    const sel = DIFF_SELECTION.includes(v.job_id);
+    return `
+    <div class="glass rounded-xl p-3 flex items-center gap-3 cursor-pointer hover:bg-slate-800/30 transition-colors border ${sel ? 'border-cyan-500/50' : 'border-transparent'}"
+         onclick="toggleDiffSelect('${escHtml(v.job_id)}', ${i+1})">
+      <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${sel ? 'bg-cyan-500/20' : 'bg-slate-800'}">
+        <span class="text-xs font-bold ${sel ? 'text-cyan-400' : 'text-slate-400'}">v${i+1}</span>
+      </div>
+      <div class="flex-1 min-w-0">
+        <p class="text-xs font-semibold text-white truncate">${escHtml(v.model_name || 'AI')} — ${v.type || 'build'}</p>
+        <p class="text-xs text-slate-500">${timeAgo(v.created_at)} · ${(v.coins_settled || 0)} coins</p>
+      </div>
+      ${sel ? `<i class="fas fa-check-circle text-cyan-400 text-sm flex-shrink-0"></i>` : `<i class="fas fa-circle text-slate-700 text-sm flex-shrink-0"></i>`}
+    </div>`;
+  }).join('');
+
+  // Show compare button if 2 selected
+  const diffBtn = document.getElementById('diff-compare-btn');
+  if (DIFF_SELECTION.length === 2) {
+    if (!diffBtn) {
+      container.insertAdjacentHTML('afterend', `
+        <button id="diff-compare-btn" onclick="runDiff()"
+          class="btn-primary w-full py-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 mt-2">
+          <i class="fas fa-code-compare"></i> Compare Selected Versions
+        </button>`);
+    }
+  } else if (diffBtn) {
+    diffBtn.remove();
+  }
+}
+
+function toggleDiffSelect(jobId, versionNum) {
+  if (DIFF_SELECTION.includes(jobId)) {
+    DIFF_SELECTION = DIFF_SELECTION.filter(id => id !== jobId);
+  } else if (DIFF_SELECTION.length < 2) {
+    DIFF_SELECTION.push(jobId);
+  } else {
+    // Replace the older one
+    DIFF_SELECTION[0] = DIFF_SELECTION[1];
+    DIFF_SELECTION[1] = jobId;
+  }
+  renderVersionsList();
+}
+
+async function runDiff() {
+  if (DIFF_SELECTION.length !== 2) return;
+  const projectId = STATE.activeProjectId;
+  const [id1, id2] = DIFF_SELECTION;
+  const v1Idx = VERSIONS_DATA.findIndex(v => v.job_id === id1);
+  const v2Idx = VERSIONS_DATA.findIndex(v => v.job_id === id2);
+
+  const diffPanel = document.getElementById('diff-panel');
+  const diffContent = document.getElementById('diff-content');
+  if (!diffPanel || !diffContent) return;
+
+  diffContent.innerHTML = `<p class="text-slate-500 text-center py-4">Loading diff…</p>`;
+  diffPanel.classList.remove('hidden');
+  document.getElementById('diff-v1-label').textContent = v1Idx + 1;
+  document.getElementById('diff-v2-label').textContent = v2Idx + 1;
+
+  try {
+    const res = await API.get(`/projects/${projectId}/versions/${id1}/diff/${id2}`);
+    if (!res.data.success) throw new Error(res.data.error || 'Diff failed');
+    const diff = res.data.data?.diff || {};
+    renderDiffContent(diff);
+  } catch (e) {
+    diffContent.innerHTML = `<p class="text-red-400 text-center py-4">Error: ${escHtml(e.message)}</p>`;
+  }
+}
+
+function renderDiffContent(diff) {
+  const container = document.getElementById('diff-content');
+  if (!container) return;
+  const keys = Object.keys(diff);
+  if (keys.length === 0) {
+    container.innerHTML = `<p class="text-slate-500 text-center py-4">No differences found.</p>`;
+    return;
+  }
+  const changed = keys.filter(k => diff[k].changed);
+  const unchanged = keys.filter(k => !diff[k].changed);
+  const html = [
+    changed.length ? `<p class="text-amber-400 font-semibold mb-2">${changed.length} field${changed.length !== 1 ? 's' : ''} changed</p>` : '',
+    ...changed.map(key => `
+      <div class="border border-amber-500/30 rounded-lg p-2 mb-2">
+        <p class="text-amber-400 font-bold mb-1">${escHtml(key)}</p>
+        <div class="grid grid-cols-2 gap-2">
+          <div class="bg-red-900/20 rounded p-1.5 overflow-x-auto">
+            <p class="text-slate-500 text-xs mb-0.5">Before</p>
+            <pre class="text-red-300 text-xs whitespace-pre-wrap break-all">${escHtml((diff[key].before || 'null').substring(0,300))}</pre>
+          </div>
+          <div class="bg-emerald-900/20 rounded p-1.5 overflow-x-auto">
+            <p class="text-slate-500 text-xs mb-0.5">After</p>
+            <pre class="text-emerald-300 text-xs whitespace-pre-wrap break-all">${escHtml((diff[key].after || 'null').substring(0,300))}</pre>
+          </div>
+        </div>
+      </div>`),
+    unchanged.length ? `<p class="text-slate-600 text-xs mt-2">${unchanged.length} field${unchanged.length !== 1 ? 's' : ''} unchanged: ${unchanged.map(escHtml).join(', ')}</p>` : '',
+  ].join('');
+  container.innerHTML = html;
+}
+
+// ── Project Assets / File Uploads ──────────────────────────────────────────
+let ASSETS_PROJECT_ID = null;
+
+async function openAssetsModal(projectId, projectName) {
+  ASSETS_PROJECT_ID = projectId;
+  const nameEl = document.getElementById('assets-project-name');
+  if (nameEl) nameEl.textContent = projectName || 'Files & uploads';
+  // Reset upload input
+  const inp = document.getElementById('asset-file-input');
+  if (inp) inp.value = '';
+  document.getElementById('asset-upload-progress')?.classList.add('hidden');
+  openModal('modal-assets');
+  await loadAssetFiles();
+}
+
+async function loadAssetFiles() {
+  if (!ASSETS_PROJECT_ID) return;
+  const container = document.getElementById('asset-file-list');
+  if (!container) return;
+  container.innerHTML = `<p class="text-xs text-slate-600 italic text-center py-4">Loading…</p>`;
+  try {
+    const res = await API.get(`/uploads/${ASSETS_PROJECT_ID}`);
+    if (!res.data.success) throw new Error(res.data.error || 'Failed');
+    const files = res.data.data || [];
+    if (files.length === 0) {
+      container.innerHTML = `<p class="text-xs text-slate-600 italic text-center py-4">No files uploaded yet</p>`;
+      return;
+    }
+    container.innerHTML = files.map(f => `
+      <div class="glass rounded-xl p-3 flex items-center gap-3" id="asset-row-${escHtml(f.id)}">
+        <div class="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 bg-slate-800">
+          <i class="fas ${fileIcon(f.content_type)} text-sm text-slate-400"></i>
+        </div>
+        <div class="flex-1 min-w-0">
+          <p class="text-sm font-semibold text-white truncate">${escHtml(f.original_name)}</p>
+          <p class="text-xs text-slate-500">${formatBytes(f.size_bytes)} · ${escHtml(f.content_type)}</p>
+        </div>
+        <button onclick="deleteAsset('${escHtml(f.id)}')" class="text-slate-600 hover:text-red-400 w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-800 flex-shrink-0 transition-colors">
+          <i class="fas fa-trash-can text-xs"></i>
+        </button>
+      </div>`).join('');
+  } catch (e) {
+    container.innerHTML = `<p class="text-xs text-red-400 text-center py-4">Error: ${escHtml(e.message)}</p>`;
+  }
+}
+
+async function handleAssetUpload(input) {
+  const file = input.files?.[0];
+  if (!file || !ASSETS_PROJECT_ID) return;
+  const progress = document.getElementById('asset-upload-progress');
+  if (progress) progress.classList.remove('hidden');
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await axios.post(`/api/uploads/${ASSETS_PROJECT_ID}`, formData, {
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('deploy_token')}`,
+        'Content-Type': 'multipart/form-data',
+      }
+    });
+    if (!res.data.success) throw new Error(res.data.error || 'Upload failed');
+    showToast(`${file.name} uploaded!`, 'success');
+    await loadAssetFiles();
+  } catch (e) {
+    showToast(e.response?.data?.error || e.message || 'Upload failed', 'error');
+  } finally {
+    if (progress) progress.classList.add('hidden');
+    input.value = '';
+  }
+}
+
+async function deleteAsset(fileId) {
+  if (!confirm('Delete this file?')) return;
+  try {
+    const res = await API.delete(`/uploads/${fileId}`);
+    if (!res.data.success) throw new Error(res.data.error || 'Delete failed');
+    document.getElementById(`asset-row-${fileId}`)?.remove();
+    showToast('File deleted', 'success');
+    // Re-check if empty
+    const container = document.getElementById('asset-file-list');
+    if (container && container.children.length === 0) {
+      container.innerHTML = `<p class="text-xs text-slate-600 italic text-center py-4">No files uploaded yet</p>`;
+    }
+  } catch (e) {
+    showToast(e.message || 'Delete failed', 'error');
+  }
+}
+
+function fileIcon(mime) {
+  if (!mime) return 'fa-file';
+  if (mime.startsWith('image/')) return 'fa-image';
+  if (mime === 'application/pdf') return 'fa-file-pdf';
+  if (mime.includes('json')) return 'fa-file-code';
+  if (mime.includes('csv') || mime.includes('spreadsheet')) return 'fa-file-csv';
+  if (mime.includes('zip') || mime.includes('compressed')) return 'fa-file-zipper';
+  if (mime.startsWith('video/')) return 'fa-film';
+  return 'fa-file';
+}
+
+function formatBytes(bytes) {
+  if (!bytes) return '0 B';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 async function generateBuildSummary() {
@@ -3509,6 +3751,90 @@ function setPublishTab(tab) {
       btn.classList.add('text-slate-400');
     }
   });
+}
+
+// ── Deploy-Now & Custom Domain ──────────────────────────────────────────────
+let ACTIVE_DEPLOY_ID = null;
+
+async function deployProjectNow() {
+  const projectId = TESTING.projectId || STATE.activeProjectId;
+  if (!projectId) { showToast('No project selected', 'error'); return; }
+  if ((STATE.user?.coin_balance || 0) < 15) {
+    showToast('Need 15 coins to deploy', 'error');
+    return;
+  }
+  const btn = document.getElementById('btn-deploy-now');
+  if (btn) { btn.disabled = true; btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Deploying…`; }
+  try {
+    const res = await API.post(`/deployments`, { project_id: projectId, type: 'production', platform: 'cloudflare_pages' });
+    if (!res.data.success) throw new Error(res.data.error || 'Deployment failed');
+    const deploy = res.data.data;
+    ACTIVE_DEPLOY_ID = deploy?.id;
+    const liveUrl = deploy?.deployment_url;
+
+    // Update UI
+    if (liveUrl) {
+      const statusEl = document.getElementById('web-deploy-status');
+      const urlEl = document.getElementById('web-deploy-url');
+      if (statusEl) statusEl.classList.remove('hidden');
+      if (urlEl) { urlEl.href = liveUrl; urlEl.textContent = liveUrl; }
+    }
+    // Show custom domain section
+    document.getElementById('custom-domain-section')?.classList.remove('hidden');
+    showToast('Deployment started!', 'success');
+
+    // Deduct coins from UI
+    if (STATE.user) {
+      STATE.user.coin_balance = Math.max(0, (STATE.user.coin_balance || 0) - 15);
+      const hc = document.getElementById('header-coins');
+      if (hc) hc.textContent = STATE.user.coin_balance.toLocaleString();
+    }
+  } catch (e) {
+    showToast(e.message || 'Deployment failed', 'error');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = `<i class="fas fa-rocket"></i> Deploy to Cloudflare Pages <span class="text-xs opacity-70 ml-1">· 15 coins</span>`;
+    }
+  }
+}
+
+async function addCustomDomain() {
+  if (!ACTIVE_DEPLOY_ID) { showToast('Deploy first to add a custom domain', 'error'); return; }
+  const domain = document.getElementById('custom-domain-input')?.value?.trim();
+  if (!domain) { showToast('Enter a domain name', 'error'); return; }
+  const btn = document.getElementById('btn-add-domain');
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  try {
+    const res = await API.post(`/deployments/${ACTIVE_DEPLOY_ID}/domain`, { domain });
+    if (!res.data.success) throw new Error(res.data.error || 'Failed to add domain');
+    const domainEl = document.getElementById('current-domain-name');
+    const displayEl = document.getElementById('current-domain-display');
+    if (domainEl) domainEl.textContent = domain;
+    if (displayEl) displayEl.classList.remove('hidden');
+    document.getElementById('custom-domain-input').value = '';
+    showToast(`${domain} added! Set your DNS CNAME to complete setup.`, 'success');
+  } catch (e) {
+    showToast(e.message || 'Failed to add domain', 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Add'; }
+  }
+}
+
+async function removeCustomDomain() {
+  if (!ACTIVE_DEPLOY_ID) return;
+  const domainEl = document.getElementById('current-domain-name');
+  const domain = domainEl?.textContent?.trim();
+  if (!domain || !confirm(`Remove ${domain}?`)) return;
+  try {
+    const res = await API.delete(`/deployments/${ACTIVE_DEPLOY_ID}/domain`);
+    if (!res.data.success) throw new Error(res.data.error || 'Failed');
+    document.getElementById('current-domain-display')?.classList.add('hidden');
+    if (domainEl) domainEl.textContent = '';
+    showToast('Domain removed', 'success');
+  } catch (e) {
+    showToast(e.message || 'Failed to remove domain', 'error');
+  }
 }
 
 function renderPublishChecklist(type, container, steps, checks) {
@@ -5064,71 +5390,116 @@ async function loadHomeData() {
 
 async function loadHomeCommandCenter() {
   try {
-    // Fetch latest builds across all projects for activity feed
-    const [buildsRes, analyticsRes] = await Promise.all([
-      API.get('/projects').catch(() => ({ data: { success: false } })),
-      API.get('/vault/analytics').catch(() => ({ data: { success: false } })),
-    ]);
+    const res = await API.get('/home').catch(() => ({ data: { success: false } }));
+    if (!res.data.success) return;
 
-    // Build activity feed from projects
-    if (buildsRes.data.success) {
-      const projects = buildsRes.data.data.items || [];
-      renderActivityFeed(projects);
+    const d = res.data.data;
 
-      // Compute aggregate health
-      const totalReady = projects.reduce((s, p) => s + (p.readiness_score || 0), 0);
-      const avgReady = projects.length ? Math.round(totalReady / projects.length) : 0;
-      const el = document.getElementById('home-readiness-avg');
-      if (el) el.textContent = avgReady + '%';
+    // ── Wallet / coins ──────────────────────────────────────────────────────
+    if (d.wallet) {
+      const bal = d.wallet.balance || 0;
+      const spent30 = d.coin_burn_30d?.spent_30d || 0;
+      const earned30 = d.coin_burn_30d?.earned_30d || 0;
 
-      const buildCount = projects.reduce((s, p) => s + (p.build_count || 0), 0);
-      const el2 = document.getElementById('home-total-builds');
-      if (el2) el2.textContent = buildCount;
-    }
+      // Sync coin balance into STATE so header stays accurate
+      if (STATE.user) {
+        STATE.user.coin_balance = bal;
+        const hc = document.getElementById('header-coins');
+        if (hc) hc.textContent = bal.toLocaleString();
+        const sc = document.getElementById('stat-coins');
+        if (sc) sc.textContent = bal.toLocaleString();
+        const vb = document.getElementById('vault-balance');
+        if (vb) vb.textContent = bal.toLocaleString();
+      }
 
-    // Coin trend
-    if (analyticsRes.data.success) {
-      const trend = analyticsRes.data.data.trend;
-      const el = document.getElementById('home-coin-trend');
-      if (el && trend) {
-        const dir = trend.trend_direction;
-        const icon = dir === 'up' ? '↑' : dir === 'down' ? '↓' : '→';
-        const color = dir === 'down' ? 'text-emerald-400' : dir === 'up' ? 'text-red-400' : 'text-slate-400';
-        el.innerHTML = `<span class="${color}">${icon} ${Math.abs(trend.delta_7d)} vs last week</span>`;
+      // Coin trend label
+      const trendEl = document.getElementById('home-coin-trend');
+      if (trendEl) {
+        if (spent30 > 0) {
+          trendEl.innerHTML = `<span class="text-red-400">↓ ${spent30.toLocaleString()} spent (30d)</span>`;
+        } else if (earned30 > 0) {
+          trendEl.innerHTML = `<span class="text-emerald-400">↑ ${earned30.toLocaleString()} earned (30d)</span>`;
+        } else {
+          trendEl.innerHTML = `<span class="text-slate-500">No activity yet</span>`;
+        }
+      }
+
+      // Next grant countdown
+      if (d.wallet.next_grant_at) {
+        const daysLeft = Math.ceil((new Date(d.wallet.next_grant_at) - Date.now()) / 86400000);
+        const grantEl = document.getElementById('vault-grant');
+        if (grantEl && daysLeft > 0) {
+          grantEl.textContent = `${(d.wallet.monthly_coins || 0).toLocaleString()} coins — renews in ${daysLeft}d`;
+        }
       }
     }
+
+    // ── Project health KPIs ─────────────────────────────────────────────────
+    if (d.projects) {
+      const total = d.projects.total_projects || 0;
+      const built = d.projects.built_count || 0;
+      const avgReady = d.projects.avg_readiness || 0;
+      const totalBuilds = d.projects.total_builds || 0;
+
+      const spEl = document.getElementById('stat-projects');
+      if (spEl) spEl.textContent = total;
+
+      const hrEl = document.getElementById('home-readiness-avg');
+      if (hrEl) hrEl.textContent = `${avgReady}% avg ready`;
+
+      const tbEl = document.getElementById('home-total-builds');
+      if (tbEl) tbEl.textContent = `${totalBuilds} build${totalBuilds !== 1 ? 's' : ''}`;
+    }
+
+    // ── Deployment stats ────────────────────────────────────────────────────
+    if (d.deployments) {
+      const live = d.deployments.live_count || 0;
+      const total = d.deployments.total_deployments || 0;
+      const sdEl = document.getElementById('stat-deploys');
+      if (sdEl) sdEl.textContent = live;
+      // sub-label: "X total deployments"
+      const sdSub = document.getElementById('stat-deploys-sub');
+      if (sdSub) sdSub.textContent = `${total} total`;
+    }
+
+    // ── Recent activity feed ─────────────────────────────────────────────────
+    // Prefer build-job list if available; fall back to audit log
+    const builds = d.latest_builds || [];
+    const activity = d.recent_activity || [];
+    renderActivityFeedLive(builds, activity);
+
   } catch (e) {
     console.debug('Command center load error (non-fatal):', e.message);
   }
 }
 
-function renderActivityFeed(projects) {
+function renderActivityFeedLive(builds, auditLog) {
   const container = document.getElementById('activity-list');
   if (!container) return;
 
-  // Build activity items from project statuses
   const items = [];
-  for (const p of projects.slice(0, 6)) {
-    if (p.status === 'deployed') {
+
+  // Latest builds → activity items
+  for (const b of builds.slice(0, 5)) {
+    const isOk = b.status === 'completed';
+    const isFail = b.status === 'failed';
+    items.push({
+      icon: isOk ? 'fa-check-circle' : isFail ? 'fa-times-circle' : 'fa-spinner',
+      color: isOk ? 'text-emerald-400' : isFail ? 'text-red-400' : 'text-amber-400',
+      bg: isOk ? 'rgba(52,211,153,0.1)' : isFail ? 'rgba(239,68,68,0.1)' : 'rgba(251,191,36,0.1)',
+      title: `${escHtml(b.project_name || 'Project')} — ${b.type || 'build'}`,
+      sub: `${b.model_name || 'AI'} · ${b.coins_held || 0} coins · ${timeAgo(b.created_at)}`,
+    });
+  }
+
+  // Audit log items (if no builds)
+  if (items.length === 0) {
+    for (const a of auditLog.slice(0, 5)) {
+      const label = a.action?.replace(/_/g, ' ') || 'action';
       items.push({
-        icon: 'fa-globe', color: 'text-emerald-400', bg: 'rgba(52,211,153,0.1)',
-        title: `${escHtml(p.name)} deployed`,
-        sub: `${p.build_count || 0} build${p.build_count !== 1 ? 's' : ''} · ${p.readiness_score || 0}% ready`,
-        action: () => openViewModal(p.id, p.name),
-      });
-    } else if (p.status === 'built' || p.status === 'building') {
-      items.push({
-        icon: 'fa-hammer', color: 'text-cyan-400', bg: 'rgba(6,182,212,0.1)',
-        title: `${escHtml(p.name)} built`,
-        sub: `${p.readiness_score || 0}% ready · ${p.build_count || 0} build${p.build_count !== 1 ? 's' : ''}`,
-        action: () => openProject(p.id),
-      });
-    } else if (p.status === 'draft' && p.build_count > 0) {
-      items.push({
-        icon: 'fa-clock', color: 'text-amber-400', bg: 'rgba(251,191,36,0.1)',
-        title: `${escHtml(p.name)} — build failed`,
-        sub: `Revise and try again`,
-        action: () => openProject(p.id),
+        icon: 'fa-bolt', color: 'text-slate-400', bg: 'rgba(100,116,139,0.1)',
+        title: capitalize(label),
+        sub: timeAgo(a.created_at),
       });
     }
   }
@@ -5139,8 +5510,7 @@ function renderActivityFeed(projects) {
   }
 
   container.innerHTML = items.map(item => `
-    <div class="glass rounded-xl p-3 flex items-center gap-3 cursor-pointer hover:bg-slate-800/30 transition-colors"
-         onclick="(${item.action.toString()})()">
+    <div class="glass rounded-xl p-3 flex items-center gap-3">
       <div class="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
            style="background: ${item.bg}">
         <i class="fas ${item.icon} text-sm ${item.color}"></i>
@@ -5149,9 +5519,22 @@ function renderActivityFeed(projects) {
         <p class="text-sm font-semibold text-white truncate">${item.title}</p>
         <p class="text-xs text-slate-500 truncate">${item.sub}</p>
       </div>
-      <i class="fas fa-chevron-right text-slate-700 text-xs flex-shrink-0"></i>
     </div>
   `).join('');
+}
+
+function timeAgo(dateStr) {
+  if (!dateStr) return '';
+  const diff = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
+  if (diff < 60) return `${diff}s ago`;
+  if (diff < 3600) return `${Math.floor(diff/60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff/3600)}h ago`;
+  return `${Math.floor(diff/86400)}d ago`;
+}
+
+// renderActivityFeed legacy alias (kept for compatibility)
+function renderActivityFeed(projects) {
+  renderActivityFeedLive([], []);
 }
 
 // ============================================================

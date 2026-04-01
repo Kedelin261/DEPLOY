@@ -86,7 +86,11 @@ export function authMiddleware(required = true) {
       return;
     }
 
-    const jwtSecret = c.env.JWT_SECRET || 'deploy-secret-key-change-in-production';
+    const jwtSecret = c.env.JWT_SECRET;
+    if (!jwtSecret) {
+      console.error('[Auth] JWT_SECRET is not configured');
+      return c.json({ success: false, error: 'Server configuration error' }, 500);
+    }
     const payload = await verifyJWT(token, jwtSecret);
 
     if (!payload) {

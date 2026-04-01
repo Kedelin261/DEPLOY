@@ -329,7 +329,7 @@ vault.post('/checkout', authMiddleware(), rateLimitMiddleware('checkout'), async
 
         // Audit
         await c.env.DB.prepare(
-          `INSERT INTO audit_logs (id, user_id, action, resource_type, resource_id, metadata)
+          `INSERT INTO audit_logs (id, user_id, action, resource_type, resource_id, new_value)
            VALUES (?, ?, 'coin_purchase_completed', 'payment_intent', ?, ?)`
         ).bind(
           generateId('log'), user.id, paymentIntentId,

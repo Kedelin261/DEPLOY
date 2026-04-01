@@ -258,6 +258,151 @@ export class ResendService {
       text: `${opts.coinsAdded} coins added to your DEPLOY vault.\nNew balance: ${opts.newBalance} coins\nAmount paid: ${opts.amountPaid}\n\n${appUrl}`,
     });
   }
+  /** Deployment is now live */
+  async sendDeploymentLive(opts: {
+    to: string;
+    name: string;
+    projectName: string;
+    deploymentUrl: string;
+  }): Promise<void> {
+    const appUrl = this.env.APP_URL || 'https://deploy-app.pages.dev';
+    await this.send({
+      to: opts.to,
+      subject: `🚀 Your app is live — ${opts.projectName}`,
+      html: `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background:#0f172a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
+  <div style="max-width:600px;margin:0 auto;padding:40px 20px">
+    <div style="text-align:center;margin-bottom:32px">
+      <div style="font-size:32px;font-weight:900;background:linear-gradient(135deg,#6366f1,#8b5cf6,#06b6d4);-webkit-background-clip:text;-webkit-text-fill-color:transparent">DEPLOY</div>
+    </div>
+    <div style="background:#1e293b;border:1px solid #334155;border-radius:16px;padding:32px">
+      <div style="text-align:center;margin-bottom:24px">
+        <div style="display:inline-block;background:linear-gradient(135deg,#10b981,#059669);border-radius:50%;width:64px;height:64px;line-height:64px;font-size:28px">🚀</div>
+      </div>
+      <h1 style="color:#f8fafc;font-size:24px;margin:0 0 8px;text-align:center">Your App is Live!</h1>
+      <p style="color:#94a3b8;text-align:center;margin:0 0 24px">Hi ${escapeHtml(opts.name)} — <strong style="color:#f8fafc">${escapeHtml(opts.projectName)}</strong> is now deployed and accessible on the web.</p>
+      <div style="background:#0f172a;border:1px solid #10b981;border-radius:12px;padding:20px;margin:0 0 24px;text-align:center">
+        <p style="color:#64748b;font-size:12px;margin:0 0 8px;text-transform:uppercase;letter-spacing:1px">Live URL</p>
+        <a href="${escapeHtml(opts.deploymentUrl)}" style="color:#10b981;font-size:16px;font-weight:700;text-decoration:none;word-break:break-all">${escapeHtml(opts.deploymentUrl)}</a>
+      </div>
+      <div style="text-align:center">
+        <a href="${escapeHtml(opts.deploymentUrl)}" style="display:inline-block;background:linear-gradient(135deg,#10b981,#059669);color:#fff;text-decoration:none;padding:14px 32px;border-radius:10px;font-weight:700;font-size:16px;margin-right:12px">
+          Open App →
+        </a>
+        <a href="${appUrl}" style="display:inline-block;background:transparent;border:1px solid #334155;color:#94a3b8;text-decoration:none;padding:14px 24px;border-radius:10px;font-weight:600;font-size:14px">
+          Dashboard
+        </a>
+      </div>
+    </div>
+  </div>
+</body>
+</html>`,
+      text: `Your app ${opts.projectName} is now live!\n\nURL: ${opts.deploymentUrl}\n\nDashboard: ${appUrl}`,
+    });
+  }
+
+  /** Build completed successfully */
+  async sendBuildComplete(opts: {
+    to: string;
+    name: string;
+    projectName: string;
+    jobId: string;
+    readinessScore: number;
+    projectId: string;
+  }): Promise<void> {
+    const appUrl = this.env.APP_URL || 'https://deploy-app.pages.dev';
+    const projectUrl = `${appUrl}/#project-${opts.projectId}`;
+    await this.send({
+      to: opts.to,
+      subject: `✅ Build complete — ${opts.projectName} (${opts.readinessScore}% ready)`,
+      html: `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background:#0f172a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
+  <div style="max-width:600px;margin:0 auto;padding:40px 20px">
+    <div style="text-align:center;margin-bottom:32px">
+      <div style="font-size:32px;font-weight:900;background:linear-gradient(135deg,#6366f1,#8b5cf6,#06b6d4);-webkit-background-clip:text;-webkit-text-fill-color:transparent">DEPLOY</div>
+    </div>
+    <div style="background:#1e293b;border:1px solid #334155;border-radius:16px;padding:32px">
+      <div style="text-align:center;margin-bottom:24px">
+        <div style="display:inline-block;background:linear-gradient(135deg,#6366f1,#4f46e5);border-radius:50%;width:64px;height:64px;line-height:64px;font-size:28px">✅</div>
+      </div>
+      <h1 style="color:#f8fafc;font-size:22px;margin:0 0 8px;text-align:center">Build Complete!</h1>
+      <p style="color:#94a3b8;text-align:center;margin:0 0 24px">The AI has finished generating your app spec for <strong style="color:#f8fafc">${escapeHtml(opts.projectName)}</strong>.</p>
+      <div style="background:#0f172a;border-radius:12px;padding:20px;margin:0 0 24px">
+        <div style="display:flex;justify-content:space-between;margin-bottom:12px">
+          <span style="color:#64748b;font-size:14px">Job ID</span>
+          <span style="color:#f8fafc;font-size:13px;font-family:monospace">${opts.jobId}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between">
+          <span style="color:#64748b;font-size:14px">Readiness Score</span>
+          <span style="color:#6366f1;font-size:16px;font-weight:900">${opts.readinessScore}%</span>
+        </div>
+        <div style="margin-top:12px;background:#0d1224;border-radius:8px;overflow:hidden">
+          <div style="background:linear-gradient(90deg,#6366f1,#06b6d4);height:6px;width:${opts.readinessScore}%;transition:width 0.5s"></div>
+        </div>
+      </div>
+      <div style="text-align:center">
+        <a href="${projectUrl}" style="display:inline-block;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;text-decoration:none;padding:14px 32px;border-radius:10px;font-weight:700;font-size:16px">
+          Review Build →
+        </a>
+      </div>
+    </div>
+  </div>
+</body>
+</html>`,
+      text: `Build complete for ${opts.projectName}!\nReadiness: ${opts.readinessScore}%\nJob: ${opts.jobId}\n\nReview: ${projectUrl}`,
+    });
+  }
+
+  /** Low coin balance alert */
+  async sendLowCoinAlert(opts: {
+    to: string;
+    name: string;
+    balance: number;
+    threshold: number;
+  }): Promise<void> {
+    const appUrl = this.env.APP_URL || 'https://deploy-app.pages.dev';
+    await this.send({
+      to: opts.to,
+      subject: `⚠️ Low coin balance — only ${opts.balance} coins left`,
+      html: `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background:#0f172a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
+  <div style="max-width:600px;margin:0 auto;padding:40px 20px">
+    <div style="text-align:center;margin-bottom:32px">
+      <div style="font-size:32px;font-weight:900;background:linear-gradient(135deg,#6366f1,#8b5cf6,#06b6d4);-webkit-background-clip:text;-webkit-text-fill-color:transparent">DEPLOY</div>
+    </div>
+    <div style="background:#1e293b;border:1px solid #f59e0b;border-radius:16px;padding:32px">
+      <div style="text-align:center;margin-bottom:24px">
+        <div style="display:inline-block;background:linear-gradient(135deg,#f59e0b,#d97706);border-radius:50%;width:64px;height:64px;line-height:64px;font-size:28px">⚠️</div>
+      </div>
+      <h1 style="color:#f8fafc;font-size:22px;margin:0 0 8px;text-align:center">Low Coin Balance</h1>
+      <p style="color:#94a3b8;text-align:center;margin:0 0 24px">Hi ${escapeHtml(opts.name)}, your DEPLOY coin balance is running low.</p>
+      <div style="background:#0f172a;border:1px solid #f59e0b;border-radius:12px;padding:20px;margin:0 0 24px;text-align:center">
+        <div style="color:#f59e0b;font-size:14px;font-weight:600;margin-bottom:8px">CURRENT BALANCE</div>
+        <div style="color:#f8fafc;font-size:48px;font-weight:900">${opts.balance}</div>
+        <div style="color:#94a3b8;font-size:14px">coins remaining</div>
+      </div>
+      <p style="color:#94a3b8;font-size:14px;text-align:center;margin:0 0 24px">Top up your vault to keep building without interruption.</p>
+      <div style="text-align:center">
+        <a href="${appUrl}" style="display:inline-block;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;text-decoration:none;padding:14px 32px;border-radius:10px;font-weight:700;font-size:16px">
+          Add Coins Now →
+        </a>
+      </div>
+    </div>
+  </div>
+</body>
+</html>`,
+      text: `Low coin balance alert!\nYou have ${opts.balance} coins remaining.\n\nTop up: ${appUrl}`,
+    });
+  }
 }
 
 // ─── Utility ──────────────────────────────────────────────────────────────────

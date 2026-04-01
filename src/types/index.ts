@@ -26,6 +26,7 @@ export type Bindings = {
   // Cloudflare account (for Workers API calls, R2 S3-compat presigned URLs)
   CLOUDFLARE_ACCOUNT_ID: string;
   CLOUDFLARE_API_TOKEN: string;
+  CF_API_TOKEN: string;        // alias accepted by CFPagesService
 
   // R2 S3-compatible credentials (for presigned upload/download URLs)
   R2_ENDPOINT: string;

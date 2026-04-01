@@ -45,5 +45,10 @@
     "FROM_EMAIL": "noreply@deployapp.io",
     "FROM_NAME": "DEPLOY Platform",
     "CLOUDFLARE_ACCOUNT_ID": "b7d0c7ba6b4de011cc51c878e26c70c2"
+  },
+
+  // Cron triggers — runs on 1st of every month at 00:00 UTC
+  "triggers": {
+    "crons": ["0 0 1 * *"]
   }
 }

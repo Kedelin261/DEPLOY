@@ -192,16 +192,16 @@ admin.get('/audit-log', async (c) => {
   let where = 'WHERE 1=1';
   const binds: any[] = [];
   if (action) { where += ' AND a.action LIKE ?'; binds.push(`%${action}%`); }
-  if (userId) { where += ' AND (a.user_id = ? OR a.target_user_id = ?)'; binds.push(userId, userId); }
+  if (userId) { where += ' AND a.user_id = ?'; binds.push(userId); }
   binds.push(limit, offset);
 
   const logs = await c.env.DB.prepare(`
     SELECT
-      a.id, a.action, a.entity_type, a.entity_id,
+      a.id, a.action, a.resource_type, a.resource_id,
       a.user_id,
       u.email  as user_email,
       u.name   as user_name,
-      a.ip_address, a.metadata, a.created_at
+      a.ip_address, a.new_value as metadata, a.created_at
     FROM audit_logs a
     LEFT JOIN users u ON u.id = a.user_id
     ${where}

@@ -4,6 +4,7 @@ import { Hono } from 'hono';
 import { authMiddleware, generateId } from '../middleware/auth';
 import { CoinService } from '../services/coin.service';
 import { AIService } from '../services/ai.service';
+import { ResendService } from '../services/resend.service';
 import { rateLimitMiddleware } from '../middleware/rateLimit';
 import type { Bindings, Variables } from '../types';
 
@@ -337,19 +338,35 @@ projects.post('/:id/build', authMiddleware(), rateLimitMiddleware('build_request
   }
 
   const jobId = generateId('job');
+  const idempotencyKey = c.req.header('X-Idempotency-Key');
+
+  // Idempotency: if this key was already used, return the cached result
+  if (idempotencyKey) {
+    const existing = await c.env.DB.prepare(
+      `SELECT id, status, coins_held, error_message FROM build_jobs WHERE prompt_snapshot LIKE ? LIMIT 1`
+    ).bind(`%"idempotency_key":"${idempotencyKey}"%`).first<{ id: string; status: string; coins_held: number; error_message: string }>();
+    if (existing) {
+      return c.json({
+        success: existing.status !== 'failed',
+        data: { job_id: existing.id, coins_held: existing.coins_held, status: existing.status },
+        message: existing.status === 'failed' ? (existing.error_message || 'Build failed') : 'Build already processed.'
+      }, 200);
+    }
+  }
+
   const coinService = new CoinService(c.env.DB);
 
   // Hold coins
   const holdId = await coinService.holdCoins(user.id, coinCost, jobId, type);
 
-  // Create build job
+  // Create build job — embed idempotency key in snapshot so we can look it up
   await c.env.DB.prepare(
     `INSERT INTO build_jobs (id, user_id, project_id, session_id, model_id, type, status, coins_held, coin_hold_id, prompt_snapshot)
      VALUES (?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?)`
   ).bind(
     jobId, user.id, projectId, session.id, selectedModelId, type,
     coinCost, holdId,
-    JSON.stringify({ revision_notes: revision_notes || null, fields: session.fields_json })
+    JSON.stringify({ revision_notes: revision_notes || null, fields: session.fields_json, idempotency_key: idempotencyKey || null })
   ).run();
 
   // Update project status
@@ -453,6 +470,41 @@ async function this_processBuildJob(
         ).bind(generateId('notif'), userId, 'build_complete', 'Build Complete!',
           'Your app spec has been generated. Review it now.', `/projects/${projectId}`)
       ]);
+
+      // Send build-complete email (non-blocking)
+      try {
+        const readinessScore = (result.structured as Record<string, number>)?.readiness_score || 75;
+        const userRow = await env.DB.prepare(
+          'SELECT email, name FROM users WHERE id = ?'
+        ).bind(userId).first<{ email: string; name: string }>().catch(() => null);
+        const projRow = await env.DB.prepare(
+          'SELECT name FROM projects WHERE id = ?'
+        ).bind(projectId).first<{ name: string }>().catch(() => null);
+        if (userRow) {
+          const resend = new ResendService(env);
+          await resend.sendBuildComplete({
+            to: userRow.email,
+            name: userRow.name,
+            projectName: projRow?.name || projectId,
+            jobId,
+            readinessScore,
+            projectId,
+          });
+          // Check for low coin balance and alert (threshold: 20 coins)
+          const LOW_COIN_THRESHOLD = 20;
+          const walletRow = await env.DB.prepare('SELECT balance FROM coin_wallets WHERE user_id = ?').bind(userId).first<{ balance: number }>().catch(() => null);
+          if (walletRow && walletRow.balance < LOW_COIN_THRESHOLD) {
+            await resend.sendLowCoinAlert({
+              to: userRow.email,
+              name: userRow.name,
+              balance: walletRow.balance,
+              threshold: LOW_COIN_THRESHOLD,
+            }).catch(() => {});
+          }
+        }
+      } catch (emailErr) {
+        console.error('[Build] Build-complete email failed (non-fatal):', emailErr);
+      }
 
       // Store spec
       try {
@@ -996,12 +1048,11 @@ projects.post('/:id/transform', authMiddleware(), rateLimitMiddleware('build_req
 
   // Create notification
   await c.env.DB.prepare(
-    `INSERT INTO notifications (id, user_id, type, title, message, metadata)
-     VALUES (?, ?, 'transform_complete', 'Spec Transformation Complete', ?, ?)`
+    `INSERT INTO notifications (id, user_id, type, title, message)
+     VALUES (?, ?, 'transform_complete', 'Spec Transformation Complete', ?)`
   ).bind(
     generateId('notif'), user.id,
-    `Spec breakdown ready for ${project.name}.`,
-    JSON.stringify({ project_id: projectId, breakdown_id: breakdownId })
+    `Spec breakdown ready for ${project.name}.`
   ).run().catch(() => {/* non-fatal */});
 
   return c.json({
@@ -1064,3 +1115,95 @@ projects.get('/:id/transform', authMiddleware(), async (c) => {
 });
 
 export default projects;
+
+// ══════════════════════════════════════════════════════════════════════════════
+// VERSIONING & DIFF (Task 2B)
+// GET  /api/projects/:id/versions   — list all build versions
+// GET  /api/projects/:id/versions/:v1/diff/:v2  — text diff between two specs
+// ══════════════════════════════════════════════════════════════════════════════
+
+// GET /api/projects/:id/versions
+projects.get('/:id/versions', authMiddleware(), async (c) => {
+  const user = c.get('user')!;
+  const projectId = c.req.param('id');
+
+  const project = await c.env.DB.prepare(
+    'SELECT id FROM projects WHERE id = ? AND user_id = ?'
+  ).bind(projectId, user.id).first();
+  if (!project) return c.json({ success: false, error: 'Project not found' }, 404);
+
+  const versions = await c.env.DB.prepare(
+    `SELECT bj.id as job_id, bj.status, bj.type, bj.created_at, bj.completed_at,
+            bj.result_summary, bj.coins_settled,
+            am.display_name as model_name,
+            go.id as output_id, go.r2_key, go.version as output_version
+     FROM build_jobs bj
+     LEFT JOIN ai_models am ON am.id = bj.model_id
+     LEFT JOIN generated_outputs go ON go.job_id = bj.id AND go.is_current = 1
+     WHERE bj.project_id = ? AND bj.user_id = ?
+       AND bj.status = 'completed'
+     ORDER BY bj.created_at DESC`
+  ).bind(projectId, user.id).all();
+
+  return c.json({ success: true, data: versions.results });
+});
+
+// GET /api/projects/:id/versions/:jobId1/diff/:jobId2  — side-by-side diff
+projects.get('/:id/versions/:jobId1/diff/:jobId2', authMiddleware(), async (c) => {
+  const user = c.get('user')!;
+  const projectId = c.req.param('id');
+  const jobId1 = c.req.param('jobId1');
+  const jobId2 = c.req.param('jobId2');
+
+  const project = await c.env.DB.prepare(
+    'SELECT id FROM projects WHERE id = ? AND user_id = ?'
+  ).bind(projectId, user.id).first();
+  if (!project) return c.json({ success: false, error: 'Project not found' }, 404);
+
+  // Fetch R2 keys for both jobs
+  async function fetchSpec(jobId: string): Promise<string> {
+    const output = await c.env.DB.prepare(
+      `SELECT r2_key FROM generated_outputs WHERE job_id = ? AND project_id = ? AND is_current = 1 LIMIT 1`
+    ).bind(jobId, projectId).first<{ r2_key: string }>();
+    if (!output?.r2_key) return '{}';
+    try {
+      const obj = await c.env.DEPLOY_R2.get(output.r2_key);
+      return obj ? await obj.text() : '{}';
+    } catch {
+      return '{}';
+    }
+  }
+
+  const [spec1Text, spec2Text] = await Promise.all([
+    fetchSpec(jobId1),
+    fetchSpec(jobId2),
+  ]);
+
+  // Build a structured diff by comparing top-level JSON keys
+  let spec1: Record<string, unknown> = {};
+  let spec2: Record<string, unknown> = {};
+  try { spec1 = JSON.parse(spec1Text); } catch { /* raw text */ }
+  try { spec2 = JSON.parse(spec2Text); } catch { /* raw text */ }
+
+  const allKeys = new Set([...Object.keys(spec1), ...Object.keys(spec2)]);
+  const diff: Record<string, { before: unknown; after: unknown; changed: boolean }> = {};
+
+  for (const key of allKeys) {
+    const v1 = spec1[key];
+    const v2 = spec2[key];
+    const before = typeof v1 !== 'undefined' ? JSON.stringify(v1, null, 2) : null;
+    const after  = typeof v2 !== 'undefined' ? JSON.stringify(v2, null, 2) : null;
+    diff[key] = { before, after, changed: before !== after };
+  }
+
+  return c.json({
+    success: true,
+    data: {
+      job_id_before: jobId1,
+      job_id_after: jobId2,
+      diff,
+      spec_before_raw: spec1Text.slice(0, 50000), // cap at 50 KB for response
+      spec_after_raw:  spec2Text.slice(0, 50000),
+    }
+  });
+});

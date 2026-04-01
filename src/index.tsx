@@ -19,6 +19,8 @@ import adminRoutes from './routes/admin';
 import notificationRoutes from './routes/notifications';
 import stripeWebhookRoutes from './routes/stripe-webhook';
 import learnRoutes from './routes/learn';
+import uploadRoutes from './routes/uploads';
+import apiKeyRoutes from './routes/api-keys';
 
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
@@ -27,7 +29,7 @@ const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 // ============================================================
 app.use('*', cors({
   origin: ['http://localhost:3000', 'http://localhost:5173'],
-  allowHeaders: ['Content-Type', 'Authorization', 'X-Request-ID'],
+  allowHeaders: ['Content-Type', 'Authorization', 'X-Request-ID', 'X-Idempotency-Key'],
   allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   credentials: true,
 }));
@@ -62,6 +64,8 @@ app.route('/api/deployments', deploymentRoutes);
 app.route('/api/admin', adminRoutes);
 app.route('/api/notifications', notificationRoutes);
 app.route('/api/learn', learnRoutes);
+app.route('/api/uploads', uploadRoutes);
+app.route('/api/keys', apiKeyRoutes);
 
 // Health check — also cleans up any jobs stuck in 'processing' from a previous server crash
 app.get('/api/health', async (c) => {
@@ -116,6 +120,121 @@ app.get('/api/config', (c) => {
       stripe_publishable_key: c.env.STRIPE_PUBLISHABLE_KEY || null,
       environment: c.env.ENVIRONMENT || 'development',
       app_url: c.env.APP_URL || 'http://localhost:3000',
+    }
+  });
+});
+
+// ── Home Command Center — live dashboard data ──────────────────────────────────
+// Returns everything the Home page needs in a single request:
+// project health, coin burn rate, recent audit_log activity, quick KPIs.
+app.get('/api/home', async (c) => {
+  // Inline auth check (avoid full middleware overhead for this aggregate query)
+  const authHeader = c.req.header('Authorization') || '';
+  const token = authHeader.replace(/^Bearer\s+/i, '');
+  if (!token) return c.json({ success: false, error: 'Authentication required' }, 401);
+
+  const jwtSecret = c.env.JWT_SECRET;
+  if (!jwtSecret) return c.json({ success: false, error: 'Server configuration error' }, 500);
+
+  // Verify JWT (reuse the same logic from middleware)
+  let userId: string;
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) throw new Error('invalid jwt');
+    const [h, p, s] = parts;
+    const data = `${h}.${p}`;
+    const key = await crypto.subtle.importKey(
+      'raw', new TextEncoder().encode(jwtSecret),
+      { name: 'HMAC', hash: 'SHA-256' }, false, ['verify']
+    );
+    const sig = Uint8Array.from(atob(s.replace(/-/g,'+').replace(/_/g,'/')), ch => ch.charCodeAt(0));
+    const valid = await crypto.subtle.verify('HMAC', key, sig, new TextEncoder().encode(data));
+    if (!valid) throw new Error('invalid sig');
+    const payload = JSON.parse(atob(p.replace(/-/g,'+').replace(/_/g,'/')));
+    if (payload.exp && payload.exp < Math.floor(Date.now()/1000)) throw new Error('expired');
+    userId = payload.sub as string;
+  } catch {
+    return c.json({ success: false, error: 'Invalid or expired token' }, 401);
+  }
+
+  const [
+    walletRow,
+    projectStats,
+    recentActivity,
+    coinBurn30d,
+    latestBuilds,
+    deployStats,
+  ] = await Promise.all([
+    // Coin wallet
+    c.env.DB.prepare(
+      `SELECT w.balance, w.lifetime_earned, w.lifetime_spent, w.next_grant_at,
+              p.monthly_coins, p.name as plan_name, p.slug as plan_slug
+       FROM coin_wallets w
+       JOIN memberships m ON m.user_id = w.user_id
+       JOIN plans p ON p.id = m.plan_id
+       WHERE w.user_id = ?`
+    ).bind(userId).first<Record<string, unknown>>(),
+
+    // Project health KPIs
+    c.env.DB.prepare(
+      `SELECT
+         COUNT(*) as total_projects,
+         SUM(CASE WHEN status='built' THEN 1 ELSE 0 END) as built_count,
+         SUM(CASE WHEN status='building' THEN 1 ELSE 0 END) as building_count,
+         SUM(CASE WHEN status='draft' THEN 1 ELSE 0 END) as draft_count,
+         SUM(CASE WHEN status='archived' THEN 1 ELSE 0 END) as archived_count,
+         ROUND(AVG(NULLIF(readiness_score,0)),1) as avg_readiness,
+         COUNT(DISTINCT (SELECT COUNT(*) FROM build_jobs bj WHERE bj.project_id = p.id AND bj.status='completed')) as total_builds
+       FROM projects p WHERE user_id = ? AND status != 'archived'`
+    ).bind(userId).first<Record<string, unknown>>(),
+
+    // Recent activity (last 10 audit log entries)
+    c.env.DB.prepare(
+      `SELECT action, resource_type, resource_id, created_at, new_value as metadata
+       FROM audit_logs WHERE user_id = ?
+       ORDER BY created_at DESC LIMIT 10`
+    ).bind(userId).all<Record<string, unknown>>(),
+
+    // Coin burn rate — last 30 days
+    c.env.DB.prepare(
+      `SELECT
+         COALESCE(SUM(CASE WHEN amount < 0 THEN ABS(amount) ELSE 0 END), 0) as spent_30d,
+         COALESCE(SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END), 0) as earned_30d,
+         COUNT(CASE WHEN type='spend' THEN 1 END) as transactions_30d
+       FROM coin_ledger_entries
+       WHERE user_id = ? AND created_at > datetime('now', '-30 days')`
+    ).bind(userId).first<Record<string, unknown>>(),
+
+    // Latest 5 builds
+    c.env.DB.prepare(
+      `SELECT bj.id, bj.status, bj.type, bj.coins_held, bj.created_at, bj.completed_at,
+              p.name as project_name, am.display_name as model_name
+       FROM build_jobs bj
+       LEFT JOIN projects p ON p.id = bj.project_id
+       LEFT JOIN ai_models am ON am.id = bj.model_id
+       WHERE bj.user_id = ? ORDER BY bj.created_at DESC LIMIT 5`
+    ).bind(userId).all<Record<string, unknown>>(),
+
+    // Deployment stats
+    c.env.DB.prepare(
+      `SELECT
+         COUNT(*) as total_deployments,
+         SUM(CASE WHEN status='live' THEN 1 ELSE 0 END) as live_count,
+         SUM(CASE WHEN status='deploying' THEN 1 ELSE 0 END) as deploying_count
+       FROM deployments WHERE user_id = ?`
+    ).bind(userId).first<Record<string, unknown>>(),
+  ]);
+
+  return c.json({
+    success: true,
+    data: {
+      wallet: walletRow,
+      projects: projectStats,
+      deployments: deployStats,
+      coin_burn_30d: coinBurn30d,
+      recent_activity: recentActivity.results,
+      latest_builds: latestBuilds.results,
+      generated_at: new Date().toISOString(),
     }
   });
 });
@@ -1512,6 +1631,10 @@ function getAppHTML(): string {
           class="flex-1 py-2 text-xs font-semibold rounded-lg transition-all text-slate-400">
           <i class="fas fa-pen-nib mr-1"></i> Revisions
         </button>
+        <button onclick="setTestingTab('versions')" id="ttab-versions"
+          class="flex-1 py-2 text-xs font-semibold rounded-lg transition-all text-slate-400">
+          <i class="fas fa-code-compare mr-1"></i> History
+        </button>
       </div>
     </div>
 
@@ -1580,6 +1703,22 @@ function getAppHTML(): string {
         <button onclick="openPublishModal()" class="w-full py-3 rounded-xl text-sm font-semibold border border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 transition-colors flex items-center justify-center gap-2">
           <i class="fas fa-rocket"></i> Proceed to Publish
         </button>
+      </div>
+
+      <!-- VERSIONS / HISTORY TAB -->
+      <div id="testing-tab-versions" class="hidden space-y-3">
+        <p class="text-xs text-slate-500">All completed builds for this project. Select two to compare.</p>
+        <div id="versions-list" class="space-y-2 max-h-64 overflow-y-auto">
+          <p class="text-xs text-slate-600 italic text-center py-4">Loading history…</p>
+        </div>
+        <!-- Diff panel (shown after selection) -->
+        <div id="diff-panel" class="hidden">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Diff: v<span id="diff-v1-label">1</span> → v<span id="diff-v2-label">2</span></span>
+            <button onclick="document.getElementById('diff-panel').classList.add('hidden')" class="text-slate-600 hover:text-white text-xs">✕ Close</button>
+          </div>
+          <div id="diff-content" class="space-y-2 max-h-72 overflow-y-auto text-xs font-mono"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -1683,6 +1822,42 @@ function getAppHTML(): string {
         <div class="glass rounded-xl p-4 border border-slate-700/40">
           <p class="text-xs text-slate-400 leading-relaxed">Deploy your web app to <span class="text-white font-semibold">Cloudflare Pages</span> — the fastest global edge network. Your app will be live at <code class="text-cyan-400">your-app.pages.dev</code> in minutes.</p>
         </div>
+        <!-- Live deployment status -->
+        <div id="web-deploy-status" class="hidden glass rounded-xl p-4 border border-emerald-500/30">
+          <div class="flex items-center gap-2 mb-2">
+            <i class="fas fa-circle-check text-emerald-400"></i>
+            <p class="text-sm font-semibold text-white">Live at</p>
+          </div>
+          <a id="web-deploy-url" href="#" target="_blank" rel="noopener" class="text-sm text-cyan-400 hover:text-cyan-300 break-all"></a>
+        </div>
+        <!-- One-click deploy button -->
+        <button onclick="deployProjectNow()" id="btn-deploy-now"
+          class="btn-primary w-full py-4 rounded-xl text-sm font-semibold flex items-center justify-center gap-2">
+          <i class="fas fa-rocket"></i> Deploy to Cloudflare Pages
+          <span class="text-xs opacity-70 ml-1">· 15 coins</span>
+        </button>
+        <!-- Custom domain section -->
+        <div id="custom-domain-section" class="hidden glass rounded-xl p-4 border border-violet-500/20">
+          <div class="flex items-center gap-2 mb-3">
+            <i class="fas fa-globe text-violet-400 text-sm"></i>
+            <p class="text-sm font-semibold text-white">Custom Domain</p>
+          </div>
+          <div id="current-domain-display" class="hidden mb-3">
+            <div class="flex items-center justify-between">
+              <span id="current-domain-name" class="text-sm text-emerald-400 font-mono"></span>
+              <button onclick="removeCustomDomain()" class="text-xs text-red-400 hover:text-red-300">Remove</button>
+            </div>
+          </div>
+          <div class="flex gap-2">
+            <input id="custom-domain-input" type="text" placeholder="yourdomain.com"
+              class="deploy-input flex-1 px-3 py-2 rounded-xl text-sm">
+            <button onclick="addCustomDomain()" id="btn-add-domain"
+              class="px-4 py-2 rounded-xl text-xs font-semibold border border-violet-500/40 text-violet-400 hover:bg-violet-500/10 transition-colors">
+              Add
+            </button>
+          </div>
+          <p class="text-xs text-slate-600 mt-2">Set your DNS CNAME to <code class="text-slate-400">your-app.pages.dev</code> first</p>
+        </div>
         <div id="web-checklist" class="space-y-2"></div>
         <div class="glass rounded-xl p-4 border border-cyan-500/20 mt-4">
           <div class="flex items-center gap-2 mb-2">
@@ -1690,19 +1865,63 @@ function getAppHTML(): string {
             <p class="text-xs font-semibold text-white">Pro Tips</p>
           </div>
           <ul class="space-y-1.5 text-xs text-slate-400">
-            <li class="flex items-start gap-2"><i class="fas fa-check text-emerald-400 mt-0.5 flex-shrink-0"></i>Add a custom domain in Cloudflare Pages settings</li>
+            <li class="flex items-start gap-2"><i class="fas fa-check text-emerald-400 mt-0.5 flex-shrink-0"></i>Deploy creates a live URL instantly — no GitHub needed</li>
             <li class="flex items-start gap-2"><i class="fas fa-check text-emerald-400 mt-0.5 flex-shrink-0"></i>Enable Analytics to track real users from day 1</li>
             <li class="flex items-start gap-2"><i class="fas fa-check text-emerald-400 mt-0.5 flex-shrink-0"></i>Set up environment variables for production keys</li>
             <li class="flex items-start gap-2"><i class="fas fa-check text-emerald-400 mt-0.5 flex-shrink-0"></i>Free tier includes unlimited requests and bandwidth</li>
           </ul>
         </div>
-        <a id="publish-cta-web" href="https://dash.cloudflare.com/sign-up" target="_blank" rel="noopener"
-          class="btn-primary w-full py-3.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 mt-2">
-          <i class="fas fa-rocket"></i> Start Here: Create Cloudflare Account
-          <i class="fas fa-arrow-up-right-from-square text-xs ml-1 opacity-60"></i>
-        </a>
       </div>
 
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     ASSETS / FILE UPLOAD MODAL
+     ============================================================ -->
+<div id="modal-assets" class="hidden fixed inset-0 z-50 flex items-end justify-center p-0">
+  <div class="modal-overlay absolute inset-0" onclick="closeModal('modal-assets')"></div>
+  <div class="relative w-full max-w-2xl bg-slate-900 rounded-t-3xl flex flex-col overflow-hidden" style="max-height:85vh">
+    <div class="flex-shrink-0 px-5 pt-4 pb-0">
+      <div class="w-10 h-1 bg-slate-700 rounded-full mx-auto mb-4"></div>
+      <div class="flex items-center justify-between mb-4">
+        <div class="flex items-center gap-2.5">
+          <div class="w-9 h-9 rounded-xl flex items-center justify-center" style="background:linear-gradient(135deg,#8b5cf6,#7c3aed)">
+            <i class="fas fa-folder-open text-white text-sm"></i>
+          </div>
+          <div>
+            <h3 class="text-base font-bold text-white">Project Assets</h3>
+            <p class="text-xs text-violet-400" id="assets-project-name">Files &amp; uploads</p>
+          </div>
+        </div>
+        <button onclick="closeModal('modal-assets')" class="text-slate-500 hover:text-white w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-800">
+          <i class="fas fa-xmark"></i>
+        </button>
+      </div>
+    </div>
+    <div class="flex-1 overflow-y-auto px-5 pb-5 space-y-4">
+      <!-- Upload area -->
+      <label for="asset-file-input" class="block glass rounded-2xl p-6 border-2 border-dashed border-slate-700 hover:border-violet-500/50 transition-colors cursor-pointer text-center">
+        <i class="fas fa-cloud-arrow-up text-2xl text-slate-600 mb-2"></i>
+        <p class="text-sm font-semibold text-slate-400">Click to upload a file</p>
+        <p class="text-xs text-slate-600 mt-1">Images, PDF, JSON, CSV, ZIP — max 10 MB</p>
+        <input id="asset-file-input" type="file" class="hidden" onchange="handleAssetUpload(this)">
+      </label>
+      <!-- Upload progress -->
+      <div id="asset-upload-progress" class="hidden">
+        <div class="flex items-center gap-3 glass rounded-xl p-3">
+          <i class="fas fa-spinner fa-spin text-violet-400"></i>
+          <p class="text-sm text-slate-300">Uploading…</p>
+        </div>
+      </div>
+      <!-- File list -->
+      <div>
+        <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Uploaded Files</p>
+        <div id="asset-file-list" class="space-y-2">
+          <p class="text-xs text-slate-600 italic text-center py-4">No files uploaded yet</p>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -2273,3 +2492,80 @@ function getAuditReportHTML(): string {
 }
 
 export default app;
+
+// ============================================================
+// CRON TRIGGER — Monthly Coin Grant (runs 1st of every month)
+// Cloudflare Pages/Workers calls scheduled() for cron events.
+// ============================================================
+export async function scheduled(event: ScheduledEvent, env: Bindings, _ctx: ExecutionContext) {
+  const cron = event.cron;
+  console.log(`[Cron] Triggered: ${cron} at ${new Date().toISOString()}`);
+
+  if (cron === '0 0 1 * *') {
+    await runMonthlyGrant(env);
+  }
+}
+
+async function runMonthlyGrant(env: Bindings) {
+  try {
+    const now = new Date().toISOString();
+    console.log('[Cron] Starting monthly coin grant...');
+
+    // Find all paid members whose next_grant_at has passed (or is null — first grant)
+    const dueMembers = await env.DB.prepare(
+      `SELECT u.id as user_id, p.monthly_coins, p.slug as plan_slug, w.id as wallet_id
+       FROM users u
+       JOIN memberships m ON m.user_id = u.id AND m.status = 'active'
+       JOIN plans p ON p.id = m.plan_id AND p.monthly_coins > 0 AND p.slug != 'free'
+       JOIN coin_wallets w ON w.user_id = u.id
+       WHERE u.status = 'active'
+         AND (w.next_grant_at IS NULL OR w.next_grant_at <= ?)`,
+    ).bind(now).all<{ user_id: string; monthly_coins: number; plan_slug: string; wallet_id: string }>();
+
+    const nextMonth = new Date();
+    nextMonth.setMonth(nextMonth.getMonth() + 1);
+    nextMonth.setDate(1);
+    nextMonth.setHours(0, 0, 0, 0);
+    const nextGrantAt = nextMonth.toISOString();
+
+    let granted = 0;
+    for (const member of dueMembers.results) {
+      try {
+        const entryId = `cle_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+        await env.DB.batch([
+          // Credit coins
+          env.DB.prepare(
+            `UPDATE coin_wallets 
+             SET balance = balance + ?, lifetime_earned = lifetime_earned + ?,
+                 last_grant_at = ?, next_grant_at = ?, updated_at = ?
+             WHERE id = ?`
+          ).bind(member.monthly_coins, member.monthly_coins, now, nextGrantAt, now, member.wallet_id),
+
+          // Ledger entry
+          env.DB.prepare(
+            `INSERT INTO coin_ledger_entries (id, user_id, wallet_id, type, amount, balance_after, description)
+             SELECT ?, ?, ?, 'grant', ?, balance, 'Monthly coin grant — ${member.plan_slug} plan'
+             FROM coin_wallets WHERE id = ?`
+          ).bind(entryId, member.user_id, member.wallet_id, member.monthly_coins, member.wallet_id),
+
+          // Notification
+          env.DB.prepare(
+            `INSERT INTO notifications (id, user_id, type, title, message)
+             VALUES (?, ?, 'coin_grant', 'Monthly Coins Granted! 🪙', ?)`
+          ).bind(
+            `notif_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`,
+            member.user_id,
+            `Your monthly ${member.monthly_coins} coins have been added to your vault.`
+          ),
+        ]);
+        granted++;
+      } catch (memberErr) {
+        console.error(`[Cron] Failed to grant coins to ${member.user_id}:`, memberErr);
+      }
+    }
+
+    console.log(`[Cron] Monthly grant complete — granted ${granted} users their coins.`);
+  } catch (err) {
+    console.error('[Cron] Monthly grant fatal error:', err);
+  }
+}

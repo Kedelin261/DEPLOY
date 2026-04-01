@@ -88,7 +88,7 @@ async function handleEvent(env: Bindings, event: { type: string; data: { object:
 
       // Audit log
       await env.DB.prepare(
-        `INSERT INTO audit_logs (id, user_id, action, resource_type, resource_id, metadata)
+        `INSERT INTO audit_logs (id, user_id, action, resource_type, resource_id, new_value)
          VALUES (?, ?, 'coin_purchase_completed', 'stripe_session', ?, ?)`
       ).bind(generateId('log'), userId, sessionId, JSON.stringify({ totalCoins, packageId }))
         .run().catch(() => {});
