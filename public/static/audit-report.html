@@ -1,0 +1,1973 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>DEPLOY Platform — Full Audit & Implementation Report</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css"/>
+<style>
+  :root{
+    --navy:#0f172a;--navy2:#1e293b;--cyan:#06b6d4;--amber:#f59e0b;
+    --green:#22c55e;--red:#ef4444;--purple:#a855f7;--orange:#f97316;
+  }
+  body{background:#0f172a;color:#e2e8f0;font-family:'Inter',system-ui,sans-serif;}
+  .gradient-header{background:linear-gradient(135deg,#0f172a 0%,#1e293b 50%,#0c1a2e 100%);border-bottom:1px solid #1e3a5f;}
+  .card{background:#1e293b;border:1px solid #334155;border-radius:12px;}
+  .card-glow{border-color:#0e7490;box-shadow:0 0 20px rgba(6,182,212,.15);}
+  .badge-green{background:rgba(34,197,94,.15);color:#86efac;border:1px solid rgba(34,197,94,.3);}
+  .badge-yellow{background:rgba(245,158,11,.15);color:#fcd34d;border:1px solid rgba(245,158,11,.3);}
+  .badge-red{background:rgba(239,68,68,.15);color:#fca5a5;border:1px solid rgba(239,68,68,.3);}
+  .badge-blue{background:rgba(6,182,212,.15);color:#67e8f9;border:1px solid rgba(6,182,212,.3);}
+  .badge-purple{background:rgba(168,85,247,.15);color:#d8b4fe;border:1px solid rgba(168,85,247,.3);}
+  .badge-orange{background:rgba(249,115,22,.15);color:#fdba74;border:1px solid rgba(249,115,22,.3);}
+  .tab-btn{cursor:pointer;padding:.5rem 1rem;border-radius:8px;font-size:.875rem;font-weight:600;transition:all .2s;}
+  .tab-btn.active{background:#0e7490;color:#fff;}
+  .tab-btn:not(.active){color:#94a3b8;}
+  .tab-btn:not(.active):hover{background:#1e3a5f;color:#e2e8f0;}
+  .tab-panel{display:none;}
+  .tab-panel.active{display:block;}
+  .status-ok::before{content:'✅ ';}
+  .status-warn::before{content:'⚠️ ';}
+  .status-err::before{content:'🔴 ';}
+  .status-info::before{content:'🔵 ';}
+  .phase-bar{height:6px;border-radius:3px;background:#334155;}
+  .phase-fill{height:100%;border-radius:3px;transition:width .8s ease;}
+  .timeline-line{position:relative;padding-left:2.5rem;}
+  .timeline-line::before{content:'';position:absolute;left:.75rem;top:0;bottom:0;width:2px;background:#1e3a5f;}
+  .timeline-dot{position:absolute;left:0;width:1.5rem;height:1.5rem;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.6rem;z-index:1;}
+  .infra-node{display:flex;flex-direction:column;align-items:center;gap:.5rem;}
+  .infra-icon{width:56px;height:56px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:1.5rem;}
+  .arrow-h{display:flex;align-items:center;color:#475569;font-size:.75rem;}
+  .arrow-h::after{content:'→';margin:0 .5rem;font-size:1rem;color:#0e7490;}
+  pre{background:#0f172a;border:1px solid #334155;border-radius:8px;padding:1rem;overflow-x:auto;font-size:.8rem;line-height:1.6;}
+  code{color:#67e8f9;}
+  h2.section-title{font-size:1.5rem;font-weight:700;color:#e2e8f0;display:flex;align-items:center;gap:.75rem;}
+  h3.sub-title{font-size:1.1rem;font-weight:600;color:#cbd5e1;}
+  .risk-matrix td,th{padding:.5rem .75rem;border:1px solid #334155;font-size:.8rem;}
+  .risk-matrix{width:100%;border-collapse:collapse;}
+  .risk-matrix th{background:#1e3a5f;font-weight:600;}
+  @media print{body{background:#fff;color:#000;} .card{border:1px solid #ccc;background:#fff;} .gradient-header{background:#fff;}}
+  .scroll-nav{position:sticky;top:0;z-index:50;background:rgba(15,23,42,.95);backdrop-filter:blur(8px);border-bottom:1px solid #1e3a5f;}
+  .feature-row:nth-child(even){background:rgba(30,41,59,.4);}
+  .db-table{font-size:.78rem;}
+  .db-table th{background:#0e2a3f;padding:.4rem .6rem;text-align:left;}
+  .db-table td{padding:.3rem .6rem;border-bottom:1px solid #1e3a5f;}
+  .progress-ring{transform:rotate(-90deg);}
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════ HEADER -->
+<div class="gradient-header px-6 py-8">
+  <div class="max-w-7xl mx-auto">
+    <div class="flex items-start justify-between flex-wrap gap-4">
+      <div>
+        <div class="flex items-center gap-3 mb-2">
+          <div class="w-10 h-10 rounded-xl flex items-center justify-center" style="background:linear-gradient(135deg,#0e7490,#0284c7)">
+            <i class="fas fa-rocket text-white"></i>
+          </div>
+          <span class="text-slate-400 text-sm font-semibold tracking-widest uppercase">DEPLOY Platform</span>
+        </div>
+        <h1 class="text-3xl font-black text-white mb-1">Full System Audit &amp; Implementation Report</h1>
+        <p class="text-slate-400 text-sm">Generated: <span class="text-cyan-400 font-mono">2026-04-01</span> &nbsp;|&nbsp; Auditor: AI Engineering Agent &nbsp;|&nbsp; Version: 1.0.0</p>
+      </div>
+      <div class="flex gap-3 flex-wrap">
+        <span class="badge-green px-3 py-1 rounded-full text-xs font-semibold">Phase 1 — 78% Complete</span>
+        <span class="badge-yellow px-3 py-1 rounded-full text-xs font-semibold">Phase 2 — Planned</span>
+        <span class="badge-purple px-3 py-1 rounded-full text-xs font-semibold">Phase 3 — Pending</span>
+      </div>
+    </div>
+    <!-- Score cards -->
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-8">
+      <div class="card p-4 text-center">
+        <div class="text-3xl font-black text-green-400">78%</div>
+        <div class="text-slate-400 text-xs mt-1">Overall Completion</div>
+      </div>
+      <div class="card p-4 text-center">
+        <div class="text-3xl font-black text-cyan-400">39</div>
+        <div class="text-slate-400 text-xs mt-1">DB Tables Live</div>
+      </div>
+      <div class="card p-4 text-center">
+        <div class="text-3xl font-black text-amber-400">6</div>
+        <div class="text-slate-400 text-xs mt-1">Migrations Applied</div>
+      </div>
+      <div class="card p-4 text-center">
+        <div class="text-3xl font-black text-purple-400">11</div>
+        <div class="text-slate-400 text-xs mt-1">Route Files</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ STICKY NAV -->
+<nav class="scroll-nav px-6">
+  <div class="max-w-7xl mx-auto flex gap-2 py-3 overflow-x-auto">
+    <button class="tab-btn active" onclick="showTab('audit')"><i class="fas fa-clipboard-list mr-1"></i>System Audit</button>
+    <button class="tab-btn" onclick="showTab('phases')"><i class="fas fa-tasks mr-1"></i>Phase Plans</button>
+    <button class="tab-btn" onclick="showTab('infra')"><i class="fas fa-sitemap mr-1"></i>Infrastructure</button>
+    <button class="tab-btn" onclick="showTab('risks')"><i class="fas fa-shield-alt mr-1"></i>Risk Matrix</button>
+    <button class="tab-btn" onclick="showTab('timeline')"><i class="fas fa-calendar-alt mr-1"></i>Timeline</button>
+    <button class="tab-btn" onclick="showTab('arch')"><i class="fas fa-layer-group mr-1"></i>Architecture</button>
+  </div>
+</nav>
+
+<div class="max-w-7xl mx-auto px-6 py-8">
+
+<!-- ═══════════════════════════════════════════════════ TAB: SYSTEM AUDIT -->
+<div id="tab-audit" class="tab-panel active">
+  <h2 class="section-title mb-6"><i class="fas fa-clipboard-list text-cyan-400"></i>System Audit Report</h2>
+
+  <!-- Feature Status Table -->
+  <div class="card mb-6">
+    <div class="px-6 py-4 border-b border-slate-700">
+      <h3 class="sub-title">Feature Status Matrix</h3>
+      <p class="text-slate-500 text-sm mt-1">Comprehensive review of every platform feature across all layers</p>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-slate-700">
+            <th class="px-6 py-3 text-left text-slate-400 font-semibold">Feature / Module</th>
+            <th class="px-4 py-3 text-left text-slate-400 font-semibold">Status</th>
+            <th class="px-4 py-3 text-left text-slate-400 font-semibold">Layer</th>
+            <th class="px-4 py-3 text-left text-slate-400 font-semibold">Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- AUTH -->
+          <tr class="feature-row border-b border-slate-800">
+            <td class="px-6 py-3 font-semibold text-cyan-400" colspan="4">🔐 Authentication &amp; Identity</td>
+          </tr>
+          <tr class="feature-row border-b border-slate-800">
+            <td class="px-6 py-3">Signup (email + password)</td>
+            <td class="px-4 py-3"><span class="badge-green px-2 py-0.5 rounded text-xs">✅ Live</span></td>
+            <td class="px-4 py-3 text-slate-400">API + DB</td>
+            <td class="px-4 py-3 text-slate-500 text-xs">Rate-limited (5/min), welcome email, 50-coin grant, audit log</td>
+          </tr>
+          <tr class="feature-row border-b border-slate-800">
+            <td class="px-6 py-3">Login (JWT 7-day)</td>
+            <td class="px-4 py-3"><span class="badge-green px-2 py-0.5 rounded text-xs">✅ Live</span></td>
+            <td class="px-4 py-3 text-slate-400">API + DB</td>
+            <td class="px-4 py-3 text-slate-500 text-xs">Rate-limited (10/min), last_login updated, audit log</td>
+          </tr>
+          <tr class="feature-row border-b border-slate-800">
+            <td class="px-6 py-3">Forgot / Reset Password</td>
+            <td class="px-4 py-3"><span class="badge-green px-2 py-0.5 rounded text-xs">✅ Live</span></td>
+            <td class="px-4 py-3 text-slate-400">API + Resend</td>
+            <td class="px-4 py-3 text-slate-500 text-xs">Rate-limited (3/5min), token stored hashed, 1h expiry</td>
+          </tr>
+          <tr class="feature-row border-b border-slate-800">
+            <td class="px-6 py-3">Change Password (authenticated)</td>
+            <td class="px-4 py-3"><span class="badge-green px-2 py-0.5 rounded text-xs">✅ Live</span></td>
+            <td class="px-4 py-3 text-slate-400">API</td>
+            <td class="px-4 py-3 text-slate-500 text-xs">Old password verified before update</td>
+          </tr>
+          <tr class="feature-row border-b border-slate-800">
+            <td class="px-6 py-3">Edit Profile (name, phone)</td>
+            <td class="px-4 py-3"><span class="badge-green px-2 py-0.5 rounded text-xs">✅ Live</span></td>
+            <td class="px-4 py-3 text-slate-400">API</td>
+            <td class="px-4 py-3 text-slate-500 text-xs">/api/auth/profile PUT</td>
+          </tr>
+          <tr class="feature-row border-b border-slate-800">
+            <td class="px-6 py-3">Two-Factor Authentication (2FA)</td>
+            <td class="px-4 py-3"><span class="badge-yellow px-2 py-0.5 rounded text-xs">⚠️ Schema Only</span></td>
+            <td class="px-4 py-3 text-slate-400">DB</td>
+            <td class="px-4 py-3 text-slate-500 text-xs">Columns present (two_factor_enabled, two_factor_secret) — no TOTP logic yet</td>
+          </tr>
+          <tr class="feature-row border-b border-slate-800">
+            <td class="px-6 py-3">Email Verification</td>
+            <td class="px-4 py-3"><span class="badge-yellow px-2 py-0.5 rounded text-xs">⚠️ Schema Only</span></td>
+            <td class="px-4 py-3 text-slate-400">DB</td>
+            <td class="px-4 py-3 text-slate-500 text-xs">email_verified column exists; verification link flow not implemented</td>
+          </tr>
+          <tr class="feature-row border-b border-slate-800">
+            <td class="px-6 py-3">OAuth / Social Login</td>
+            <td class="px-4 py-3"><span class="badge-red px-2 py-0.5 rounded text-xs">🔴 Missing</span></td>
+            <td class="px-4 py-3 text-slate-400">—</td>
+            <td class="px-4 py-3 text-slate-500 text-xs">Phase 3 enhancement</td>
+          </tr>
+          <!-- PROJECTS -->
+          <tr class="feature-row border-b border-slate-800">
+            <td class="px-6 py-3 font-semibold text-cyan-400" colspan="4">📁 Project Management</td>
+          </tr>
+          <tr class="feature-row border-b border-slate-800">
+            <td class="px-6 py-3">Create / List / Get Projects</td>
+            <td class="px-4 py-3"><span class="badge-green px-2 py-0.5 rounded text-xs">✅ Live</span></td>
+            <td class="px-4 py-3 text-slate-400">API + DB</td>
+            <td class="px-4 py-3 text-slate-500 text-xs">Plan-limited (max_projects), default model assigned, prompt session auto-created</td>
+          </tr>
+          <tr class="feature-row border-b border-slate-800">
+            <td class="px-6 py-3">Project Build (full AI spec)</td>
+            <td class="px-4 py-3"><span class="badge-green px-2 py-0.5 rounded text-xs">✅ Live</span></td>
+            <td class="px-4 py-3 text-slate-400">API + AI + Coins</td>
+            <td class="px-4 py-3 text-slate-500 text-xs">Rate-limited (5/5min), coin hold, synchronous AI call, coin release on failure</td>
+          </tr>
+          <tr class="feature-row border-b border-slate-800">
+            <td class="px-6 py-3">Revision Requests</td>
+            <td class="px-4 py-3"><span class="badge-green px-2 py-0.5 rounded text-xs">✅ Live</span></td>
+            <td class="px-4 py-3 text-slate-400">API + AI</td>
+            <td class="px-4 py-3 text-slate-500 text-xs">Creates revision record, holds coins, calls AI with previous spec context</td>
+          </tr>
+          <tr class="feature-row border-b border-slate-800">
+            <td class="px-6 py-3">Build Job Queue (async)</td>
+            <td class="px-4 py-3"><span class="badge-yellow px-2 py-0.5 rounded text-xs">⚠️ Simulated</span></td>
+            <td class="px-4 py-3 text-slate-400">Workers</td>
+            <td class="px-4 py-3 text-slate-500 text-xs">Currently synchronous — no Cloudflare Queues. Health check rescues stuck jobs (&gt;10min)</td>
+          </tr>
+          <tr class="feature-row border-b border-slate-800">
+            <td class="px-6 py-3">Spec Transformer (feature/screen/data breakdown)</td>
+            <td class="px-4 py-3"><span class="badge-green px-2 py-0.5 rounded text-xs">✅ Live</span></td>
+            <td class="px-4 py-3 text-slate-400">API + AI + DB</td>
+            <td class="px-4 py-3 text-slate-500 text-xs">POST /api/projects/:id/transform — writes spec_breakdowns table</td>
+          </tr>
+          <tr class="feature-row border-b border-slate-800">
+            <td class="px-6 py-3">Prompt Summarize + Chat</td>
+            <td class="px-4 py-3"><span class="badge-green px-2 py-0.5 rounded text-xs">✅ Live</span></td>
+            <td class="px-4 py-3 text-slate-400">API + AI</td>
+            <td class="px-4 py-3 text-slate-500 text-xs">Rate-limited (10/min summarize, 30/min chat), coin debit per call</td>
+          </tr>
+          <tr class="feature-row border-b border-slate-800">
+            <td class="px-6 py-3">Project Version History</td>
+            <td class="px-4 py-3"><span class="badge-yellow px-2 py-0.5 rounded text-xs">⚠️ Schema Only</span></td>
+            <td class="px-4 py-3 text-slate-400">DB</td>
+            <td class="px-4 py-3 text-slate-500 text-xs">project_versions table exists — no API endpoint or UI panel yet</td>
+          </tr>
+          <tr class="feature-row border-b border-slate-800">
+            <td class="px-6 py-3">Planning / Kanban Board</td>
+            <td class="px-4 py-3"><span class="badge-yellow px-2 py-0.5 rounded text-xs">⚠️ UI Only</span></td>
+            <td class="px-4 py-3 text-slate-400">Frontend</td>
+            <td class="px-4 py-3 text-slate-500 text-xs">Visual Kanban rendered from spec_breakdowns features — no persistence API</td>
+          </tr>
+          <!-- VAULT -->
+          <tr class="feature-row border-b border-slate-800">
+            <td class="px-6 py-3 font-semibold text-cyan-400" colspan="4">🏦 Vault / Financial Control Center</td>
+          </tr>
+          <tr class="feature-row border-b border-slate-800">
+            <td class="px-6 py-3">Coin Wallet (balance, ledger)</td>
+            <td class="px-4 py-3"><span class="badge-green px-2 py-0.5 rounded text-xs">✅ Live</span></td>
+            <td class="px-4 py-3 text-slate-400">API + DB</td>
+            <td class="px-4 py-3 text-slate-500 text-xs">CoinService: credit/debit/hold/release with full ledger entries</td>
+          </tr>
+          <tr class="feature-row border-b border-slate-800">
+            <td class="px-6 py-3">Monthly Coin Grants</td>
+            <td class="px-4 py-3"><span class="badge-yellow px-2 py-0.5 rounded text-xs">⚠️ Partial</span></td>
+            <td class="px-4 py-3 text-slate-400">API</td>
+            <td class="px-4 py-3 text-slate-500 text-xs">POST /api/vault/grant exists — no CRON job to auto-trigger monthly</td>
+          </tr>
+          <tr class="feature-row border-b border-slate-800">
+            <td class="px-6 py-3">Stripe Checkout (coin packages)</td>
+            <td class="px-4 py-3"><span class="badge-green px-2 py-0.5 rounded text-xs">✅ Live</span></td>
+            <td class="px-4 py-3 text-slate-400">Stripe + DB</td>
+            <td class="px-4 py-3 text-slate-500 text-xs">POST /api/vault/checkout — returns Stripe hosted page URL</td>
+          </tr>
+          <tr class="feature-row border-b border-slate-800">
+            <td class="px-6 py-3">Stripe Plan Upgrade Checkout</td>
+            <td class="px-4 py-3"><span class="badge-green px-2 py-0.5 rounded text-xs">✅ Live</span></td>
+            <td class="px-4 py-3 text-slate-400">Stripe + DB</td>
+            <td class="px-4 py-3 text-slate-500 text-xs">POST /api/vault/checkout-plan</td>
+          </tr>
+          <tr class="feature-row border-b border-slate-800">
+            <td class="px-6 py-3">Stripe Webhook Handler</td>
+            <td class="px-4 py-3"><span class="badge-green px-2 py-0.5 rounded text-xs">✅ Live</span></td>
+            <td class="px-4 py-3 text-slate-400">Stripe + DB</td>
+            <td class="px-4 py-3 text-slate-500 text-xs">Handles checkout.session.completed, invoice.payment_succeeded, customer.subscription.updated/deleted</td>
+          </tr>
+          <tr class="feature-row border-b border-slate-800">
+            <td class="px-6 py-3">Billing Portal (Stripe-managed)</td>
+            <td class="px-4 py-3"><span class="badge-green px-2 py-0.5 rounded text-xs">✅ Live</span></td>
+            <td class="px-4 py-3 text-slate-400">Stripe</td>
+            <td class="px-4 py-3 text-slate-500 text-xs">POST /api/vault/portal — returns Stripe portal URL</td>
+          </tr>
+          <tr class="feature-row border-b border-slate-800">
+            <td class="px-6 py-3">Vault Analytics (FCC)</td>
+            <td class="px-4 py-3"><span class="badge-green px-2 py-0.5 rounded text-xs">✅ Live</span></td>
+            <td class="px-4 py-3 text-slate-400">API + coin_analytics</td>
+            <td class="px-4 py-3 text-slate-500 text-xs">GET /api/vault/analytics — monthly trend, model breakdown</td>
+          </tr>
+          <tr class="feature-row border-b border-slate-800">
+            <td class="px-6 py-3">Revenue Summary</td>
+            <td class="px-4 py-3"><span class="badge-green px-2 py-0.5 rounded text-xs">✅ Fixed</span></td>
+            <td class="px-4 py-3 text-slate-400">API + billing_events</td>
+            <td class="px-4 py-3 text-slate-500 text-xs">Previously broken (no such column: be.coins_granted) — fixed in this session</td>
+          </tr>
+          <tr class="feature-row border-b border-slate-800">
+            <td class="px-6 py-3">Saved Payment Methods</td>
+            <td class="px-4 py-3"><span class="badge-yellow px-2 py-0.5 rounded text-xs">⚠️ Backend Only</span></td>
+            <td class="px-4 py-3 text-slate-400">Stripe + DB</td>
+            <td class="px-4 py-3 text-slate-500 text-xs">Setup intent + save-payment-method routes live; frontend payment method list incomplete</td>
+          </tr>
+          <!-- AI / MODELS -->
+          <tr class="feature-row border-b border-slate-800">
+            <td class="px-6 py-3 font-semibold text-cyan-400" colspan="4">🤖 AI / Intent Layer / Model Switcher</td>
+          </tr>
+          <tr class="feature-row border-b border-slate-800">
+            <td class="px-6 py-3">Intent Layer (AI orchestration)</td>
+            <td class="px-4 py-3"><span class="badge-green px-2 py-0.5 rounded text-xs">✅ Live</span></td>
+            <td class="px-4 py-3 text-slate-400">AIService</td>
+            <td class="px-4 py-3 text-slate-500 text-xs">7 intent types, provider fallback (OpenAI ↔ Anthropic), demo mode</td>
+          </tr>
+          <tr class="feature-row border-b border-slate-800">
+            <td class="px-6 py-3">Intent Log (audit trail)</td>
+            <td class="px-4 py-3"><span class="badge-green px-2 py-0.5 rounded text-xs">✅ Live</span></td>
+            <td class="px-4 py-3 text-slate-400">IntentLogService + DB</td>
+            <td class="px-4 py-3 text-slate-500 text-xs">SHA-256 hashed input, coin analytics aggregate updated async</td>
+          </tr>
+          <tr class="feature-row border-b border-slate-800">
+            <td class="px-6 py-3">Model Switcher (per-project)</td>
+            <td class="px-4 py-3"><span class="badge-green px-2 py-0.5 rounded text-xs">✅ Live</span></td>
+            <td class="px-4 py-3 text-slate-400">API + DB</td>
+            <td class="px-4 py-3 text-slate-500 text-xs">GET /api/models, PUT /api/models/select — plan-gated access</td>
+          </tr>
+          <tr class="feature-row border-b border-slate-800">
+            <td class="px-6 py-3">AI Assist (single field)</td>
+            <td class="px-4 py-3"><span class="badge-green px-2 py-0.5 rounded text-xs">✅ Live</span></td>
+            <td class="px-4 py-3 text-slate-400">API + AI</td>
+            <td class="px-4 py-3 text-slate-500 text-xs">Rate-limited (20/min), 2-coin debit per call, IntentLog wired</td>
+          </tr>
+          <tr class="feature-row border-b border-slate-800">
+            <td class="px-6 py-3">Model Usage Events (token tracking)</td>
+            <td class="px-4 py-3"><span class="badge-green px-2 py-0.5 rounded text-xs">✅ Live</span></td>
+            <td class="px-4 py-3 text-slate-400">DB</td>
+            <td class="px-4 py-3 text-slate-500 text-xs">model_usage_events table populated by AIService on every call</td>
+          </tr>
+          <tr class="feature-row border-b border-slate-800">
+            <td class="px-6 py-3">Anthropic Claude Provider</td>
+            <td class="px-4 py-3"><span class="badge-yellow px-2 py-0.5 rounded text-xs">⚠️ Code Ready</span></td>
+            <td class="px-4 py-3 text-slate-400">AIService</td>
+            <td class="px-4 py-3 text-slate-500 text-xs">Logic present — ANTHROPIC_API_KEY not set in .dev.vars by default</td>
+          </tr>
+          <!-- DEPLOYMENTS -->
+          <tr class="feature-row border-b border-slate-800">
+            <td class="px-6 py-3 font-semibold text-cyan-400" colspan="4">🚀 Deployments</td>
+          </tr>
+          <tr class="feature-row border-b border-slate-800">
+            <td class="px-6 py-3">Create / List Deployments</td>
+            <td class="px-4 py-3"><span class="badge-green px-2 py-0.5 rounded text-xs">✅ Live</span></td>
+            <td class="px-4 py-3 text-slate-400">API + DB</td>
+            <td class="px-4 py-3 text-slate-500 text-xs">Plan-limited, 15-coin debit, cfProjectName generated</td>
+          </tr>
+          <tr class="feature-row border-b border-slate-800">
+            <td class="px-6 py-3">Actual Cloudflare Pages Deploy</td>
+            <td class="px-4 py-3"><span class="badge-red px-2 py-0.5 rounded text-xs">🔴 Simulated</span></td>
+            <td class="px-4 py-3 text-slate-400">Workers</td>
+            <td class="px-4 py-3 text-slate-500 text-xs">simulateDeployment() fires a 2s timeout then marks 'live' — no real CF Pages API call</td>
+          </tr>
+          <tr class="feature-row border-b border-slate-800">
+            <td class="px-6 py-3">Deployment Rollback</td>
+            <td class="px-4 py-3"><span class="badge-yellow px-2 py-0.5 rounded text-xs">⚠️ DB Flag Only</span></td>
+            <td class="px-4 py-3 text-slate-400">API</td>
+            <td class="px-4 py-3 text-slate-500 text-xs">Sets status=rolled_back — no actual CF Pages rollback call</td>
+          </tr>
+          <tr class="feature-row border-b border-slate-800">
+            <td class="px-6 py-3">Custom Domain Support</td>
+            <td class="px-4 py-3"><span class="badge-red px-2 py-0.5 rounded text-xs">🔴 Missing</span></td>
+            <td class="px-4 py-3 text-slate-400">—</td>
+            <td class="px-4 py-3 text-slate-500 text-xs">Phase 3 deliverable</td>
+          </tr>
+          <!-- EDUCATION / ADMIN -->
+          <tr class="feature-row border-b border-slate-800">
+            <td class="px-6 py-3 font-semibold text-cyan-400" colspan="4">📚 Education Hub / Admin / Notifications</td>
+          </tr>
+          <tr class="feature-row border-b border-slate-800">
+            <td class="px-6 py-3">Education Hub (FAQ, Guides, Coin Economy)</td>
+            <td class="px-4 py-3"><span class="badge-green px-2 py-0.5 rounded text-xs">✅ Live</span></td>
+            <td class="px-4 py-3 text-slate-400">API + DB + UI</td>
+            <td class="px-4 py-3 text-slate-500 text-xs">5 FAQ categories, 5 guides, 9 coin-economy actions — onboarding_progress table</td>
+          </tr>
+          <tr class="feature-row border-b border-slate-800">
+            <td class="px-6 py-3">Admin Dashboard (stats + users + platform)</td>
+            <td class="px-4 py-3"><span class="badge-green px-2 py-0.5 rounded text-xs">✅ Live</span></td>
+            <td class="px-4 py-3 text-slate-400">API</td>
+            <td class="px-4 py-3 text-slate-500 text-xs">Admin-gated (adminMiddleware), full platform stats, user management</td>
+          </tr>
+          <tr class="feature-row border-b border-slate-800">
+            <td class="px-6 py-3">Notifications (bell, unread badge)</td>
+            <td class="px-4 py-3"><span class="badge-green px-2 py-0.5 rounded text-xs">✅ Live</span></td>
+            <td class="px-4 py-3 text-slate-400">API + DB</td>
+            <td class="px-4 py-3 text-slate-500 text-xs">Read/unread state, bulk mark-as-read</td>
+          </tr>
+          <tr class="feature-row border-b border-slate-800">
+            <td class="px-6 py-3">Rate Limiting (all sensitive routes)</td>
+            <td class="px-4 py-3"><span class="badge-green px-2 py-0.5 rounded text-xs">✅ Live</span></td>
+            <td class="px-4 py-3 text-slate-400">Middleware + D1</td>
+            <td class="px-4 py-3 text-slate-500 text-xs">Sliding-window, D1-backed, 429 + headers, cleanup job in health check</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Broken Workflows -->
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+    <div class="card p-6">
+      <h3 class="sub-title mb-4 flex items-center gap-2"><i class="fas fa-exclamation-triangle text-amber-400"></i> Broken / Incomplete Workflows</h3>
+      <div class="space-y-3">
+        <div class="p-3 rounded-lg" style="background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2)">
+          <div class="text-red-300 font-semibold text-sm">1. Real Cloudflare Pages Deployment</div>
+          <div class="text-slate-400 text-xs mt-1">simulateDeployment() is a 2-second fake. No actual Pages API call. Users see 'live' but no URL truly exists.</div>
+          <div class="text-red-400 text-xs mt-1 font-mono">Fix: Implement CF Pages API in services/cloudflare.service.ts</div>
+        </div>
+        <div class="p-3 rounded-lg" style="background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2)">
+          <div class="text-red-300 font-semibold text-sm">2. Async Build Queue</div>
+          <div class="text-slate-400 text-xs mt-1">AI build runs synchronously inside the request lifecycle. CF Workers have a 30ms CPU limit — long builds will timeout and leave jobs stuck.</div>
+          <div class="text-red-400 text-xs mt-1 font-mono">Fix: Cloudflare Queues + Durable Objects for job dispatch</div>
+        </div>
+        <div class="p-3 rounded-lg" style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2)">
+          <div class="text-amber-300 font-semibold text-sm">3. Monthly Coin Grant CRON</div>
+          <div class="text-slate-400 text-xs mt-1">The /api/vault/grant endpoint exists but must be manually called. No scheduled trigger (CF Cron Trigger) wired.</div>
+          <div class="text-amber-400 text-xs mt-1 font-mono">Fix: Add cron_triggers in wrangler.jsonc → scheduled Worker</div>
+        </div>
+        <div class="p-3 rounded-lg" style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2)">
+          <div class="text-amber-300 font-semibold text-sm">4. Kanban Board Persistence</div>
+          <div class="text-slate-400 text-xs mt-1">Kanban tasks rendered from spec_breakdowns at load time — drag-drop state not saved. Cards revert on reload.</div>
+          <div class="text-amber-400 text-xs mt-1 font-mono">Fix: POST /api/projects/:id/kanban-state endpoint</div>
+        </div>
+        <div class="p-3 rounded-lg" style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2)">
+          <div class="text-amber-300 font-semibold text-sm">5. Saved Payment Methods UI</div>
+          <div class="text-slate-400 text-xs mt-1">Backend endpoints (setup-intent, save-payment-method) are present but frontend coin-purchase flow doesn't offer saved-card selection.</div>
+          <div class="text-amber-400 text-xs mt-1 font-mono">Fix: Extend openBuyCoinModal to list saved cards</div>
+        </div>
+        <div class="p-3 rounded-lg" style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2)">
+          <div class="text-amber-300 font-semibold text-sm">6. navigateTo Dual Declaration</div>
+          <div class="text-slate-400 text-xs mt-1">Two function navigateTo declarations existed (JS hoisting conflict). Second overwrite caused infinite recursion on vault balance refresh.</div>
+          <div class="text-green-400 text-xs mt-1 font-mono">✅ Fixed in this session — safe hook injected</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- DB Integrity -->
+    <div class="card p-6">
+      <h3 class="sub-title mb-4 flex items-center gap-2"><i class="fas fa-database text-cyan-400"></i> DB Integrity Report</h3>
+      <div class="space-y-3">
+        <div class="p-3 rounded-lg" style="background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.2)">
+          <div class="text-green-300 font-semibold text-sm">✅ 39 Tables Present &amp; Migrated</div>
+          <div class="text-slate-400 text-xs mt-1">All 6 migrations applied cleanly to local D1 (deploy-production)</div>
+        </div>
+        <div class="p-3 rounded-lg" style="background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.2)">
+          <div class="text-green-300 font-semibold text-sm">✅ Foreign Key Constraints</div>
+          <div class="text-slate-400 text-xs mt-1">All cross-table references use ON DELETE CASCADE where appropriate (users → wallets → ledger)</div>
+        </div>
+        <div class="p-3 rounded-lg" style="background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.2)">
+          <div class="text-green-300 font-semibold text-sm">✅ Indexes on Critical Queries</div>
+          <div class="text-slate-400 text-xs mt-1">idx on user_id, project_id, created_at across: ledger, intent_log, rate_limits, coin_analytics, spec_breakdowns</div>
+        </div>
+        <div class="p-3 rounded-lg" style="background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2)">
+          <div class="text-red-300 font-semibold text-sm">🔴 billing_events Missing coins_granted</div>
+          <div class="text-slate-400 text-xs mt-1">Route queried be.coins_granted which doesn't exist. Fixed: column removed from SELECT.</div>
+          <div class="text-green-400 text-xs mt-1 font-mono">✅ Bug resolved this session</div>
+        </div>
+        <div class="p-3 rounded-lg" style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2)">
+          <div class="text-amber-300 font-semibold text-sm">⚠️ coin_wallets: No Negative Balance Guard</div>
+          <div class="text-slate-400 text-xs mt-1">CoinService.debit() throws in code but no DB CHECK constraint. Concurrent requests could race.</div>
+          <div class="text-amber-400 text-xs mt-1 font-mono">Fix: ALTER TABLE + CHECK (balance >= 0) in migration 0007</div>
+        </div>
+        <div class="p-3 rounded-lg" style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2)">
+          <div class="text-amber-300 font-semibold text-sm">⚠️ D1 Production ID Missing in wrangler.jsonc</div>
+          <div class="text-slate-400 text-xs mt-1">database_id is a placeholder string — wrangler.jsonc must be updated with real CF D1 database ID before production deploy.</div>
+        </div>
+        <div class="p-3 rounded-lg" style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2)">
+          <div class="text-amber-300 font-semibold text-sm">⚠️ KV / R2 IDs are Placeholders</div>
+          <div class="text-slate-400 text-xs mt-1">DEPLOY_KV and deploy-assets R2 bucket not yet created in Cloudflare — bindings will fail in production.</div>
+        </div>
+        <div class="p-3 rounded-lg" style="background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.2)">
+          <div class="text-green-300 font-semibold text-sm">✅ Rate Limits Cleanup</div>
+          <div class="text-slate-400 text-xs mt-1">cleanupRateLimits() called from /api/health — deletes entries older than 1 hour, preventing table bloat</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Missing Logic Summary -->
+  <div class="card p-6 mb-6">
+    <h3 class="sub-title mb-4 flex items-center gap-2"><i class="fas fa-list-check text-purple-400"></i> Missing Logic Summary (Prioritized)</h3>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div>
+        <div class="text-red-400 font-bold text-sm mb-2 uppercase tracking-wider">Critical (P0)</div>
+        <ul class="space-y-1 text-xs text-slate-400">
+          <li class="flex gap-2"><span class="text-red-400">●</span>CF Pages API integration (real deploys)</li>
+          <li class="flex gap-2"><span class="text-red-400">●</span>Async job queue (CF Queues)</li>
+          <li class="flex gap-2"><span class="text-red-400">●</span>Production CF D1/KV/R2 IDs in config</li>
+          <li class="flex gap-2"><span class="text-red-400">●</span>Stripe webhook secret (STRIPE_WEBHOOK_SECRET)</li>
+          <li class="flex gap-2"><span class="text-red-400">●</span>JWT_SECRET env var (non-default required)</li>
+        </ul>
+      </div>
+      <div>
+        <div class="text-amber-400 font-bold text-sm mb-2 uppercase tracking-wider">High (P1)</div>
+        <ul class="space-y-1 text-xs text-slate-400">
+          <li class="flex gap-2"><span class="text-amber-400">●</span>Monthly coin grant CRON trigger</li>
+          <li class="flex gap-2"><span class="text-amber-400">●</span>DB negative-balance CHECK constraint</li>
+          <li class="flex gap-2"><span class="text-amber-400">●</span>Kanban state persistence API</li>
+          <li class="flex gap-2"><span class="text-amber-400">●</span>Email verification flow</li>
+          <li class="flex gap-2"><span class="text-amber-400">●</span>Saved card UI in buy-coin modal</li>
+          <li class="flex gap-2"><span class="text-amber-400">●</span>Admin: coin_analytics dashboard</li>
+        </ul>
+      </div>
+      <div>
+        <div class="text-blue-400 font-bold text-sm mb-2 uppercase tracking-wider">Medium (P2)</div>
+        <ul class="space-y-1 text-xs text-slate-400">
+          <li class="flex gap-2"><span class="text-blue-400">●</span>2FA (TOTP) implementation</li>
+          <li class="flex gap-2"><span class="text-blue-400">●</span>Project version history UI</li>
+          <li class="flex gap-2"><span class="text-blue-400">●</span>Custom domain management UI</li>
+          <li class="flex gap-2"><span class="text-blue-400">●</span>R2 file upload (uploaded_files)</li>
+          <li class="flex gap-2"><span class="text-blue-400">●</span>Team plan collaboration features</li>
+          <li class="flex gap-2"><span class="text-blue-400">●</span>Deployment health monitoring</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════ TAB: PHASES -->
+<div id="tab-phases" class="tab-panel">
+  <h2 class="section-title mb-6"><i class="fas fa-tasks text-cyan-400"></i>Phase 1–3 Implementation Plans</h2>
+
+  <!-- Phase Progress -->
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+    <div class="card p-5">
+      <div class="flex items-center justify-between mb-3">
+        <span class="badge-green px-3 py-1 rounded-full text-xs font-bold">Phase 1 — Solidification</span>
+        <span class="text-green-400 font-bold">78%</span>
+      </div>
+      <div class="phase-bar mb-2"><div class="phase-fill bg-green-500" style="width:78%"></div></div>
+      <div class="text-slate-400 text-xs">Core platform stability, security hardening, DB integrity</div>
+    </div>
+    <div class="card p-5">
+      <div class="flex items-center justify-between mb-3">
+        <span class="badge-yellow px-3 py-1 rounded-full text-xs font-bold">Phase 2 — Enhancements</span>
+        <span class="text-amber-400 font-bold">12%</span>
+      </div>
+      <div class="phase-bar mb-2"><div class="phase-fill bg-amber-500" style="width:12%"></div></div>
+      <div class="text-slate-400 text-xs">Vault FCC, Home Command Center, async queue, kanban persistence</div>
+    </div>
+    <div class="card p-5">
+      <div class="flex items-center justify-between mb-3">
+        <span class="badge-purple px-3 py-1 rounded-full text-xs font-bold">Phase 3 — Deliverability</span>
+        <span class="text-purple-400 font-bold">0%</span>
+      </div>
+      <div class="phase-bar mb-2"><div class="phase-fill bg-purple-500" style="width:0%"></div></div>
+      <div class="text-slate-400 text-xs">Real CF Pages deploys, custom domains, team features, marketplace</div>
+    </div>
+  </div>
+
+  <!-- Phase 1 -->
+  <div class="card mb-8">
+    <div class="px-6 py-4 border-b border-slate-700 flex items-center gap-3">
+      <span class="badge-green px-3 py-1 rounded-full text-xs font-bold">Phase 1</span>
+      <h3 class="text-white font-bold text-lg">Platform Solidification</h3>
+      <span class="text-slate-500 text-sm ml-auto">Weeks 1–4</span>
+    </div>
+    <div class="p-6 space-y-6">
+
+      <!-- P1 Tasks -->
+      <div>
+        <h4 class="text-cyan-400 font-semibold text-sm uppercase tracking-wider mb-3">Task List</h4>
+        <div class="space-y-2">
+          <div class="flex items-start gap-3 p-3 rounded-lg bg-slate-800">
+            <span class="badge-green px-2 py-0.5 rounded text-xs mt-0.5">✅</span>
+            <div>
+              <div class="text-sm font-semibold text-white">1.1 — Apply Migration 0006 (Rate Limits, Intent Log, Spec Transformer)</div>
+              <div class="text-slate-400 text-xs mt-0.5">rate_limits, intent_log, spec_breakdowns, coin_analytics, onboarding_progress tables — 28 commands, confirmed applied</div>
+            </div>
+          </div>
+          <div class="flex items-start gap-3 p-3 rounded-lg bg-slate-800">
+            <span class="badge-green px-2 py-0.5 rounded text-xs mt-0.5">✅</span>
+            <div>
+              <div class="text-sm font-semibold text-white">1.2 — Rate Limiting Middleware (all sensitive routes)</div>
+              <div class="text-slate-400 text-xs mt-0.5">auth (login/signup/forgot), build, AI-assist, vault checkout, summarize, chat — 429 + Retry-After headers</div>
+            </div>
+          </div>
+          <div class="flex items-start gap-3 p-3 rounded-lg bg-slate-800">
+            <span class="badge-green px-2 py-0.5 rounded text-xs mt-0.5">✅</span>
+            <div>
+              <div class="text-sm font-semibold text-white">1.3 — IntentLog Service + AI processIntent Integration</div>
+              <div class="text-slate-400 text-xs mt-0.5">SHA-256 hashed input, output summary, coin/token tracking, coin_analytics async aggregate</div>
+            </div>
+          </div>
+          <div class="flex items-start gap-3 p-3 rounded-lg bg-slate-800">
+            <span class="badge-green px-2 py-0.5 rounded text-xs mt-0.5">✅</span>
+            <div>
+              <div class="text-sm font-semibold text-white">1.4 — Vault Revenue Summary Bug Fix</div>
+              <div class="text-slate-400 text-xs mt-0.5">Removed invalid be.coins_granted column reference — endpoint now returns HTTP 200</div>
+            </div>
+          </div>
+          <div class="flex items-start gap-3 p-3 rounded-lg bg-slate-800">
+            <span class="badge-green px-2 py-0.5 rounded text-xs mt-0.5">✅</span>
+            <div>
+              <div class="text-sm font-semibold text-white">1.5 — Education Hub (API + Frontend)</div>
+              <div class="text-slate-400 text-xs mt-0.5">learn.ts route file: /api/learn/onboarding, /faq, /guides, /coin-economy. Education Hub page replaces old Info page.</div>
+            </div>
+          </div>
+          <div class="flex items-start gap-3 p-3 rounded-lg bg-slate-800">
+            <span class="badge-green px-2 py-0.5 rounded text-xs mt-0.5">✅</span>
+            <div>
+              <div class="text-sm font-semibold text-white">1.6 — navigateTo Recursion Fix</div>
+              <div class="text-slate-400 text-xs mt-0.5">Removed second navigateTo declaration — replaced with safe post-navigation hook</div>
+            </div>
+          </div>
+          <div class="flex items-start gap-3 p-3 rounded-lg" style="background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2)">
+            <span class="badge-red px-2 py-0.5 rounded text-xs mt-0.5">P0</span>
+            <div>
+              <div class="text-sm font-semibold text-white">1.7 — Migration 0007: DB Hardening</div>
+              <div class="text-slate-400 text-xs mt-0.5">Add CHECK (balance &gt;= 0) on coin_wallets. Add email_verified index. Add FK for spec_breakdowns → build_jobs.</div>
+              <div class="text-red-400 text-xs mt-1 font-mono">Status: PENDING — needs authoring + apply</div>
+            </div>
+          </div>
+          <div class="flex items-start gap-3 p-3 rounded-lg" style="background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2)">
+            <span class="badge-red px-2 py-0.5 rounded text-xs mt-0.5">P0</span>
+            <div>
+              <div class="text-sm font-semibold text-white">1.8 — Production Environment Configuration</div>
+              <div class="text-slate-400 text-xs mt-0.5">Create CF D1, KV, R2 resources. Update wrangler.jsonc IDs. Set STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, JWT_SECRET as CF Secrets.</div>
+              <div class="text-red-400 text-xs mt-1 font-mono">Status: BLOCKED on real CF account credentials</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- DB Schema Updates P1 -->
+      <div>
+        <h4 class="text-cyan-400 font-semibold text-sm uppercase tracking-wider mb-3">DB Schema Updates (Migration 0007)</h4>
+        <pre><code>-- 0007_db_hardening.sql
+-- Negative balance guard
+CREATE TRIGGER IF NOT EXISTS prevent_negative_balance
+BEFORE UPDATE ON coin_wallets
+WHEN NEW.balance &lt; 0
+BEGIN
+  SELECT RAISE(ABORT, 'Insufficient coins: balance cannot go negative');
+END;
+
+-- Email verification index
+CREATE INDEX IF NOT EXISTS idx_users_email_verified ON users(email_verified);
+
+-- Kanban state on projects
+ALTER TABLE projects ADD COLUMN kanban_state TEXT; -- JSON
+
+-- Build job idempotency
+CREATE UNIQUE INDEX IF NOT EXISTS idx_build_jobs_project_status 
+ON build_jobs(project_id, status) 
+WHERE status IN ('queued','processing');
+
+-- Deployment platform metadata
+ALTER TABLE deployments ADD COLUMN cf_account_id TEXT;
+ALTER TABLE deployments ADD COLUMN cf_pages_url TEXT;
+ALTER TABLE deployments ADD COLUMN cf_deployment_id TEXT;</code></pre>
+      </div>
+
+      <!-- New Services P1 -->
+      <div>
+        <h4 class="text-cyan-400 font-semibold text-sm uppercase tracking-wider mb-3">New Services (Phase 1)</h4>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div class="p-3 rounded-lg bg-slate-800 text-xs">
+            <div class="text-white font-semibold mb-1">services/cloudflare.service.ts</div>
+            <div class="text-slate-400">CF Pages API wrapper: createProject(), deployPages(), getDeploymentStatus(), rollback(). Uses CLOUDFLARE_API_TOKEN secret.</div>
+          </div>
+          <div class="p-3 rounded-lg bg-slate-800 text-xs">
+            <div class="text-white font-semibold mb-1">services/scheduled.service.ts</div>
+            <div class="text-slate-400">Scheduled Worker handler: grantMonthlyCoins(), cleanupExpiredSessions(), archiveOldRateLimits(). Wired to CF Cron Triggers.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Phase 2 -->
+  <div class="card mb-8">
+    <div class="px-6 py-4 border-b border-slate-700 flex items-center gap-3">
+      <span class="badge-yellow px-3 py-1 rounded-full text-xs font-bold">Phase 2</span>
+      <h3 class="text-white font-bold text-lg">Platform Enhancements</h3>
+      <span class="text-slate-500 text-sm ml-auto">Weeks 5–10</span>
+    </div>
+    <div class="p-6 space-y-6">
+      <div>
+        <h4 class="text-amber-400 font-semibold text-sm uppercase tracking-wider mb-3">Task List</h4>
+        <div class="space-y-2">
+          <div class="flex items-start gap-3 p-3 rounded-lg bg-slate-800">
+            <span class="badge-yellow px-2 py-0.5 rounded text-xs mt-0.5">P1</span>
+            <div>
+              <div class="text-sm font-semibold text-white">2.1 — Async Build Queue (CF Queues + Durable Objects)</div>
+              <div class="text-slate-400 text-xs mt-0.5">POST /build enqueues job → CF Queue → Worker processes → updates build_jobs status via DO. Eliminates CPU timeout risk.</div>
+            </div>
+          </div>
+          <div class="flex items-start gap-3 p-3 rounded-lg bg-slate-800">
+            <span class="badge-yellow px-2 py-0.5 rounded text-xs mt-0.5">P1</span>
+            <div>
+              <div class="text-sm font-semibold text-white">2.2 — Vault Financial Control Center (full UI)</div>
+              <div class="text-slate-400 text-xs mt-0.5">Analytics tab: monthly spend chart (Chart.js). Ledger tab: paginated transactions. Billing tab: invoices from billing_events. Saved cards list.</div>
+            </div>
+          </div>
+          <div class="flex items-start gap-3 p-3 rounded-lg bg-slate-800">
+            <span class="badge-yellow px-2 py-0.5 rounded text-xs mt-0.5">P1</span>
+            <div>
+              <div class="text-sm font-semibold text-white">2.3 — Home Command Center Redesign</div>
+              <div class="text-slate-400 text-xs mt-0.5">Real-time project health cards, recent AI activity feed from intent_log, coin trend sparkline, onboarding checklist widget, build status live poll.</div>
+            </div>
+          </div>
+          <div class="flex items-start gap-3 p-3 rounded-lg bg-slate-800">
+            <span class="badge-yellow px-2 py-0.5 rounded text-xs mt-0.5">P1</span>
+            <div>
+              <div class="text-sm font-semibold text-white">2.4 — Monthly Coin Grant CRON</div>
+              <div class="text-slate-400 text-xs mt-0.5">CF Cron Trigger: "0 0 1 * *" → scheduled Worker calls grantMonthlyCoins() for all active memberships. Prevents duplicate grants via last_grant_at check.</div>
+            </div>
+          </div>
+          <div class="flex items-start gap-3 p-3 rounded-lg bg-slate-800">
+            <span class="badge-yellow px-2 py-0.5 rounded text-xs mt-0.5">P1</span>
+            <div>
+              <div class="text-sm font-semibold text-white">2.5 — Kanban State Persistence</div>
+              <div class="text-slate-400 text-xs mt-0.5">POST /api/projects/:id/kanban-state stores column positions in projects.kanban_state (JSON). GET /api/projects/:id returns it. Frontend reads on load.</div>
+            </div>
+          </div>
+          <div class="flex items-start gap-3 p-3 rounded-lg bg-slate-800">
+            <span class="badge-yellow px-2 py-0.5 rounded text-xs mt-0.5">P2</span>
+            <div>
+              <div class="text-sm font-semibold text-white">2.6 — Email Verification Flow</div>
+              <div class="text-slate-400 text-xs mt-0.5">On signup: send verification email with signed token link. GET /api/auth/verify-email?token= sets email_verified=1. Banner until verified.</div>
+            </div>
+          </div>
+          <div class="flex items-start gap-3 p-3 rounded-lg bg-slate-800">
+            <span class="badge-yellow px-2 py-0.5 rounded text-xs mt-0.5">P2</span>
+            <div>
+              <div class="text-sm font-semibold text-white">2.7 — Project Version History API + UI</div>
+              <div class="text-slate-400 text-xs mt-0.5">GET /api/projects/:id/versions → project_versions table. UI shows diff timeline. Restore button calls POST /api/projects/:id/restore/:version_id.</div>
+            </div>
+          </div>
+          <div class="flex items-start gap-3 p-3 rounded-lg bg-slate-800">
+            <span class="badge-yellow px-2 py-0.5 rounded text-xs mt-0.5">P2</span>
+            <div>
+              <div class="text-sm font-semibold text-white">2.8 — R2 File Upload (assets, screenshots)</div>
+              <div class="text-slate-400 text-xs mt-0.5">POST /api/projects/:id/upload → streams to DEPLOY_R2. uploaded_files table tracks metadata. Max 5MB/file per plan limits.</div>
+            </div>
+          </div>
+          <div class="flex items-start gap-3 p-3 rounded-lg bg-slate-800">
+            <span class="badge-yellow px-2 py-0.5 rounded text-xs mt-0.5">P2</span>
+            <div>
+              <div class="text-sm font-semibold text-white">2.9 — Admin Coin Analytics Dashboard</div>
+              <div class="text-slate-400 text-xs mt-0.5">Admin panel: coin_analytics aggregates by model/period. Shows burn rate, most-used models, revenue attribution. Chart.js visualizations.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- DB Schema P2 -->
+      <div>
+        <h4 class="text-amber-400 font-semibold text-sm uppercase tracking-wider mb-3">DB Schema Updates (Migration 0008)</h4>
+        <pre><code>-- 0008_phase2_enhancements.sql
+
+-- Async build queue events
+CREATE TABLE IF NOT EXISTS build_queue_events (
+  id TEXT PRIMARY KEY,
+  job_id TEXT NOT NULL,
+  event_type TEXT NOT NULL,  -- enqueued, processing, completed, failed
+  payload TEXT,              -- JSON
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (job_id) REFERENCES build_jobs(id) ON DELETE CASCADE
+);
+
+-- Feature flag per-user overrides
+CREATE TABLE IF NOT EXISTS user_feature_flags (
+  user_id TEXT NOT NULL,
+  flag_key TEXT NOT NULL,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  PRIMARY KEY(user_id, flag_key),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- Email verification tokens
+CREATE TABLE IF NOT EXISTS email_verifications (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  token_hash TEXT UNIQUE NOT NULL,
+  expires_at DATETIME NOT NULL,
+  used INTEGER NOT NULL DEFAULT 0,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- Monthly grant log (prevent duplicate grants)
+CREATE TABLE IF NOT EXISTS coin_grant_log (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  period TEXT NOT NULL,           -- YYYY-MM
+  coins_granted INTEGER NOT NULL,
+  granted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(user_id, period)
+);</code></pre>
+      </div>
+
+      <!-- UI/API Changes P2 -->
+      <div>
+        <h4 class="text-amber-400 font-semibold text-sm uppercase tracking-wider mb-3">New API Endpoints (Phase 2)</h4>
+        <div class="overflow-x-auto">
+          <table class="w-full text-xs">
+            <thead>
+              <tr class="border-b border-slate-700">
+                <th class="px-4 py-2 text-left text-slate-400">Method</th>
+                <th class="px-4 py-2 text-left text-slate-400">Endpoint</th>
+                <th class="px-4 py-2 text-left text-slate-400">Description</th>
+              </tr>
+            </thead>
+            <tbody class="text-slate-300">
+              <tr class="border-b border-slate-800"><td class="px-4 py-2 text-green-400">POST</td><td class="px-4 py-2 font-mono">/api/projects/:id/kanban-state</td><td class="px-4 py-2">Persist kanban column state</td></tr>
+              <tr class="border-b border-slate-800"><td class="px-4 py-2 text-blue-400">GET</td><td class="px-4 py-2 font-mono">/api/projects/:id/versions</td><td class="px-4 py-2">List version history</td></tr>
+              <tr class="border-b border-slate-800"><td class="px-4 py-2 text-green-400">POST</td><td class="px-4 py-2 font-mono">/api/projects/:id/restore/:vid</td><td class="px-4 py-2">Restore project to version</td></tr>
+              <tr class="border-b border-slate-800"><td class="px-4 py-2 text-green-400">POST</td><td class="px-4 py-2 font-mono">/api/projects/:id/upload</td><td class="px-4 py-2">Upload file to R2</td></tr>
+              <tr class="border-b border-slate-800"><td class="px-4 py-2 text-blue-400">GET</td><td class="px-4 py-2 font-mono">/api/auth/verify-email</td><td class="px-4 py-2">Verify email token</td></tr>
+              <tr class="border-b border-slate-800"><td class="px-4 py-2 text-blue-400">GET</td><td class="px-4 py-2 font-mono">/api/vault/analytics?months=6</td><td class="px-4 py-2">Coin analytics (already live)</td></tr>
+              <tr class="border-b border-slate-800"><td class="px-4 py-2 text-blue-400">GET</td><td class="px-4 py-2 font-mono">/api/vault/intent-log</td><td class="px-4 py-2">User intent audit log (already live)</td></tr>
+              <tr class="border-b border-slate-800"><td class="px-4 py-2 text-green-400">POST</td><td class="px-4 py-2 font-mono">/api/scheduled/grant-coins</td><td class="px-4 py-2">CF Cron trigger handler</td></tr>
+              <tr class="border-b border-slate-800"><td class="px-4 py-2 text-blue-400">GET</td><td class="px-4 py-2 font-mono">/api/admin/coin-analytics</td><td class="px-4 py-2">Admin coin economy overview</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Phase 3 -->
+  <div class="card mb-8">
+    <div class="px-6 py-4 border-b border-slate-700 flex items-center gap-3">
+      <span class="badge-purple px-3 py-1 rounded-full text-xs font-bold">Phase 3</span>
+      <h3 class="text-white font-bold text-lg">Deliverability &amp; Scale</h3>
+      <span class="text-slate-500 text-sm ml-auto">Weeks 11–18</span>
+    </div>
+    <div class="p-6 space-y-6">
+      <div>
+        <h4 class="text-purple-400 font-semibold text-sm uppercase tracking-wider mb-3">Task List</h4>
+        <div class="space-y-2">
+          <div class="flex items-start gap-3 p-3 rounded-lg bg-slate-800">
+            <span class="badge-red px-2 py-0.5 rounded text-xs mt-0.5">P0</span>
+            <div>
+              <div class="text-sm font-semibold text-white">3.1 — Real Cloudflare Pages API Integration</div>
+              <div class="text-slate-400 text-xs mt-0.5">CloudflareService: createProject() via CF API. Upload generated assets to R2. Trigger CF Pages deployment from R2 source. Poll status. Update deployments record with real URL.</div>
+            </div>
+          </div>
+          <div class="flex items-start gap-3 p-3 rounded-lg bg-slate-800">
+            <span class="badge-red px-2 py-0.5 rounded text-xs mt-0.5">P0</span>
+            <div>
+              <div class="text-sm font-semibold text-white">3.2 — Code Generation Engine</div>
+              <div class="text-slate-400 text-xs mt-0.5">From spec_breakdowns: generate actual Hono Worker code, Tailwind UI HTML, D1 schema SQL. Store as generated_outputs. Feed to CF Pages deploy.</div>
+            </div>
+          </div>
+          <div class="flex items-start gap-3 p-3 rounded-lg bg-slate-800">
+            <span class="badge-purple px-2 py-0.5 rounded text-xs mt-0.5">P1</span>
+            <div>
+              <div class="text-sm font-semibold text-white">3.3 — Custom Domain Management</div>
+              <div class="text-slate-400 text-xs mt-0.5">POST /api/deployments/:id/domain → CF Zone API + Pages custom domain. DNS verification check endpoint. CNAME instructions shown to user.</div>
+            </div>
+          </div>
+          <div class="flex items-start gap-3 p-3 rounded-lg bg-slate-800">
+            <span class="badge-purple px-2 py-0.5 rounded text-xs mt-0.5">P1</span>
+            <div>
+              <div class="text-sm font-semibold text-white">3.4 — Two-Factor Authentication (TOTP)</div>
+              <div class="text-slate-400 text-xs mt-0.5">POST /api/auth/2fa/setup → TOTP secret (HOTP/SHA-1). QR code via /api/auth/2fa/qr. POST /api/auth/2fa/verify during login challenge. Backup codes stored hashed.</div>
+            </div>
+          </div>
+          <div class="flex items-start gap-3 p-3 rounded-lg bg-slate-800">
+            <span class="badge-purple px-2 py-0.5 rounded text-xs mt-0.5">P1</span>
+            <div>
+              <div class="text-sm font-semibold text-white">3.5 — Deployment Health Monitor</div>
+              <div class="text-slate-400 text-xs mt-0.5">Scheduled Worker pings deployment URLs every 15min. Updates health_status. Sends notification on degraded/down. Frontend shows green/red badge.</div>
+            </div>
+          </div>
+          <div class="flex items-start gap-3 p-3 rounded-lg bg-slate-800">
+            <span class="badge-purple px-2 py-0.5 rounded text-xs mt-0.5">P2</span>
+            <div>
+              <div class="text-sm font-semibold text-white">3.6 — Team Plan Collaboration</div>
+              <div class="text-slate-400 text-xs mt-0.5">Invite team member (POST /api/teams/invite). Shared project access. Role-based permissions (owner/editor/viewer). Activity feed per project.</div>
+            </div>
+          </div>
+          <div class="flex items-start gap-3 p-3 rounded-lg bg-slate-800">
+            <span class="badge-purple px-2 py-0.5 rounded text-xs mt-0.5">P2</span>
+            <div>
+              <div class="text-sm font-semibold text-white">3.7 — Marketplace / Template Gallery</div>
+              <div class="text-slate-400 text-xs mt-0.5">Admin-curated starter templates stored in KV. Users fork template → new project with pre-filled prompt fields. Premium templates cost coins.</div>
+            </div>
+          </div>
+          <div class="flex items-start gap-3 p-3 rounded-lg bg-slate-800">
+            <span class="badge-purple px-2 py-0.5 rounded text-xs mt-0.5">P2</span>
+            <div>
+              <div class="text-sm font-semibold text-white">3.8 — Deployment Preview Environments</div>
+              <div class="text-slate-400 text-xs mt-0.5">Each build gets a unique preview URL on CF Pages branch deploy. Preview expires after 7 days (CF Pages preview retention). Link shown in build job detail.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- DB Schema P3 -->
+      <div>
+        <h4 class="text-purple-400 font-semibold text-sm uppercase tracking-wider mb-3">DB Schema Updates (Migration 0009)</h4>
+        <pre><code>-- 0009_phase3_deliverability.sql
+
+-- Team membership
+CREATE TABLE IF NOT EXISTS team_members (
+  id TEXT PRIMARY KEY,
+  team_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  role TEXT NOT NULL DEFAULT 'editor',  -- owner, editor, viewer
+  invited_by TEXT,
+  accepted_at DATETIME,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(team_id, user_id)
+);
+
+-- Template marketplace
+CREATE TABLE IF NOT EXISTS templates (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  description TEXT,
+  category TEXT,
+  prompt_fields_json TEXT,   -- pre-filled prompt field values
+  preview_image_r2_key TEXT,
+  coin_cost INTEGER NOT NULL DEFAULT 0,
+  is_premium INTEGER NOT NULL DEFAULT 0,
+  is_active INTEGER NOT NULL DEFAULT 1,
+  use_count INTEGER NOT NULL DEFAULT 0,
+  created_by TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Custom domains
+CREATE TABLE IF NOT EXISTS custom_domains (
+  id TEXT PRIMARY KEY,
+  deployment_id TEXT NOT NULL,
+  domain TEXT UNIQUE NOT NULL,
+  verification_status TEXT NOT NULL DEFAULT 'pending', -- pending, verified, failed
+  cf_zone_id TEXT,
+  ssl_status TEXT,
+  verified_at DATETIME,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (deployment_id) REFERENCES deployments(id) ON DELETE CASCADE
+);
+
+-- 2FA backup codes
+CREATE TABLE IF NOT EXISTS two_factor_backup_codes (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  code_hash TEXT NOT NULL,
+  used INTEGER NOT NULL DEFAULT 0,
+  used_at DATETIME,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);</code></pre>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════ TAB: INFRASTRUCTURE -->
+<div id="tab-infra" class="tab-panel">
+  <h2 class="section-title mb-6"><i class="fas fa-sitemap text-cyan-400"></i>Infrastructure Diagram — Cloudflare-Only Stack</h2>
+
+  <!-- Architecture Visual -->
+  <div class="card p-8 mb-6">
+    <h3 class="sub-title mb-6 text-center">End-to-End Architecture (Cloudflare Edge)</h3>
+
+    <!-- Layer: Client -->
+    <div class="mb-8">
+      <div class="text-xs text-slate-500 uppercase tracking-widest mb-3 text-center font-semibold">CLIENT LAYER</div>
+      <div class="flex justify-center">
+        <div class="card-glow card px-8 py-4 flex items-center gap-4">
+          <div class="infra-icon" style="background:rgba(6,182,212,.15)"><i class="fas fa-mobile-alt text-cyan-400"></i></div>
+          <div>
+            <div class="text-white font-semibold">Browser / PWA</div>
+            <div class="text-slate-400 text-xs">SPA: HTML + Tailwind + Vanilla JS</div>
+            <div class="text-slate-500 text-xs">CDN: Tailwind, FontAwesome, Chart.js, Axios</div>
+          </div>
+        </div>
+      </div>
+      <div class="flex justify-center mt-3">
+        <div class="text-slate-500 text-xs flex items-center gap-2">
+          <span>HTTPS API calls</span>
+          <i class="fas fa-arrow-down text-cyan-600"></i>
+        </div>
+      </div>
+    </div>
+
+    <!-- Layer: CF Edge -->
+    <div class="mb-8">
+      <div class="text-xs text-slate-500 uppercase tracking-widest mb-3 text-center font-semibold">CLOUDFLARE EDGE (Workers / Pages)</div>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="card p-4">
+          <div class="flex items-center gap-3 mb-3">
+            <div class="infra-icon w-10 h-10 rounded-lg" style="background:rgba(249,115,22,.15)"><i class="fas fa-file-code text-orange-400 text-sm"></i></div>
+            <div class="text-white font-semibold text-sm">CF Pages</div>
+          </div>
+          <div class="text-slate-400 text-xs space-y-1">
+            <div>• Serves SPA (index.html)</div>
+            <div>• Static assets (app.js, styles.css)</div>
+            <div>• Auto-HTTPS + global CDN</div>
+            <div>• Branch preview URLs</div>
+          </div>
+        </div>
+        <div class="card-glow card p-4">
+          <div class="flex items-center gap-3 mb-3">
+            <div class="infra-icon w-10 h-10 rounded-lg" style="background:rgba(6,182,212,.15)"><i class="fas fa-bolt text-cyan-400 text-sm"></i></div>
+            <div class="text-white font-semibold text-sm">CF Worker (_worker.js)</div>
+          </div>
+          <div class="text-slate-400 text-xs space-y-1">
+            <div>• Hono router (285 KB bundle)</div>
+            <div>• 11 route modules</div>
+            <div>• JWT auth middleware</div>
+            <div>• Rate limit middleware</div>
+            <div>• CORS, request ID headers</div>
+          </div>
+        </div>
+        <div class="card p-4">
+          <div class="flex items-center gap-3 mb-3">
+            <div class="infra-icon w-10 h-10 rounded-lg" style="background:rgba(168,85,247,.15)"><i class="fas fa-clock text-purple-400 text-sm"></i></div>
+            <div class="text-white font-semibold text-sm">CF Cron Trigger (Phase 1.8)</div>
+          </div>
+          <div class="text-slate-400 text-xs space-y-1">
+            <div>• Monthly coin grants</div>
+            <div>• Session cleanup</div>
+            <div>• Rate limit pruning</div>
+            <div>• Deployment health checks</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Layer: Data -->
+    <div class="mb-8">
+      <div class="text-xs text-slate-500 uppercase tracking-widest mb-3 text-center font-semibold">CLOUDFLARE DATA SERVICES</div>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="card p-4">
+          <div class="flex items-center gap-3 mb-3">
+            <div class="infra-icon w-10 h-10 rounded-lg" style="background:rgba(34,197,94,.15)"><i class="fas fa-database text-green-400 text-sm"></i></div>
+            <div>
+              <div class="text-white font-semibold text-sm">Cloudflare D1</div>
+              <div class="text-slate-500 text-xs">(deploy-production)</div>
+            </div>
+          </div>
+          <div class="text-slate-400 text-xs space-y-1">
+            <div>• 39 tables, 6 migrations</div>
+            <div>• SQLite dialect</div>
+            <div>• Global read replicas</div>
+            <div>• Binding: <span class="font-mono text-green-400">DB</span></div>
+          </div>
+          <div class="mt-2 text-slate-600 text-xs">Tables: users, projects, build_jobs, coin_wallets, coin_ledger_entries, intent_log, spec_breakdowns, deployments, plans, memberships, ai_models, notifications, rate_limits ...</div>
+        </div>
+        <div class="card p-4">
+          <div class="flex items-center gap-3 mb-3">
+            <div class="infra-icon w-10 h-10 rounded-lg" style="background:rgba(245,158,11,.15)"><i class="fas fa-key text-amber-400 text-sm"></i></div>
+            <div>
+              <div class="text-white font-semibold text-sm">Cloudflare KV</div>
+              <div class="text-slate-500 text-xs">(DEPLOY_KV)</div>
+            </div>
+          </div>
+          <div class="text-slate-400 text-xs space-y-1">
+            <div>• Feature flags cache</div>
+            <div>• Session token cache</div>
+            <div>• Template gallery JSON</div>
+            <div>• Binding: <span class="font-mono text-amber-400">DEPLOY_KV</span></div>
+          </div>
+          <div class="mt-2 text-red-400 text-xs">⚠️ IDs not yet provisioned in CF account</div>
+        </div>
+        <div class="card p-4">
+          <div class="flex items-center gap-3 mb-3">
+            <div class="infra-icon w-10 h-10 rounded-lg" style="background:rgba(239,68,68,.15)"><i class="fas fa-bucket text-red-400 text-sm"></i></div>
+            <div>
+              <div class="text-white font-semibold text-sm">Cloudflare R2</div>
+              <div class="text-slate-500 text-xs">(deploy-assets)</div>
+            </div>
+          </div>
+          <div class="text-slate-400 text-xs space-y-1">
+            <div>• Generated code artifacts</div>
+            <div>• User uploads / screenshots</div>
+            <div>• Deployment bundles</div>
+            <div>• Binding: <span class="font-mono text-red-400">DEPLOY_R2</span></div>
+          </div>
+          <div class="mt-2 text-red-400 text-xs">⚠️ Bucket not yet created in CF account</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Layer: Third-Party -->
+    <div class="mb-4">
+      <div class="text-xs text-slate-500 uppercase tracking-widest mb-3 text-center font-semibold">THIRD-PARTY SERVICES (Server-Side Only)</div>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="card p-4">
+          <div class="flex items-center gap-3 mb-3">
+            <div class="infra-icon w-10 h-10 rounded-lg" style="background:rgba(99,102,241,.15)"><i class="fab fa-stripe text-indigo-400 text-sm"></i></div>
+            <div>
+              <div class="text-white font-semibold text-sm">Stripe</div>
+              <div class="text-slate-500 text-xs">Payments &amp; Subscriptions</div>
+            </div>
+          </div>
+          <div class="text-slate-400 text-xs space-y-1">
+            <div>• Coin package checkout</div>
+            <div>• Plan subscription billing</div>
+            <div>• Customer billing portal</div>
+            <div>• Webhook: /api/webhooks/stripe</div>
+            <div>• Secret: STRIPE_SECRET_KEY</div>
+          </div>
+        </div>
+        <div class="card p-4">
+          <div class="flex items-center gap-3 mb-3">
+            <div class="infra-icon w-10 h-10 rounded-lg" style="background:rgba(6,182,212,.15)"><i class="fas fa-robot text-cyan-400 text-sm"></i></div>
+            <div>
+              <div class="text-white font-semibold text-sm">OpenAI / Anthropic</div>
+              <div class="text-slate-500 text-xs">AI Intent Layer</div>
+            </div>
+          </div>
+          <div class="text-slate-400 text-xs space-y-1">
+            <div>• GPT-4o Mini / GPT-4o</div>
+            <div>• Claude 3.5 Haiku / Sonnet</div>
+            <div>• Provider fallback logic</div>
+            <div>• Secrets: OPENAI_API_KEY, ANTHROPIC_API_KEY</div>
+          </div>
+        </div>
+        <div class="card p-4">
+          <div class="flex items-center gap-3 mb-3">
+            <div class="infra-icon w-10 h-10 rounded-lg" style="background:rgba(239,68,68,.15)"><i class="fas fa-envelope text-red-400 text-sm"></i></div>
+            <div>
+              <div class="text-white font-semibold text-sm">Resend</div>
+              <div class="text-slate-500 text-xs">Transactional Email</div>
+            </div>
+          </div>
+          <div class="text-slate-400 text-xs space-y-1">
+            <div>• Welcome email (signup)</div>
+            <div>• Password reset link</div>
+            <div>• Build complete notification</div>
+            <div>• Secret: RESEND_API_KEY</div>
+            <div>• From: noreply@deployapp.io</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Request Flow -->
+    <div class="mt-8 p-5 rounded-xl" style="background:#0c1a2e;border:1px solid #1e3a5f">
+      <div class="text-xs text-slate-500 uppercase tracking-widest mb-4 text-center font-semibold">End-to-End Request Flow (Build → Deploy)</div>
+      <div class="flex flex-wrap justify-center items-center gap-2 text-xs">
+        <div class="card px-3 py-2 text-center"><div class="text-cyan-400 font-semibold">1. User</div><div class="text-slate-400">Click Build</div></div>
+        <div class="text-slate-600">→</div>
+        <div class="card px-3 py-2 text-center"><div class="text-orange-400 font-semibold">2. CF Pages</div><div class="text-slate-400">SPA served</div></div>
+        <div class="text-slate-600">→</div>
+        <div class="card px-3 py-2 text-center"><div class="text-cyan-400 font-semibold">3. Worker</div><div class="text-slate-400">POST /build</div></div>
+        <div class="text-slate-600">→</div>
+        <div class="card px-3 py-2 text-center"><div class="text-green-400 font-semibold">4. D1</div><div class="text-slate-400">Hold coins</div></div>
+        <div class="text-slate-600">→</div>
+        <div class="card px-3 py-2 text-center"><div class="text-cyan-400 font-semibold">5. AIService</div><div class="text-slate-400">Intent Layer</div></div>
+        <div class="text-slate-600">→</div>
+        <div class="card px-3 py-2 text-center"><div class="text-purple-400 font-semibold">6. OpenAI</div><div class="text-slate-400">Generate spec</div></div>
+        <div class="text-slate-600">→</div>
+        <div class="card px-3 py-2 text-center"><div class="text-green-400 font-semibold">7. D1</div><div class="text-slate-400">Store output</div></div>
+        <div class="text-slate-600">→</div>
+        <div class="card px-3 py-2 text-center"><div class="text-amber-400 font-semibold">8. Debit</div><div class="text-slate-400">Coins spent</div></div>
+        <div class="text-slate-600">→</div>
+        <div class="card px-3 py-2 text-center"><div class="text-red-400 font-semibold">9. R2</div><div class="text-slate-400">Store artifacts</div></div>
+        <div class="text-slate-600">→</div>
+        <div class="card px-3 py-2 text-center"><div class="text-orange-400 font-semibold">10. CF Pages</div><div class="text-slate-400">Deploy app</div></div>
+        <div class="text-slate-600">→</div>
+        <div class="card px-3 py-2 text-center"><div class="text-green-400 font-semibold">11. Live!</div><div class="text-slate-400">*.pages.dev</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Cloudflare Secrets Required -->
+  <div class="card p-6">
+    <h3 class="sub-title mb-4"><i class="fas fa-lock text-amber-400 mr-2"></i>Required Cloudflare Secrets (Production)</h3>
+    <div class="overflow-x-auto">
+      <table class="w-full text-xs">
+        <thead>
+          <tr class="border-b border-slate-700">
+            <th class="px-4 py-2 text-left text-slate-400">Secret Name</th>
+            <th class="px-4 py-2 text-left text-slate-400">Service</th>
+            <th class="px-4 py-2 text-left text-slate-400">Required</th>
+            <th class="px-4 py-2 text-left text-slate-400">Set Command</th>
+          </tr>
+        </thead>
+        <tbody class="text-slate-300">
+          <tr class="border-b border-slate-800"><td class="px-4 py-2 font-mono text-red-400">JWT_SECRET</td><td class="px-4 py-2">Auth</td><td class="px-4 py-2"><span class="badge-red px-2 py-0.5 rounded text-xs">Critical</span></td><td class="px-4 py-2 font-mono text-slate-500 text-xs">wrangler pages secret put JWT_SECRET</td></tr>
+          <tr class="border-b border-slate-800"><td class="px-4 py-2 font-mono text-red-400">STRIPE_SECRET_KEY</td><td class="px-4 py-2">Stripe</td><td class="px-4 py-2"><span class="badge-red px-2 py-0.5 rounded text-xs">Critical</span></td><td class="px-4 py-2 font-mono text-slate-500 text-xs">wrangler pages secret put STRIPE_SECRET_KEY</td></tr>
+          <tr class="border-b border-slate-800"><td class="px-4 py-2 font-mono text-red-400">STRIPE_WEBHOOK_SECRET</td><td class="px-4 py-2">Stripe</td><td class="px-4 py-2"><span class="badge-red px-2 py-0.5 rounded text-xs">Critical</span></td><td class="px-4 py-2 font-mono text-slate-500 text-xs">wrangler pages secret put STRIPE_WEBHOOK_SECRET</td></tr>
+          <tr class="border-b border-slate-800"><td class="px-4 py-2 font-mono text-amber-400">OPENAI_API_KEY</td><td class="px-4 py-2">AI</td><td class="px-4 py-2"><span class="badge-yellow px-2 py-0.5 rounded text-xs">Required</span></td><td class="px-4 py-2 font-mono text-slate-500 text-xs">wrangler pages secret put OPENAI_API_KEY</td></tr>
+          <tr class="border-b border-slate-800"><td class="px-4 py-2 font-mono text-amber-400">ANTHROPIC_API_KEY</td><td class="px-4 py-2">AI</td><td class="px-4 py-2"><span class="badge-yellow px-2 py-0.5 rounded text-xs">Recommended</span></td><td class="px-4 py-2 font-mono text-slate-500 text-xs">wrangler pages secret put ANTHROPIC_API_KEY</td></tr>
+          <tr class="border-b border-slate-800"><td class="px-4 py-2 font-mono text-blue-400">RESEND_API_KEY</td><td class="px-4 py-2">Email</td><td class="px-4 py-2"><span class="badge-blue px-2 py-0.5 rounded text-xs">Optional</span></td><td class="px-4 py-2 font-mono text-slate-500 text-xs">wrangler pages secret put RESEND_API_KEY</td></tr>
+          <tr class="border-b border-slate-800"><td class="px-4 py-2 font-mono text-blue-400">CLOUDFLARE_API_TOKEN</td><td class="px-4 py-2">CF Deploy</td><td class="px-4 py-2"><span class="badge-blue px-2 py-0.5 rounded text-xs">Phase 3</span></td><td class="px-4 py-2 font-mono text-slate-500 text-xs">wrangler pages secret put CLOUDFLARE_API_TOKEN</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════ TAB: RISKS -->
+<div id="tab-risks" class="tab-panel">
+  <h2 class="section-title mb-6"><i class="fas fa-shield-alt text-cyan-400"></i>Risk Areas &amp; Mitigation Strategies</h2>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+
+    <!-- Risk Matrix -->
+    <div class="card p-6 lg:col-span-2">
+      <h3 class="sub-title mb-4">Risk Severity Matrix</h3>
+      <div class="overflow-x-auto">
+        <table class="risk-matrix">
+          <thead>
+            <tr>
+              <th>Risk ID</th>
+              <th>Area</th>
+              <th>Description</th>
+              <th>Severity</th>
+              <th>Probability</th>
+              <th>Phase</th>
+              <th>Mitigation</th>
+            </tr>
+          </thead>
+          <tbody class="text-slate-300">
+            <tr style="background:rgba(239,68,68,.08)">
+              <td class="font-mono">R-001</td>
+              <td>Deployment</td>
+              <td>simulateDeployment() — no real CF Pages API call</td>
+              <td><span class="badge-red px-2 py-0.5 rounded text-xs">Critical</span></td>
+              <td>100% (current)</td>
+              <td>P3</td>
+              <td>Implement CloudflareService with CF API v4. Store API token as secret.</td>
+            </tr>
+            <tr style="background:rgba(239,68,68,.08)">
+              <td class="font-mono">R-002</td>
+              <td>Build Queue</td>
+              <td>Synchronous AI call in Workers (30ms CPU limit)</td>
+              <td><span class="badge-red px-2 py-0.5 rounded text-xs">Critical</span></td>
+              <td>High on complex builds</td>
+              <td>P2</td>
+              <td>CF Queues + Durable Objects for async dispatch. Health check rescues stuck jobs.</td>
+            </tr>
+            <tr style="background:rgba(239,68,68,.08)">
+              <td class="font-mono">R-003</td>
+              <td>Security</td>
+              <td>Default JWT_SECRET in production ("deploy-secret-key-change-in-production")</td>
+              <td><span class="badge-red px-2 py-0.5 rounded text-xs">Critical</span></td>
+              <td>High if unset</td>
+              <td>P1</td>
+              <td>Set via wrangler pages secret put JWT_SECRET. Rotate monthly. Startup check throws if default detected.</td>
+            </tr>
+            <tr style="background:rgba(239,68,68,.08)">
+              <td class="font-mono">R-004</td>
+              <td>Payments</td>
+              <td>STRIPE_WEBHOOK_SECRET not set — webhook auth bypassed</td>
+              <td><span class="badge-red px-2 py-0.5 rounded text-xs">Critical</span></td>
+              <td>Medium</td>
+              <td>P1</td>
+              <td>verifyWebhook() will fail gracefully (400) but legitimate events are also rejected. Must set secret in CF.</td>
+            </tr>
+            <tr style="background:rgba(245,158,11,.08)">
+              <td class="font-mono">R-005</td>
+              <td>DB Integrity</td>
+              <td>No DB-level negative balance guard on coin_wallets</td>
+              <td><span class="badge-yellow px-2 py-0.5 rounded text-xs">High</span></td>
+              <td>Low (code-level check exists)</td>
+              <td>P1</td>
+              <td>Add TRIGGER prevent_negative_balance in migration 0007. UNIQUE constraint on active job per project.</td>
+            </tr>
+            <tr style="background:rgba(245,158,11,.08)">
+              <td class="font-mono">R-006</td>
+              <td>Coin Economy</td>
+              <td>Monthly grant triggered manually — users miss coins if CRON not set</td>
+              <td><span class="badge-yellow px-2 py-0.5 rounded text-xs">High</span></td>
+              <td>High until P2</td>
+              <td>P2</td>
+              <td>CF Cron Trigger "0 0 1 * *". coin_grant_log UNIQUE(user_id, period) prevents double grants.</td>
+            </tr>
+            <tr style="background:rgba(245,158,11,.08)">
+              <td class="font-mono">R-007</td>
+              <td>AI Costs</td>
+              <td>OpenAI/Anthropic API costs unbounded (no per-user rate limit on token use)</td>
+              <td><span class="badge-yellow px-2 py-0.5 rounded text-xs">High</span></td>
+              <td>Medium</td>
+              <td>P2</td>
+              <td>Coin system acts as economic brake. Add hard monthly token budget per plan in AIService. Alert admin at 80% budget.</td>
+            </tr>
+            <tr style="background:rgba(245,158,11,.08)">
+              <td class="font-mono">R-008</td>
+              <td>Security</td>
+              <td>No email verification required — bot signups possible</td>
+              <td><span class="badge-yellow px-2 py-0.5 rounded text-xs">High</span></td>
+              <td>Medium</td>
+              <td>P2</td>
+              <td>Email verification flow (Task 2.6). Restrict build/deploy to verified accounts.</td>
+            </tr>
+            <tr style="background:rgba(245,158,11,.08)">
+              <td class="font-mono">R-009</td>
+              <td>Infrastructure</td>
+              <td>D1/KV/R2 placeholder IDs in wrangler.jsonc</td>
+              <td><span class="badge-yellow px-2 py-0.5 rounded text-xs">High</span></td>
+              <td>Blocks production deploy</td>
+              <td>P1</td>
+              <td>Run: wrangler d1 create deploy-production. Update IDs in wrangler.jsonc. Same for KV + R2.</td>
+            </tr>
+            <tr>
+              <td class="font-mono">R-010</td>
+              <td>UX</td>
+              <td>Kanban drag-drop not persisted — data lost on reload</td>
+              <td><span class="badge-blue px-2 py-0.5 rounded text-xs">Medium</span></td>
+              <td>Certain (no save)</td>
+              <td>P2</td>
+              <td>POST /api/projects/:id/kanban-state + projects.kanban_state column (migration 0007)</td>
+            </tr>
+            <tr>
+              <td class="font-mono">R-011</td>
+              <td>Performance</td>
+              <td>D1 has 1000 read/write per 10s limit on free plan</td>
+              <td><span class="badge-blue px-2 py-0.5 rounded text-xs">Medium</span></td>
+              <td>Low for MVP</td>
+              <td>P3</td>
+              <td>Cache frequent reads (plans, models) in KV. Batch D1 writes. Upgrade to Workers Paid ($5/mo).</td>
+            </tr>
+            <tr>
+              <td class="font-mono">R-012</td>
+              <td>Business</td>
+              <td>CORS locked to localhost — production origin blocked</td>
+              <td><span class="badge-blue px-2 py-0.5 rounded text-xs">Medium</span></td>
+              <td>Certain at deploy</td>
+              <td>P1</td>
+              <td>Update CORS origins in src/index.tsx to include APP_URL production domain before deploy.</td>
+            </tr>
+            <tr>
+              <td class="font-mono">R-013</td>
+              <td>2FA</td>
+              <td>two_factor_secret stored as plaintext</td>
+              <td><span class="badge-blue px-2 py-0.5 rounded text-xs">Medium</span></td>
+              <td>Relevant at Phase 3</td>
+              <td>P3</td>
+              <td>Encrypt TOTP secret with a KV-stored encryption key before writing to D1.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Mitigation Plan Cards -->
+    <div class="card p-6">
+      <h3 class="sub-title mb-4 flex items-center gap-2"><i class="fas fa-fire text-red-400"></i>Critical Mitigations (Do Now)</h3>
+      <div class="space-y-3">
+        <div class="p-3 rounded-lg bg-slate-800 text-sm">
+          <div class="text-white font-semibold mb-1">1. Rotate JWT Secret</div>
+          <pre class="text-xs"><code>wrangler pages secret put JWT_SECRET
+# Enter: &lt;64-char random hex&gt;</code></pre>
+        </div>
+        <div class="p-3 rounded-lg bg-slate-800 text-sm">
+          <div class="text-white font-semibold mb-1">2. Provision CF Services</div>
+          <pre class="text-xs"><code>npx wrangler d1 create deploy-production
+npx wrangler kv:namespace create DEPLOY_KV
+npx wrangler r2 bucket create deploy-assets
+# Update wrangler.jsonc with returned IDs</code></pre>
+        </div>
+        <div class="p-3 rounded-lg bg-slate-800 text-sm">
+          <div class="text-white font-semibold mb-1">3. Fix CORS Origins</div>
+          <pre class="text-xs"><code>// src/index.tsx
+origin: [
+  'http://localhost:3000',
+  'https://deploy-app.pages.dev',
+  c.env.APP_URL  // dynamic
+]</code></pre>
+        </div>
+        <div class="p-3 rounded-lg bg-slate-800 text-sm">
+          <div class="text-white font-semibold mb-1">4. Startup Secret Guard</div>
+          <pre class="text-xs"><code>// src/index.tsx — on startup
+if (env.JWT_SECRET === 'deploy-secret-key-change-in-production') {
+  console.error('FATAL: Default JWT_SECRET in production!');
+  // Still serve but log loudly
+}</code></pre>
+        </div>
+      </div>
+    </div>
+
+    <div class="card p-6">
+      <h3 class="sub-title mb-4 flex items-center gap-2"><i class="fas fa-shield-virus text-amber-400"></i>Security Hardening Checklist</h3>
+      <div class="space-y-2 text-sm">
+        <div class="flex items-center gap-3 p-2 rounded bg-slate-800">
+          <span class="badge-green px-2 py-0.5 rounded text-xs">✅</span>
+          <span class="text-slate-300">Rate limiting on all auth routes</span>
+        </div>
+        <div class="flex items-center gap-3 p-2 rounded bg-slate-800">
+          <span class="badge-green px-2 py-0.5 rounded text-xs">✅</span>
+          <span class="text-slate-300">Password hashed with Web Crypto (PBKDF2)</span>
+        </div>
+        <div class="flex items-center gap-3 p-2 rounded bg-slate-800">
+          <span class="badge-green px-2 py-0.5 rounded text-xs">✅</span>
+          <span class="text-slate-300">JWT HMAC-SHA256 verification</span>
+        </div>
+        <div class="flex items-center gap-3 p-2 rounded bg-slate-800">
+          <span class="badge-green px-2 py-0.5 rounded text-xs">✅</span>
+          <span class="text-slate-300">Stripe keys server-side only (never in frontend)</span>
+        </div>
+        <div class="flex items-center gap-3 p-2 rounded bg-slate-800">
+          <span class="badge-green px-2 py-0.5 rounded text-xs">✅</span>
+          <span class="text-slate-300">Intent log input SHA-256 hashed (privacy)</span>
+        </div>
+        <div class="flex items-center gap-3 p-2 rounded bg-slate-800">
+          <span class="badge-green px-2 py-0.5 rounded text-xs">✅</span>
+          <span class="text-slate-300">Admin routes require role=admin middleware</span>
+        </div>
+        <div class="flex items-center gap-3 p-2 rounded bg-slate-800">
+          <span class="badge-red px-2 py-0.5 rounded text-xs">❌</span>
+          <span class="text-slate-300">Default JWT_SECRET must be changed before production</span>
+        </div>
+        <div class="flex items-center gap-3 p-2 rounded bg-slate-800">
+          <span class="badge-red px-2 py-0.5 rounded text-xs">❌</span>
+          <span class="text-slate-300">Stripe webhook secret not configured</span>
+        </div>
+        <div class="flex items-center gap-3 p-2 rounded bg-slate-800">
+          <span class="badge-yellow px-2 py-0.5 rounded text-xs">⚠️</span>
+          <span class="text-slate-300">Email verification not enforced yet</span>
+        </div>
+        <div class="flex items-center gap-3 p-2 rounded bg-slate-800">
+          <span class="badge-yellow px-2 py-0.5 rounded text-xs">⚠️</span>
+          <span class="text-slate-300">2FA schema present, TOTP logic not implemented</span>
+        </div>
+        <div class="flex items-center gap-3 p-2 rounded bg-slate-800">
+          <span class="badge-yellow px-2 py-0.5 rounded text-xs">⚠️</span>
+          <span class="text-slate-300">No DB CHECK constraint on negative coin balance</span>
+        </div>
+        <div class="flex items-center gap-3 p-2 rounded bg-slate-800">
+          <span class="badge-yellow px-2 py-0.5 rounded text-xs">⚠️</span>
+          <span class="text-slate-300">CORS includes localhost origins (remove in prod)</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════ TAB: TIMELINE -->
+<div id="tab-timeline" class="tab-panel">
+  <h2 class="section-title mb-6"><i class="fas fa-calendar-alt text-cyan-400"></i>Timeline &amp; Milestones</h2>
+
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+    <div class="card p-4 text-center">
+      <div class="text-2xl font-black text-green-400 mb-1">Weeks 1–4</div>
+      <div class="text-slate-300 font-semibold">Phase 1 Solidification</div>
+      <div class="text-slate-500 text-xs mt-1">April 1 – April 28, 2026</div>
+      <div class="phase-bar mt-3 mb-1"><div class="phase-fill bg-green-500" style="width:78%"></div></div>
+      <div class="text-green-400 text-xs">78% Complete</div>
+    </div>
+    <div class="card p-4 text-center">
+      <div class="text-2xl font-black text-amber-400 mb-1">Weeks 5–10</div>
+      <div class="text-slate-300 font-semibold">Phase 2 Enhancements</div>
+      <div class="text-slate-500 text-xs mt-1">April 29 – June 9, 2026</div>
+      <div class="phase-bar mt-3 mb-1"><div class="phase-fill bg-amber-500" style="width:12%"></div></div>
+      <div class="text-amber-400 text-xs">12% Started</div>
+    </div>
+    <div class="card p-4 text-center">
+      <div class="text-2xl font-black text-purple-400 mb-1">Weeks 11–18</div>
+      <div class="text-slate-300 font-semibold">Phase 3 Deliverability</div>
+      <div class="text-slate-500 text-xs mt-1">June 10 – August 4, 2026</div>
+      <div class="phase-bar mt-3 mb-1"><div class="phase-fill bg-purple-500" style="width:0%"></div></div>
+      <div class="text-purple-400 text-xs">Not Started</div>
+    </div>
+  </div>
+
+  <!-- Timeline -->
+  <div class="card p-6 mb-6">
+    <div class="timeline-line space-y-6">
+
+      <!-- P1 milestones -->
+      <div class="relative">
+        <div class="timeline-dot bg-green-900 border-2 border-green-500"><i class="fas fa-check text-green-400"></i></div>
+        <div class="card-glow card p-4 ml-2">
+          <div class="flex items-center justify-between flex-wrap gap-2">
+            <div class="flex items-center gap-2">
+              <span class="badge-green px-2 py-0.5 rounded text-xs">M1</span>
+              <span class="text-white font-semibold">Migration 0006 Applied + DB Verified</span>
+            </div>
+            <span class="text-green-400 text-xs font-mono">✅ Week 1 — Done</span>
+          </div>
+          <div class="text-slate-400 text-xs mt-2">39 tables live. Rate limits, intent_log, spec_breakdowns, coin_analytics, onboarding_progress created.</div>
+        </div>
+      </div>
+
+      <div class="relative">
+        <div class="timeline-dot bg-green-900 border-2 border-green-500"><i class="fas fa-check text-green-400"></i></div>
+        <div class="card-glow card p-4 ml-2">
+          <div class="flex items-center justify-between flex-wrap gap-2">
+            <div class="flex items-center gap-2">
+              <span class="badge-green px-2 py-0.5 rounded text-xs">M2</span>
+              <span class="text-white font-semibold">Rate Limiting + IntentLog + Revenue Bug Fix</span>
+            </div>
+            <span class="text-green-400 text-xs font-mono">✅ Week 1 — Done</span>
+          </div>
+          <div class="text-slate-400 text-xs mt-2">All sensitive routes rate-limited (429 tested). IntentLog wired into processIntent. Revenue summary returns 200.</div>
+        </div>
+      </div>
+
+      <div class="relative">
+        <div class="timeline-dot bg-green-900 border-2 border-green-500"><i class="fas fa-check text-green-400"></i></div>
+        <div class="card-glow card p-4 ml-2">
+          <div class="flex items-center justify-between flex-wrap gap-2">
+            <div class="flex items-center gap-2">
+              <span class="badge-green px-2 py-0.5 rounded text-xs">M3</span>
+              <span class="text-white font-semibold">Education Hub + Home Command Center Frontend</span>
+            </div>
+            <span class="text-green-400 text-xs font-mono">✅ Week 1 — Done</span>
+          </div>
+          <div class="text-slate-400 text-xs mt-2">Education Hub page with FAQ/Guides/Coin Economy. loadHomeData pulls real project health scores. navigateTo recursion fixed.</div>
+        </div>
+      </div>
+
+      <div class="relative">
+        <div class="timeline-dot bg-amber-900 border-2 border-amber-500"><i class="fas fa-exclamation text-amber-400 text-xs"></i></div>
+        <div class="card p-4 ml-2" style="border-color:rgba(245,158,11,.3)">
+          <div class="flex items-center justify-between flex-wrap gap-2">
+            <div class="flex items-center gap-2">
+              <span class="badge-red px-2 py-0.5 rounded text-xs">M4</span>
+              <span class="text-white font-semibold">Production Environment Configuration</span>
+            </div>
+            <span class="text-amber-400 text-xs font-mono">⚠️ Week 2 — Blocked</span>
+          </div>
+          <div class="text-slate-400 text-xs mt-2">Create real D1/KV/R2 in CF account. Update wrangler.jsonc. Set all 7 secrets. Deploy to deploy-app.pages.dev.</div>
+        </div>
+      </div>
+
+      <div class="relative">
+        <div class="timeline-dot bg-slate-700 border-2 border-slate-500"><span class="text-slate-400 text-xs">5</span></div>
+        <div class="card p-4 ml-2">
+          <div class="flex items-center justify-between flex-wrap gap-2">
+            <div class="flex items-center gap-2">
+              <span class="badge-yellow px-2 py-0.5 rounded text-xs">M5</span>
+              <span class="text-white font-semibold">Migration 0007 (DB Hardening)</span>
+            </div>
+            <span class="text-slate-400 text-xs font-mono">📅 Week 3</span>
+          </div>
+          <div class="text-slate-400 text-xs mt-2">Negative balance trigger, kanban_state column, email verification table, unique build job constraint.</div>
+        </div>
+      </div>
+
+      <div class="relative">
+        <div class="timeline-dot bg-slate-700 border-2 border-slate-500"><span class="text-slate-400 text-xs">6</span></div>
+        <div class="card p-4 ml-2">
+          <div class="flex items-center justify-between flex-wrap gap-2">
+            <div class="flex items-center gap-2">
+              <span class="badge-yellow px-2 py-0.5 rounded text-xs">M6</span>
+              <span class="text-white font-semibold">Phase 1 Complete — MVP Launch Ready</span>
+            </div>
+            <span class="text-slate-400 text-xs font-mono">📅 Week 4</span>
+          </div>
+          <div class="text-slate-400 text-xs mt-2">All P0/P1 items resolved. Platform deployed on production CF Pages. Stripe live keys active. Full E2E test passing.</div>
+        </div>
+      </div>
+
+      <!-- P2 -->
+      <div class="relative">
+        <div class="timeline-dot bg-slate-700 border-2 border-amber-600"><span class="text-amber-400 text-xs">7</span></div>
+        <div class="card p-4 ml-2">
+          <div class="flex items-center justify-between flex-wrap gap-2">
+            <div class="flex items-center gap-2">
+              <span class="badge-yellow px-2 py-0.5 rounded text-xs">M7</span>
+              <span class="text-white font-semibold">Async Build Queue (CF Queues)</span>
+            </div>
+            <span class="text-slate-400 text-xs font-mono">📅 Weeks 5–6</span>
+          </div>
+          <div class="text-slate-400 text-xs mt-2">Build jobs enqueued, not synchronous. Worker processes queue. Health check still rescues any stragglers.</div>
+        </div>
+      </div>
+
+      <div class="relative">
+        <div class="timeline-dot bg-slate-700 border-2 border-amber-600"><span class="text-amber-400 text-xs">8</span></div>
+        <div class="card p-4 ml-2">
+          <div class="flex items-center justify-between flex-wrap gap-2">
+            <div class="flex items-center gap-2">
+              <span class="badge-yellow px-2 py-0.5 rounded text-xs">M8</span>
+              <span class="text-white font-semibold">Vault FCC + Monthly CRON + Kanban Persistence</span>
+            </div>
+            <span class="text-slate-400 text-xs font-mono">📅 Weeks 7–8</span>
+          </div>
+          <div class="text-slate-400 text-xs mt-2">Full vault UI (analytics chart, ledger, billing). CF Cron for monthly grants. Kanban state saved to D1.</div>
+        </div>
+      </div>
+
+      <div class="relative">
+        <div class="timeline-dot bg-slate-700 border-2 border-amber-600"><span class="text-amber-400 text-xs">9</span></div>
+        <div class="card p-4 ml-2">
+          <div class="flex items-center justify-between flex-wrap gap-2">
+            <div class="flex items-center gap-2">
+              <span class="badge-yellow px-2 py-0.5 rounded text-xs">M9</span>
+              <span class="text-white font-semibold">Email Verification + R2 Uploads + Version History</span>
+            </div>
+            <span class="text-slate-400 text-xs font-mono">📅 Weeks 9–10</span>
+          </div>
+          <div class="text-slate-400 text-xs mt-2">Full auth hardening. File uploads to R2. Project timeline panel with diff viewer.</div>
+        </div>
+      </div>
+
+      <!-- P3 -->
+      <div class="relative">
+        <div class="timeline-dot bg-slate-700 border-2 border-purple-600"><span class="text-purple-400 text-xs">10</span></div>
+        <div class="card p-4 ml-2">
+          <div class="flex items-center justify-between flex-wrap gap-2">
+            <div class="flex items-center gap-2">
+              <span class="badge-purple px-2 py-0.5 rounded text-xs">M10</span>
+              <span class="text-white font-semibold">Real CF Pages Deployments + Code Generation</span>
+            </div>
+            <span class="text-slate-400 text-xs font-mono">📅 Weeks 11–13</span>
+          </div>
+          <div class="text-slate-400 text-xs mt-2">CloudflareService wraps CF API. Generated code uploaded to R2, deployed via CF Pages API. Real *.pages.dev URLs returned.</div>
+        </div>
+      </div>
+
+      <div class="relative">
+        <div class="timeline-dot bg-slate-700 border-2 border-purple-600"><span class="text-purple-400 text-xs">11</span></div>
+        <div class="card p-4 ml-2">
+          <div class="flex items-center justify-between flex-wrap gap-2">
+            <div class="flex items-center gap-2">
+              <span class="badge-purple px-2 py-0.5 rounded text-xs">M11</span>
+              <span class="text-white font-semibold">Custom Domains + 2FA + Deployment Monitor</span>
+            </div>
+            <span class="text-slate-400 text-xs font-mono">📅 Weeks 14–16</span>
+          </div>
+          <div class="text-slate-400 text-xs mt-2">CNAME-based domain verification. TOTP 2FA with backup codes. Scheduled health monitor with alerts.</div>
+        </div>
+      </div>
+
+      <div class="relative">
+        <div class="timeline-dot bg-slate-700 border-2 border-purple-600"><span class="text-purple-400 text-xs">12</span></div>
+        <div class="card p-4 ml-2">
+          <div class="flex items-center justify-between flex-wrap gap-2">
+            <div class="flex items-center gap-2">
+              <span class="badge-purple px-2 py-0.5 rounded text-xs">M12</span>
+              <span class="text-white font-semibold">Team Collaboration + Template Marketplace</span>
+            </div>
+            <span class="text-slate-400 text-xs font-mono">📅 Weeks 17–18</span>
+          </div>
+          <div class="text-slate-400 text-xs mt-2">Multi-user projects. Role permissions. Template gallery with fork. Preview environments per build.</div>
+        </div>
+      </div>
+
+      <div class="relative">
+        <div class="timeline-dot bg-purple-900 border-2 border-purple-400"><i class="fas fa-star text-purple-400 text-xs"></i></div>
+        <div class="card-glow card p-4 ml-2">
+          <div class="flex items-center justify-between flex-wrap gap-2">
+            <div class="flex items-center gap-2">
+              <span class="badge-purple px-2 py-0.5 rounded text-xs">🎯</span>
+              <span class="text-white font-bold text-lg">Full Platform v1.0 Launch</span>
+            </div>
+            <span class="text-purple-400 text-xs font-mono">🚀 August 4, 2026</span>
+          </div>
+          <div class="text-slate-400 text-xs mt-2">All 3 phases complete. Real deployments, custom domains, team plans, marketplace, 2FA, health monitoring all live.</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════ TAB: ARCHITECTURE -->
+<div id="tab-arch" class="tab-panel">
+  <h2 class="section-title mb-6"><i class="fas fa-layer-group text-cyan-400"></i>Architecture Summary</h2>
+
+  <!-- Layer Overview -->
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+
+    <!-- Intent Layer -->
+    <div class="card p-6">
+      <div class="flex items-center gap-3 mb-4">
+        <div class="infra-icon w-10 h-10 rounded-lg" style="background:rgba(168,85,247,.15)"><i class="fas fa-brain text-purple-400"></i></div>
+        <h3 class="text-white font-bold text-lg">Intent Layer</h3>
+      </div>
+      <p class="text-slate-400 text-sm mb-4">The Intent Layer is the heart of DEPLOY's AI orchestration. Every AI call passes through <code class="text-cyan-400">AIService.processIntent()</code> — it never executes arbitrary code, only mapped, named intents.</p>
+      <div class="space-y-2 text-xs">
+        <div class="font-semibold text-slate-300 mb-1">7 Registered Intents:</div>
+        <div class="grid grid-cols-2 gap-1">
+          <div class="bg-slate-800 px-2 py-1 rounded font-mono text-purple-400">complete_prompt_field</div>
+          <div class="bg-slate-800 px-2 py-1 rounded font-mono text-purple-400">generate_spec</div>
+          <div class="bg-slate-800 px-2 py-1 rounded font-mono text-purple-400">generate_build</div>
+          <div class="bg-slate-800 px-2 py-1 rounded font-mono text-purple-400">generate_revision</div>
+          <div class="bg-slate-800 px-2 py-1 rounded font-mono text-purple-400">analyze_completeness</div>
+          <div class="bg-slate-800 px-2 py-1 rounded font-mono text-purple-400">chat</div>
+          <div class="bg-slate-800 px-2 py-1 rounded font-mono text-purple-400">summarize_build</div>
+        </div>
+        <div class="mt-3 text-slate-400">
+          <div class="font-semibold text-slate-300 mb-1">Provider Fallback Chain:</div>
+          <div class="flex items-center gap-2 flex-wrap">
+            <span class="bg-slate-800 px-2 py-1 rounded text-green-400">OpenAI Primary</span>
+            <span class="text-slate-600">→ fail →</span>
+            <span class="bg-slate-800 px-2 py-1 rounded text-cyan-400">Anthropic Fallback</span>
+            <span class="text-slate-600">→ fail →</span>
+            <span class="bg-slate-800 px-2 py-1 rounded text-slate-400">Demo Mode</span>
+          </div>
+        </div>
+        <div class="mt-3 text-slate-400">
+          <div class="font-semibold text-slate-300 mb-1">IntentLog (Audit Trail):</div>
+          <div>Every call logged: SHA-256 input hash, output summary (500 chars), coins charged, tokens used, provider, latency, status. Stored in D1 intent_log table.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Vault / Financial Center -->
+    <div class="card p-6">
+      <div class="flex items-center gap-3 mb-4">
+        <div class="infra-icon w-10 h-10 rounded-lg" style="background:rgba(245,158,11,.15)"><i class="fas fa-vault text-amber-400"></i></div>
+        <h3 class="text-white font-bold text-lg">Vault / Financial Control Center</h3>
+      </div>
+      <p class="text-slate-400 text-sm mb-4">The Vault is the platform's economic engine — managing coin purchases, grants, holds, spends and full analytics. All Stripe calls are server-side; the frontend only receives URLs.</p>
+      <div class="space-y-2 text-xs">
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <div class="text-slate-300 font-semibold mb-1">Coin Flow:</div>
+            <div class="bg-slate-800 p-2 rounded text-slate-400 space-y-1">
+              <div>Signup → +50 welcome coins</div>
+              <div>Monthly → +plan_coins (CRON)</div>
+              <div>Purchase → Stripe → webhook → +coins</div>
+              <div>Build → hold → complete → spend</div>
+              <div>Build fail → release hold (refund)</div>
+            </div>
+          </div>
+          <div>
+            <div class="text-slate-300 font-semibold mb-1">DB Tables:</div>
+            <div class="bg-slate-800 p-2 rounded font-mono text-green-400 space-y-1 text-xs">
+              <div>coin_wallets</div>
+              <div>coin_ledger_entries</div>
+              <div>coin_holds</div>
+              <div>coin_packages</div>
+              <div>coin_analytics</div>
+              <div>billing_events</div>
+            </div>
+          </div>
+        </div>
+        <div class="mt-2">
+          <div class="text-slate-300 font-semibold mb-1">Coin Costs:</div>
+          <div class="grid grid-cols-3 gap-1">
+            <div class="bg-slate-800 px-2 py-1 rounded text-center"><div class="text-amber-400 font-bold">2</div><div class="text-slate-500 text-xs">AI Assist</div></div>
+            <div class="bg-slate-800 px-2 py-1 rounded text-center"><div class="text-amber-400 font-bold">~15</div><div class="text-slate-500 text-xs">Build (mini)</div></div>
+            <div class="bg-slate-800 px-2 py-1 rounded text-center"><div class="text-amber-400 font-bold">~45</div><div class="text-slate-500 text-xs">Build (4o)</div></div>
+            <div class="bg-slate-800 px-2 py-1 rounded text-center"><div class="text-amber-400 font-bold">~10</div><div class="text-slate-500 text-xs">Revision</div></div>
+            <div class="bg-slate-800 px-2 py-1 rounded text-center"><div class="text-amber-400 font-bold">15</div><div class="text-slate-500 text-xs">Deploy</div></div>
+            <div class="bg-slate-800 px-2 py-1 rounded text-center"><div class="text-amber-400 font-bold">1</div><div class="text-slate-500 text-xs">Chat msg</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Model Switcher -->
+    <div class="card p-6">
+      <div class="flex items-center gap-3 mb-4">
+        <div class="infra-icon w-10 h-10 rounded-lg" style="background:rgba(6,182,212,.15)"><i class="fas fa-sliders text-cyan-400"></i></div>
+        <h3 class="text-white font-bold text-lg">Model Switcher</h3>
+      </div>
+      <p class="text-slate-400 text-sm mb-4">Users pick their AI model per-project. Plan gating enforces access tiers. Cost multipliers calculate actual coin spend.</p>
+      <div class="space-y-2 text-xs">
+        <div class="grid grid-cols-1 gap-2">
+          <div class="bg-slate-800 p-3 rounded">
+            <div class="flex justify-between items-center">
+              <span class="text-white font-semibold">GPT-4o Mini</span>
+              <span class="badge-green px-2 py-0.5 rounded">Free+</span>
+            </div>
+            <div class="text-slate-400 mt-1">Fast. Low cost. Best for MVP prompts &amp; drafts. ~15 coins/build.</div>
+          </div>
+          <div class="bg-slate-800 p-3 rounded">
+            <div class="flex justify-between items-center">
+              <span class="text-white font-semibold">GPT-4o</span>
+              <span class="badge-yellow px-2 py-0.5 rounded">Member+</span>
+            </div>
+            <div class="text-slate-400 mt-1">Highest quality specs. Complex architectures. ~45 coins/build.</div>
+          </div>
+          <div class="bg-slate-800 p-3 rounded">
+            <div class="flex justify-between items-center">
+              <span class="text-white font-semibold">Claude 3.5 Haiku</span>
+              <span class="badge-yellow px-2 py-0.5 rounded">Member+</span>
+            </div>
+            <div class="text-slate-400 mt-1">Anthropic alternative. Great for detailed reasoning. ~20 coins/build.</div>
+          </div>
+        </div>
+        <div class="mt-2 text-slate-400">
+          <div><span class="text-white">Switcher API:</span> <code class="text-cyan-400">PUT /api/models/select</code> — updates projects.active_model_id</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Home Command Center -->
+    <div class="card p-6">
+      <div class="flex items-center gap-3 mb-4">
+        <div class="infra-icon w-10 h-10 rounded-lg" style="background:rgba(34,197,94,.15)"><i class="fas fa-home text-green-400"></i></div>
+        <h3 class="text-white font-bold text-lg">Home Command Center</h3>
+      </div>
+      <p class="text-slate-400 text-sm mb-4">The dashboard gives builders an at-a-glance view of their platform activity — projects, coins, builds, and activity feed.</p>
+      <div class="space-y-2 text-xs">
+        <div class="text-slate-300 font-semibold mb-1">Current Components (Live):</div>
+        <div class="space-y-1 text-slate-400">
+          <div class="flex gap-2"><span class="text-green-400">●</span>Quick Stats: Coins, Projects, Deployed</div>
+          <div class="flex gap-2"><span class="text-green-400">●</span>Quick Actions: New Project, Prompt Builder, Vault, Guides</div>
+          <div class="flex gap-2"><span class="text-green-400">●</span>Recent Projects list with readiness bars + status chips</div>
+          <div class="flex gap-2"><span class="text-green-400">●</span>Notification badge (unread count)</div>
+        </div>
+        <div class="text-slate-300 font-semibold mt-3 mb-1">Phase 2 Additions:</div>
+        <div class="space-y-1 text-slate-400">
+          <div class="flex gap-2"><span class="text-amber-400">●</span>AI Activity feed from intent_log (last 5 intents)</div>
+          <div class="flex gap-2"><span class="text-amber-400">●</span>Coin trend sparkline (7-day from coin_analytics)</div>
+          <div class="flex gap-2"><span class="text-amber-400">●</span>Build status live poll (30s interval)</div>
+          <div class="flex gap-2"><span class="text-amber-400">●</span>Onboarding checklist widget (% complete)</div>
+          <div class="flex gap-2"><span class="text-amber-400">●</span>Active deployment health badges</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Stripe Integration -->
+  <div class="card p-6 mb-6">
+    <div class="flex items-center gap-3 mb-4">
+      <div class="infra-icon w-10 h-10 rounded-lg" style="background:rgba(99,102,241,.15)"><i class="fab fa-stripe text-indigo-400"></i></div>
+      <h3 class="text-white font-bold text-lg">Stripe Integration Architecture</h3>
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+      <div>
+        <div class="text-slate-300 font-semibold mb-2">Flow: Buy Coins</div>
+        <div class="space-y-1 text-slate-400">
+          <div class="flex gap-2">1. User clicks "Buy Coins"</div>
+          <div class="flex gap-2">2. Frontend: GET /api/vault (shows packages)</div>
+          <div class="flex gap-2">3. User selects package</div>
+          <div class="flex gap-2">4. POST /api/vault/checkout</div>
+          <div class="flex gap-2">5. Server: StripeService.createCoinCheckoutSession()</div>
+          <div class="flex gap-2">6. Returns: <code class="text-cyan-400">checkout_url</code></div>
+          <div class="flex gap-2">7. Frontend: redirect to Stripe Hosted Page</div>
+          <div class="flex gap-2">8. Stripe → webhook POST /api/webhooks/stripe</div>
+          <div class="flex gap-2">9. handleEvent('checkout.session.completed')</div>
+          <div class="flex gap-2">10. CoinService.credit(userId, coins)</div>
+          <div class="flex gap-2">11. billing_events INSERT</div>
+          <div class="flex gap-2">12. ResendService sends purchase email</div>
+        </div>
+      </div>
+      <div>
+        <div class="text-slate-300 font-semibold mb-2">Flow: Plan Upgrade</div>
+        <div class="space-y-1 text-slate-400">
+          <div>1. POST /api/vault/checkout-plan</div>
+          <div>2. ensureStripeCustomer() → create/fetch customer</div>
+          <div>3. createPlanCheckoutSession(plan.stripe_price_id)</div>
+          <div>4. Redirect to Stripe subscription checkout</div>
+          <div>5. Webhook: invoice.payment_succeeded</div>
+          <div>6. Update memberships.plan_id</div>
+          <div>7. Grant plan bonus coins</div>
+          <div>8. Webhook: customer.subscription.deleted</div>
+          <div>9. Downgrade to free plan</div>
+        </div>
+      </div>
+      <div>
+        <div class="text-slate-300 font-semibold mb-2">Security Architecture</div>
+        <div class="space-y-1 text-slate-400">
+          <div class="flex gap-2"><span class="text-green-400">✅</span>STRIPE_SECRET_KEY: server-only secret</div>
+          <div class="flex gap-2"><span class="text-green-400">✅</span>STRIPE_PUBLISHABLE_KEY: safe for client</div>
+          <div class="flex gap-2"><span class="text-green-400">✅</span>Webhook signature verification</div>
+          <div class="flex gap-2"><span class="text-green-400">✅</span>metadata.deploy_user_id validates webhook ownership</div>
+          <div class="flex gap-2"><span class="text-green-400">✅</span>Billing portal server-managed</div>
+          <div class="flex gap-2"><span class="text-red-400">❌</span>STRIPE_WEBHOOK_SECRET not yet set in prod</div>
+          <div class="flex gap-2"><span class="text-amber-400">⚠️</span>Stripe price IDs in plans table (need real IDs)</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- E2E Deploy Flow -->
+  <div class="card p-6">
+    <div class="flex items-center gap-3 mb-4">
+      <div class="infra-icon w-10 h-10 rounded-lg" style="background:rgba(239,68,68,.15)"><i class="fas fa-rocket text-red-400"></i></div>
+      <h3 class="text-white font-bold text-lg">End-to-End Deployment Flow (Target State — Phase 3)</h3>
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+      <div>
+        <div class="text-slate-300 font-semibold mb-2">Current State (Phase 1)</div>
+        <div class="space-y-1">
+          <div class="flex items-start gap-2 p-2 rounded bg-slate-800">
+            <span class="text-green-400 mt-0.5">1.</span>
+            <div>
+              <div class="text-white">User fills Prompt Builder → Build</div>
+              <div class="text-slate-500">completeness_score calculated live</div>
+            </div>
+          </div>
+          <div class="flex items-start gap-2 p-2 rounded bg-slate-800">
+            <span class="text-green-400 mt-0.5">2.</span>
+            <div>
+              <div class="text-white">AIService generates spec (synchronous)</div>
+              <div class="text-slate-500">intent: generate_build → generated_outputs</div>
+            </div>
+          </div>
+          <div class="flex items-start gap-2 p-2 rounded bg-slate-800">
+            <span class="text-green-400 mt-0.5">3.</span>
+            <div>
+              <div class="text-white">Spec Transformer extracts structure</div>
+              <div class="text-slate-500">spec_breakdowns: feature_map, screen_map, data_model, api_contracts</div>
+            </div>
+          </div>
+          <div class="flex items-start gap-2 p-2 rounded bg-slate-800">
+            <span class="text-amber-400 mt-0.5">4.</span>
+            <div>
+              <div class="text-white">simulateDeployment() — FAKE</div>
+              <div class="text-red-400">2s delay → marks 'live' → no real URL</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="text-slate-300 font-semibold mb-2">Target State (Phase 3)</div>
+        <div class="space-y-1">
+          <div class="flex items-start gap-2 p-2 rounded bg-slate-800">
+            <span class="text-green-400 mt-0.5">1.</span>
+            <div>
+              <div class="text-white">Same prompt flow → CF Queue enqueue</div>
+              <div class="text-slate-500">Job async, returns job_id immediately</div>
+            </div>
+          </div>
+          <div class="flex items-start gap-2 p-2 rounded bg-slate-800">
+            <span class="text-green-400 mt-0.5">2.</span>
+            <div>
+              <div class="text-white">Queue Worker: AI spec + code generation</div>
+              <div class="text-slate-500">Generates Hono Worker + Tailwind HTML + D1 schema</div>
+            </div>
+          </div>
+          <div class="flex items-start gap-2 p-2 rounded bg-slate-800">
+            <span class="text-green-400 mt-0.5">3.</span>
+            <div>
+              <div class="text-white">Generated code → R2 bucket</div>
+              <div class="text-slate-500">deploy-assets/{project_id}/{build_id}/</div>
+            </div>
+          </div>
+          <div class="flex items-start gap-2 p-2 rounded bg-slate-800">
+            <span class="text-green-400 mt-0.5">4.</span>
+            <div>
+              <div class="text-white">CloudflareService.deployPages()</div>
+              <div class="text-slate-500">CF API → real Pages project → real URL</div>
+            </div>
+          </div>
+          <div class="flex items-start gap-2 p-2 rounded bg-slate-800">
+            <span class="text-green-400 mt-0.5">5.</span>
+            <div>
+              <div class="text-white">Notification + deployment record updated</div>
+              <div class="text-slate-500">health_status: healthy, deployment_url: real URL</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</div><!-- end max-w-7xl -->
+
+<!-- Footer -->
+<div class="border-t border-slate-800 mt-12 py-8 px-6 text-center">
+  <div class="text-slate-500 text-sm">
+    DEPLOY Platform — Full Audit &amp; Implementation Report &nbsp;|&nbsp; Generated 2026-04-01 &nbsp;|&nbsp; 
+    <span class="text-cyan-400">Version 1.0.0</span> &nbsp;|&nbsp; 
+    <span class="text-green-400">Local D1: deploy-production</span> &nbsp;|&nbsp;
+    <span class="text-purple-400">Stack: Hono + CF Pages + D1 + R2 + KV + Stripe</span>
+  </div>
+</div>
+
+<script>
+function showTab(name) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  event.currentTarget.classList.add('active');
+  window.scrollTo({top: 0, behavior: 'smooth'});
+}
+// Animate progress bars on load
+window.addEventListener('load', () => {
+  setTimeout(() => {
+    document.querySelectorAll('.phase-fill').forEach(el => {
+      const w = el.style.width;
+      el.style.width = '0';
+      setTimeout(() => { el.style.width = w; }, 100);
+    });
+  }, 300);
+});
+</script>
+</body>
+</html>
