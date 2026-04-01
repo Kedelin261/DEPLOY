@@ -7,6 +7,7 @@ import { authMiddleware, generateId } from '../middleware/auth';
 import { CoinService } from '../services/coin.service';
 import { StripeService } from '../services/stripe.service';
 import { ResendService } from '../services/resend.service';
+import { rateLimitMiddleware } from '../middleware/rateLimit';
 import type { Bindings, Variables } from '../types';
 
 const vault = new Hono<{ Bindings: Bindings; Variables: Variables }>();
@@ -267,7 +268,7 @@ vault.post('/save-payment-method', authMiddleware(), async (c) => {
 // Two paths:
 //   1. saved_card=true  → charge the saved card immediately (no redirect)
 //   2. saved_card=false → create Stripe Checkout Session and return redirect URL
-vault.post('/checkout', authMiddleware(), async (c) => {
+vault.post('/checkout', authMiddleware(), rateLimitMiddleware('checkout'), async (c) => {
   const user = c.get('user')!;
   const { package_id, payment_method_id } = await c.req.json();
 
@@ -396,7 +397,7 @@ vault.post('/checkout', authMiddleware(), async (c) => {
 
 // ─── POST /api/vault/checkout-plan ────────────────────────────────────────
 // Creates a Stripe Checkout Session for a subscription upgrade.
-vault.post('/checkout-plan', authMiddleware(), async (c) => {
+vault.post('/checkout-plan', authMiddleware(), rateLimitMiddleware('checkout'), async (c) => {
   const user = c.get('user')!;
   const { plan_slug, stripe_price_id } = await c.req.json();
 
@@ -505,6 +506,135 @@ vault.get('/portal', authMiddleware(), async (c) => {
     console.error('Portal error:', err);
     return c.json({ success: false, error: 'Could not open billing portal' }, 500);
   }
+});
+
+// ─── GET /api/vault/analytics ─────────────────────────────────────────────────
+// Financial Control Center: coin spend analytics for the authenticated user.
+// Returns monthly spend by period, by intent, and by model.
+vault.get('/analytics', authMiddleware(), async (c) => {
+  const user = c.get('user')!;
+  const months = Math.min(parseInt(c.req.query('months') || '6'), 12);
+
+  const { IntentLogService } = await import('../services/intent-log.service');
+  const logger = new IntentLogService(c.env.DB);
+  const analytics = await logger.getCoinAnalytics(user.id, months);
+
+  // Also fetch wallet summary
+  const wallet = await c.env.DB.prepare(
+    'SELECT balance, lifetime_earned, lifetime_spent FROM coin_wallets WHERE user_id = ?'
+  ).bind(user.id).first<{ balance: number; lifetime_earned: number; lifetime_spent: number }>();
+
+  // Active holds
+  const holds = await c.env.DB.prepare(
+    `SELECT SUM(amount) AS held FROM coin_holds WHERE user_id = ? AND status = 'active'`
+  ).bind(user.id).first<{ held: number }>();
+
+  // Spending last 7 days vs prior 7 days for trend
+  const [last7, prior7] = await Promise.all([
+    c.env.DB.prepare(
+      `SELECT SUM(ABS(amount)) AS total FROM coin_ledger_entries
+       WHERE user_id = ? AND type = 'spend' AND created_at >= datetime('now', '-7 days')`
+    ).bind(user.id).first<{ total: number }>(),
+    c.env.DB.prepare(
+      `SELECT SUM(ABS(amount)) AS total FROM coin_ledger_entries
+       WHERE user_id = ? AND type = 'spend'
+       AND created_at >= datetime('now', '-14 days')
+       AND created_at < datetime('now', '-7 days')`
+    ).bind(user.id).first<{ total: number }>(),
+  ]);
+
+  const trend7d = (last7?.total ?? 0) - (prior7?.total ?? 0);
+
+  return c.json({
+    success: true,
+    data: {
+      wallet: {
+        balance: wallet?.balance ?? 0,
+        lifetime_earned: wallet?.lifetime_earned ?? 0,
+        lifetime_spent: wallet?.lifetime_spent ?? 0,
+        held: holds?.held ?? 0,
+        available: Math.max(0, (wallet?.balance ?? 0) - (holds?.held ?? 0)),
+      },
+      trend: {
+        spend_last_7d: last7?.total ?? 0,
+        spend_prior_7d: prior7?.total ?? 0,
+        delta_7d: trend7d,
+        trend_direction: trend7d > 0 ? 'up' : trend7d < 0 ? 'down' : 'flat',
+      },
+      by_period: analytics.byPeriod,
+      by_intent: analytics.byIntent,
+      by_model: analytics.byModel,
+      months_requested: months,
+    },
+  });
+});
+
+// ─── GET /api/vault/intent-log ────────────────────────────────────────────────
+// Paginated intent execution history for the current user.
+vault.get('/intent-log', authMiddleware(), async (c) => {
+  const user = c.get('user')!;
+  const page = Math.max(1, parseInt(c.req.query('page') || '1'));
+  const limit = 25;
+  const offset = (page - 1) * limit;
+
+  const { IntentLogService } = await import('../services/intent-log.service');
+  const logger = new IntentLogService(c.env.DB);
+  const { results, total } = await logger.listForUser(user.id, limit, offset);
+
+  return c.json({
+    success: true,
+    data: results,
+    meta: {
+      page,
+      per_page: limit,
+      total,
+      pages: Math.ceil(total / limit),
+    },
+  });
+});
+
+// ─── GET /api/vault/revenue-summary ────────────────────────────────────────────
+// Admin-level revenue summary for the current user's billing history.
+// Includes all time purchases and subscription payments.
+vault.get('/revenue-summary', authMiddleware(), async (c) => {
+  const user = c.get('user')!;
+
+  const [allTime, last30, packages] = await Promise.all([
+    c.env.DB.prepare(
+      `SELECT COUNT(*) AS count, SUM(amount_cents) AS total_cents
+       FROM billing_events WHERE user_id = ? AND status = 'completed'`
+    ).bind(user.id).first<{ count: number; total_cents: number }>(),
+
+    c.env.DB.prepare(
+      `SELECT COUNT(*) AS count, SUM(amount_cents) AS total_cents
+       FROM billing_events WHERE user_id = ? AND status = 'completed'
+       AND created_at >= datetime('now', '-30 days')`
+    ).bind(user.id).first<{ count: number; total_cents: number }>(),
+
+    c.env.DB.prepare(
+      `SELECT be.amount_cents, be.description, be.created_at, be.status, be.type
+       FROM billing_events be
+       WHERE be.user_id = ?
+       ORDER BY be.created_at DESC LIMIT 20`
+    ).bind(user.id).all(),
+  ]);
+
+  return c.json({
+    success: true,
+    data: {
+      all_time: {
+        transactions: allTime?.count ?? 0,
+        total_cents: allTime?.total_cents ?? 0,
+        total_usd: ((allTime?.total_cents ?? 0) / 100).toFixed(2),
+      },
+      last_30_days: {
+        transactions: last30?.count ?? 0,
+        total_cents: last30?.total_cents ?? 0,
+        total_usd: ((last30?.total_cents ?? 0) / 100).toFixed(2),
+      },
+      recent_purchases: packages.results,
+    },
+  });
 });
 
 export default vault;

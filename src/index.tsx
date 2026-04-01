@@ -5,6 +5,7 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 // serveStatic is NOT used — static files (app.js, styles.css) are inlined or served via Cloudflare Pages automatically
+import { cleanupRateLimits } from './middleware/rateLimit';
 import type { Bindings, Variables } from './types';
 
 // Route imports
@@ -17,6 +18,7 @@ import deploymentRoutes from './routes/deployments';
 import adminRoutes from './routes/admin';
 import notificationRoutes from './routes/notifications';
 import stripeWebhookRoutes from './routes/stripe-webhook';
+import learnRoutes from './routes/learn';
 
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
@@ -59,6 +61,7 @@ app.route('/api/models', modelRoutes);
 app.route('/api/deployments', deploymentRoutes);
 app.route('/api/admin', adminRoutes);
 app.route('/api/notifications', notificationRoutes);
+app.route('/api/learn', learnRoutes);
 
 // Health check — also cleans up any jobs stuck in 'processing' from a previous server crash
 app.get('/api/health', async (c) => {
@@ -90,6 +93,8 @@ app.get('/api/health', async (c) => {
       `UPDATE projects SET status='draft', updated_at=CURRENT_TIMESTAMP 
        WHERE status='building' AND updated_at < datetime('now', '-10 minutes')`
     ).run();
+    // Cleanup expired rate limit windows
+    await cleanupRateLimits(c.env.DB);
   } catch { /* non-fatal */ }
 
   return c.json({
@@ -587,19 +592,22 @@ function getAppHTML(): string {
             </div>
           </div>
           
-          <!-- Quick stats row -->
-          <div class="grid grid-cols-3 gap-3">
+          <!-- Quick stats row — Command Center KPIs -->
+          <div class="grid grid-cols-3 gap-2">
             <div class="glass rounded-xl p-3 text-center">
               <p id="stat-coins" class="text-lg font-black text-amber-400">0</p>
               <p class="text-xs text-slate-500 mt-0.5">Coins</p>
+              <p id="home-coin-trend" class="text-xs text-slate-600 mt-0.5 truncate"></p>
             </div>
             <div class="glass rounded-xl p-3 text-center">
               <p id="stat-projects" class="text-lg font-black text-cyan-400">0</p>
               <p class="text-xs text-slate-500 mt-0.5">Projects</p>
+              <p id="home-total-builds" class="text-xs text-slate-600 mt-0.5">0 builds</p>
             </div>
             <div class="glass rounded-xl p-3 text-center">
               <p id="stat-deploys" class="text-lg font-black text-emerald-400">0</p>
               <p class="text-xs text-slate-500 mt-0.5">Deployed</p>
+              <p id="home-readiness-avg" class="text-xs text-slate-600 mt-0.5">0% avg ready</p>
             </div>
           </div>
         </div>
@@ -981,186 +989,79 @@ function getAppHTML(): string {
       </div>
       <!-- /PLANNING PAGE -->
 
-      <!-- INFO PAGE -->
-      <div id="page-info" class="page pt-4 space-y-4">
+      <!-- INFO PAGE / EDUCATION HUB -->
+      <div id="page-info" class="page pt-4 pb-24">
         <div class="animate-fade-up">
-          <h2 class="text-xl font-bold text-white mb-1">How DEPLOY Works</h2>
-          <p class="text-slate-500 text-sm mb-5">Everything you need to know to build your first app</p>
-          
-          <!-- What is DEPLOY -->
-          <div class="glass rounded-2xl p-5 space-y-3">
-            <div class="flex items-center gap-2">
-              <div class="w-8 h-8 rounded-lg flex items-center justify-center"
-                   style="background: linear-gradient(135deg, #06b6d4, #0891b2)">
-                <i class="fas fa-rocket text-white text-xs"></i>
-              </div>
-              <h3 class="text-sm font-bold text-white">What is DEPLOY?</h3>
+          <div class="flex items-center justify-between mb-4">
+            <div>
+              <h2 class="text-xl font-bold text-white">Learn & Help</h2>
+              <p class="text-xs text-slate-500 mt-0.5">Guides, onboarding, FAQ, and coin economy</p>
             </div>
-            <p class="text-sm text-slate-400 leading-relaxed">DEPLOY is an AI-powered app builder that turns your ideas, descriptions, and plans into structured software builds and deployment-ready products — without requiring you to write a single line of code.</p>
-            <p class="text-sm text-slate-400 leading-relaxed">Designed for <span class="text-cyan-400">founders, consultants, and operators</span> who have great ideas but want AI to do the heavy lifting on architecture, planning, and implementation.</p>
           </div>
-          
-          <!-- The Workflow -->
-          <div class="glass rounded-2xl p-5">
-            <h3 class="text-sm font-bold text-white mb-4">The Workflow</h3>
-            <div class="space-y-4">
-              <div class="flex gap-3">
-                <div class="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-xs font-black"
-                     style="background: linear-gradient(135deg, #06b6d4, #0891b2)">1</div>
-                <div>
-                  <p class="text-sm font-semibold text-white">Create a Project</p>
-                  <p class="text-xs text-slate-500 mt-0.5">Name your app and set its category. This is your workspace.</p>
-                </div>
-              </div>
-              <div class="flex gap-3">
-                <div class="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-xs font-black"
-                     style="background: linear-gradient(135deg, #06b6d4, #0891b2)">2</div>
-                <div>
-                  <p class="text-sm font-semibold text-white">Fill the Prompt Builder</p>
-                  <p class="text-xs text-slate-500 mt-0.5">Answer guided questions about your app — audience, features, tech, business model. Use AI Assist to fill fields faster.</p>
-                </div>
-              </div>
-              <div class="flex gap-3">
-                <div class="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-xs font-black"
-                     style="background: linear-gradient(135deg, #06b6d4, #0891b2)">3</div>
-                <div>
-                  <p class="text-sm font-semibold text-white">Choose Your AI Model</p>
-                  <p class="text-xs text-slate-500 mt-0.5">Select the AI model for your build. Higher tier models produce more detailed, production-safe specs.</p>
-                </div>
-              </div>
-              <div class="flex gap-3">
-                <div class="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-xs font-black"
-                     style="background: linear-gradient(135deg, #fbbf24, #f59e0b)">4</div>
-                <div>
-                  <p class="text-sm font-semibold text-white">Generate Your Build</p>
-                  <p class="text-xs text-slate-500 mt-0.5">Submit your prompt. Coins are held, the AI generates your product spec, architecture, and deployment plan.</p>
-                </div>
-              </div>
-              <div class="flex gap-3">
-                <div class="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-xs font-black"
-                     style="background: linear-gradient(135deg, #4ade80, #22c55e)">5</div>
-                <div>
-                  <p class="text-sm font-semibold text-white">Deploy</p>
-                  <p class="text-xs text-slate-500 mt-0.5">Trigger a deployment to Cloudflare Pages. Get a live URL for your app.</p>
-                </div>
+
+          <!-- Onboarding progress bar -->
+          <div class="glass rounded-xl p-4 mb-4">
+            <div class="flex items-center justify-between mb-2">
+              <p class="text-xs font-semibold text-white">Onboarding Progress</p>
+              <p id="onboarding-progress-label" class="text-xs text-slate-500">0 / 7 steps</p>
+            </div>
+            <div class="h-1.5 bg-navy-700 rounded-full overflow-hidden">
+              <div id="onboarding-progress-bar" class="progress-fill h-full rounded-full transition-all" style="width: 0%"></div>
+            </div>
+          </div>
+
+          <!-- Tab navigation -->
+          <div class="flex border-b border-slate-800 mb-4 gap-0 overflow-x-auto no-scrollbar">
+            <button class="learn-tab-btn flex-1 py-2.5 text-xs font-semibold border-b-2 text-cyan-400 border-cyan-500 whitespace-nowrap px-2 transition-colors" data-tab="onboarding" onclick="setLearnTab('onboarding')">
+              <i class="fas fa-graduation-cap mr-1"></i> Start
+            </button>
+            <button class="learn-tab-btn flex-1 py-2.5 text-xs font-semibold border-b-2 text-slate-500 border-transparent whitespace-nowrap px-2 transition-colors" data-tab="guides" onclick="setLearnTab('guides')">
+              <i class="fas fa-book mr-1"></i> Guides
+            </button>
+            <button class="learn-tab-btn flex-1 py-2.5 text-xs font-semibold border-b-2 text-slate-500 border-transparent whitespace-nowrap px-2 transition-colors" data-tab="coins" onclick="setLearnTab('coins')">
+              <i class="fas fa-coins mr-1"></i> Coins
+            </button>
+            <button class="learn-tab-btn flex-1 py-2.5 text-xs font-semibold border-b-2 text-slate-500 border-transparent whitespace-nowrap px-2 transition-colors" data-tab="faq" onclick="setLearnTab('faq')">
+              <i class="fas fa-circle-question mr-1"></i> FAQ
+            </button>
+          </div>
+
+          <!-- Onboarding tab -->
+          <div class="learn-tab-pane" data-tab="onboarding">
+            <p class="text-xs text-slate-500 mb-3">Complete these steps to get the most out of DEPLOY:</p>
+            <div id="onboarding-steps-list" class="space-y-0">
+              <!-- Populated by JS -->
+              <div class="glass rounded-xl p-3 text-center py-6">
+                <i class="fas fa-spinner fa-spin text-slate-600 text-xl mb-2 block"></i>
+                <p class="text-slate-500 text-sm">Loading steps…</p>
               </div>
             </div>
           </div>
-          
-          <!-- How Coins Work -->
-          <div class="glass rounded-2xl p-5">
-            <div class="flex items-center gap-2 mb-3">
-              <i class="fas fa-coins text-amber-400"></i>
-              <h3 class="text-sm font-bold text-white">How Coins Work</h3>
-            </div>
-            <div class="space-y-2 text-sm text-slate-400">
-              <p>Coins are DEPLOY's usage currency. Every AI action costs coins:</p>
-              <div class="space-y-1.5 mt-3">
-                <div class="flex justify-between">
-                  <span>AI Assist (single field)</span>
-                  <span class="text-amber-400 font-semibold">2 coins</span>
-                </div>
-                <div class="flex justify-between">
-                  <span>Full Build (GPT-4o Mini)</span>
-                  <span class="text-amber-400 font-semibold">~15 coins</span>
-                </div>
-                <div class="flex justify-between">
-                  <span>Full Build (GPT-4o)</span>
-                  <span class="text-amber-400 font-semibold">~45 coins</span>
-                </div>
-                <div class="flex justify-between">
-                  <span>Revision Request</span>
-                  <span class="text-amber-400 font-semibold">~10 coins</span>
-                </div>
-                <div class="flex justify-between">
-                  <span>Deployment</span>
-                  <span class="text-amber-400 font-semibold">15 coins</span>
-                </div>
-              </div>
-              <p class="mt-3 text-xs text-slate-500">Coins are held when a job starts and settled on success. If a build fails, your coins are returned automatically.</p>
+
+          <!-- Guides tab -->
+          <div class="learn-tab-pane hidden" data-tab="guides">
+            <div id="learn-guides-content">
+              <p class="text-slate-500 text-sm text-center py-6">
+                <i class="fas fa-spinner fa-spin mr-2"></i>Loading guides…
+              </p>
             </div>
           </div>
-          
-          <!-- Model Switching -->
-          <div class="glass rounded-2xl p-5">
-            <div class="flex items-center gap-2 mb-3">
-              <i class="fas fa-robot text-cyan-400"></i>
-              <h3 class="text-sm font-bold text-white">Model Switching</h3>
-            </div>
-            <p class="text-sm text-slate-400">Use the model selector in the top bar to switch AI models. Each model has different capabilities and coin costs:</p>
-            <div class="mt-3 space-y-2">
-              <div class="flex items-center gap-2 text-xs">
-                <span class="tag-fast px-2 py-0.5 rounded-full font-medium">fast</span>
-                <span class="text-slate-500">Quick responses, lower cost</span>
-              </div>
-              <div class="flex items-center gap-2 text-xs">
-                <span class="tag-premium px-2 py-0.5 rounded-full font-medium">premium</span>
-                <span class="text-slate-500">Best quality, higher coin cost</span>
-              </div>
-              <div class="flex items-center gap-2 text-xs">
-                <span class="tag-reasoning px-2 py-0.5 rounded-full font-medium">reasoning</span>
-                <span class="text-slate-500">Deep analysis, complex architecture</span>
-              </div>
+
+          <!-- Coin Economy tab -->
+          <div class="learn-tab-pane hidden" data-tab="coins">
+            <div id="learn-coins-content">
+              <p class="text-slate-500 text-sm text-center py-6">
+                <i class="fas fa-spinner fa-spin mr-2"></i>Loading…
+              </p>
             </div>
           </div>
-          
-          <!-- FAQ -->
-          <div class="glass rounded-2xl p-5">
-            <h3 class="text-sm font-bold text-white mb-4">FAQ</h3>
-            <div class="space-y-3" id="faq-list">
-              <div class="border-b border-slate-800 pb-3">
-                <button onclick="toggleFaq(this)" class="w-full text-left text-sm font-medium text-slate-300 flex justify-between items-start gap-2">
-                  <span>Do I need to know how to code?</span>
-                  <i class="fas fa-plus text-slate-600 text-xs mt-1 flex-shrink-0"></i>
-                </button>
-                <p class="faq-answer hidden mt-2 text-xs text-slate-500">No. DEPLOY is designed for non-technical founders and operators. The AI handles all the architecture and implementation planning.</p>
-              </div>
-              <div class="border-b border-slate-800 pb-3">
-                <button onclick="toggleFaq(this)" class="w-full text-left text-sm font-medium text-slate-300 flex justify-between items-start gap-2">
-                  <span>What does a "build" produce?</span>
-                  <i class="fas fa-plus text-slate-600 text-xs mt-1 flex-shrink-0"></i>
-                </button>
-                <p class="faq-answer hidden mt-2 text-xs text-slate-500">A build produces a complete product specification: feature map, screen map, data model, API contracts, deployment plan, and implementation guidance — ready for a developer or another AI system to execute.</p>
-              </div>
-              <div class="border-b border-slate-800 pb-3">
-                <button onclick="toggleFaq(this)" class="w-full text-left text-sm font-medium text-slate-300 flex justify-between items-start gap-2">
-                  <span>Can I get coins back if a build fails?</span>
-                  <i class="fas fa-plus text-slate-600 text-xs mt-1 flex-shrink-0"></i>
-                </button>
-                <p class="faq-answer hidden mt-2 text-xs text-slate-500">Yes. Coins are held (not spent) when a build starts. If the build fails for any reason, all held coins are automatically returned to your vault.</p>
-              </div>
-              <div class="border-b border-slate-800 pb-3">
-                <button onclick="toggleFaq(this)" class="w-full text-left text-sm font-medium text-slate-300 flex justify-between items-start gap-2">
-                  <span>Do I enter my own AI API keys?</span>
-                  <i class="fas fa-plus text-slate-600 text-xs mt-1 flex-shrink-0"></i>
-                </button>
-                <p class="faq-answer hidden mt-2 text-xs text-slate-500">Never. DEPLOY manages all AI provider keys server-side. You access AI capabilities through coins — no API key setup, no provider accounts needed.</p>
-              </div>
-              <div>
-                <button onclick="toggleFaq(this)" class="w-full text-left text-sm font-medium text-slate-300 flex justify-between items-start gap-2">
-                  <span>What happens to my coins if I downgrade?</span>
-                  <i class="fas fa-plus text-slate-600 text-xs mt-1 flex-shrink-0"></i>
-                </button>
-                <p class="faq-answer hidden mt-2 text-xs text-slate-500">Purchased coins never expire. Monthly grant coins follow your plan's rollover rules. When you downgrade, you keep your earned coin balance.</p>
-              </div>
-            </div>
-          </div>
-          
-          <!-- Support -->
-          <div class="glass rounded-2xl p-5">
-            <div class="flex items-center gap-2 mb-3">
-              <i class="fas fa-headset text-slate-400"></i>
-              <h3 class="text-sm font-bold text-white">Need Help?</h3>
-            </div>
-            <div class="space-y-2">
-              <button class="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-slate-800/40 transition-colors">
-                <i class="fas fa-envelope text-slate-500 text-sm"></i>
-                <span class="text-sm text-slate-400">support@deployapp.io</span>
-              </button>
-              <button class="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-slate-800/40 transition-colors">
-                <i class="fab fa-twitter text-slate-500 text-sm"></i>
-                <span class="text-sm text-slate-400">@deployapp</span>
-              </button>
+
+          <!-- FAQ tab -->
+          <div class="learn-tab-pane hidden" data-tab="faq">
+            <div id="learn-faq-content">
+              <p class="text-slate-500 text-sm text-center py-6">
+                <i class="fas fa-spinner fa-spin mr-2"></i>Loading FAQ…
+              </p>
             </div>
           </div>
         </div>

@@ -4,12 +4,13 @@ import { Hono } from 'hono';
 import { authMiddleware, signJWT, hashPassword, verifyPassword, generateId } from '../middleware/auth';
 import { CoinService } from '../services/coin.service';
 import { ResendService } from '../services/resend.service';
+import { rateLimitMiddleware } from '../middleware/rateLimit';
 import type { Bindings, Variables } from '../types';
 
 const auth = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
 // POST /api/auth/signup
-auth.post('/signup', async (c) => {
+auth.post('/signup', rateLimitMiddleware('auth_signup'), async (c) => {
   try {
     const { email, password, name } = await c.req.json();
 
@@ -88,7 +89,7 @@ auth.post('/signup', async (c) => {
 });
 
 // POST /api/auth/login
-auth.post('/login', async (c) => {
+auth.post('/login', rateLimitMiddleware('auth_login'), async (c) => {
   try {
     const { email, password } = await c.req.json();
     if (!email || !password) {
@@ -198,7 +199,7 @@ auth.post('/logout', authMiddleware(), async (c) => {
 
 // POST /api/auth/forgot-password
 // Generates a time-limited reset token, stores it in KV, and emails the user.
-auth.post('/forgot-password', async (c) => {
+auth.post('/forgot-password', rateLimitMiddleware('auth_forgot'), async (c) => {
   try {
     const { email } = await c.req.json();
     if (!email) return c.json({ success: false, error: 'Email is required' }, 400);

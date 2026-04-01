@@ -3,6 +3,7 @@
 // Provider keys are NEVER exposed to clients.
 
 import type { Bindings } from '../types';
+import { IntentLogService } from './intent-log.service';
 
 export type IntentPayload = {
   intent: 'complete_prompt_field' | 'generate_spec' | 'generate_build' | 'generate_revision' | 'analyze_completeness' | 'chat' | 'summarize_build';
@@ -162,6 +163,7 @@ export class AIService {
         const coinsCharged = Math.ceil(model.base_coin_cost * model.coin_cost_multiplier);
         result.coinsCharged = coinsCharged;
 
+        const startedAt = Date.now();
         try {
           await this.db.prepare(
             'INSERT INTO model_usage_events (id, user_id, model_id, project_id, tokens_input, tokens_output, coins_spent, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
@@ -172,6 +174,39 @@ export class AIService {
         } catch (logErr) {
           console.error('Usage log error:', logErr);
         }
+
+        // Intent audit log — non-blocking
+        const intentLogger = new IntentLogService(this.db);
+        intentLogger.log({
+          userId: payload.userId,
+          projectId: payload.projectId ?? null,
+          intent: payload.intent,
+          modelId: model.id,
+          inputPayload: payload.context,
+          outputSummary: result.output?.slice(0, 500) ?? null,
+          coinsCharged,
+          tokensUsed: result.tokensUsed ?? 0,
+          providerUsed: result.provider_used ?? provider.slug,
+          latencyMs: Date.now() - startedAt,
+          status: 'success',
+        }).catch(() => {/* non-fatal */});
+      } else {
+        // Log failure to intent log
+        const intentLogger = new IntentLogService(this.db);
+        intentLogger.log({
+          userId: payload.userId,
+          projectId: payload.projectId ?? null,
+          intent: payload.intent,
+          modelId: model.id,
+          inputPayload: payload.context,
+          outputSummary: null,
+          coinsCharged: 0,
+          tokensUsed: 0,
+          providerUsed: result.provider_used ?? null,
+          latencyMs: null,
+          status: 'failed',
+          errorMessage: result.error ?? 'Unknown error',
+        }).catch(() => {/* non-fatal */});
       }
 
       return result;

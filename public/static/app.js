@@ -256,8 +256,29 @@ function navigateTo(page) {
   // Page-specific loads
   if (page === 'home') loadHomeData();
   if (page === 'prompt') loadPromptPage();
-  if (page === 'account') loadAccountPage();
+  if (page === 'account') {
+    loadAccountPage();
+    // Refresh vault balance on account page visit
+    API.get('/vault').then(({ data }) => {
+      if (data.success && data.data.wallet) {
+        const bal = data.data.wallet.balance || 0;
+        const el = document.getElementById('vault-balance');
+        if (el) el.textContent = bal.toLocaleString();
+        if (STATE.user) {
+          STATE.user.coin_balance = bal;
+          const hc = document.getElementById('header-coins');
+          if (hc) hc.textContent = bal.toLocaleString();
+          const sc = document.getElementById('stat-coins');
+          if (sc) sc.textContent = bal.toLocaleString();
+        }
+      }
+    }).catch(() => {});
+  }
   if (page === 'planning') renderKanban();
+  if (page === 'info') {
+    // Load the interactive education hub (deferred so DOM is ready)
+    setTimeout(() => { if (typeof loadLearnPage === 'function') loadLearnPage(); }, 50);
+  }
   
   // Toggle full-screen class for planning page
   document.body.classList.toggle('planning-active', page === 'planning');
@@ -266,10 +287,7 @@ function navigateTo(page) {
 // ============================================================
 // HOME DATA
 // ============================================================
-async function loadHomeData() {
-  if (!STATE.user) return;
-  await Promise.all([loadProjects(), loadNotificationBadge()]);
-}
+// loadHomeData is defined in the Command Center section below (enhanced version)
 
 async function loadProjects() {
   try {
@@ -5030,3 +5048,758 @@ function renderMusicPlayerDashboard(t,a,b,c,d,e,f,g,h,i,j,k,l,pid){return render
 function renderCommandCenterDashboard(t,a,b,c,d,e,f,g,h,i,j,k,l,pid){return renderSaaS(t,a,b,c,d.split(/[,.;]/).map(s=>s.trim()).filter(s=>s.length>2).slice(0,5),e,f,j,k,l,pid);}
 function renderAIConsoleDashboard(t,a,b,c,d,e,f,g,h,i,j,k,l,pid){return renderAI(t,a,b,c,d.split(/[,.;]/).map(s=>s.trim()).filter(s=>s.length>2).slice(0,5),e,f,[],j,k,l,pid);}
 function renderAppDashboard(t,a,b,c,d,e,f,g,h,i,j,k,l,pid){return renderGeneric(t,a,b,c,d.split(/[,.;]/).map(s=>s.trim()).filter(s=>s.length>2).slice(0,5),e,f,j,k,l,pid);}
+
+// ============================================================
+// COMMAND CENTER — Enhanced Home Page Data Loading
+// ============================================================
+
+async function loadHomeData() {
+  if (!STATE.user) return;
+  await Promise.all([
+    loadProjects(),
+    loadNotificationBadge(),
+    loadHomeCommandCenter(),
+  ]);
+}
+
+async function loadHomeCommandCenter() {
+  try {
+    // Fetch latest builds across all projects for activity feed
+    const [buildsRes, analyticsRes] = await Promise.all([
+      API.get('/projects').catch(() => ({ data: { success: false } })),
+      API.get('/vault/analytics').catch(() => ({ data: { success: false } })),
+    ]);
+
+    // Build activity feed from projects
+    if (buildsRes.data.success) {
+      const projects = buildsRes.data.data.items || [];
+      renderActivityFeed(projects);
+
+      // Compute aggregate health
+      const totalReady = projects.reduce((s, p) => s + (p.readiness_score || 0), 0);
+      const avgReady = projects.length ? Math.round(totalReady / projects.length) : 0;
+      const el = document.getElementById('home-readiness-avg');
+      if (el) el.textContent = avgReady + '%';
+
+      const buildCount = projects.reduce((s, p) => s + (p.build_count || 0), 0);
+      const el2 = document.getElementById('home-total-builds');
+      if (el2) el2.textContent = buildCount;
+    }
+
+    // Coin trend
+    if (analyticsRes.data.success) {
+      const trend = analyticsRes.data.data.trend;
+      const el = document.getElementById('home-coin-trend');
+      if (el && trend) {
+        const dir = trend.trend_direction;
+        const icon = dir === 'up' ? '↑' : dir === 'down' ? '↓' : '→';
+        const color = dir === 'down' ? 'text-emerald-400' : dir === 'up' ? 'text-red-400' : 'text-slate-400';
+        el.innerHTML = `<span class="${color}">${icon} ${Math.abs(trend.delta_7d)} vs last week</span>`;
+      }
+    }
+  } catch (e) {
+    console.debug('Command center load error (non-fatal):', e.message);
+  }
+}
+
+function renderActivityFeed(projects) {
+  const container = document.getElementById('activity-list');
+  if (!container) return;
+
+  // Build activity items from project statuses
+  const items = [];
+  for (const p of projects.slice(0, 6)) {
+    if (p.status === 'deployed') {
+      items.push({
+        icon: 'fa-globe', color: 'text-emerald-400', bg: 'rgba(52,211,153,0.1)',
+        title: `${escHtml(p.name)} deployed`,
+        sub: `${p.build_count || 0} build${p.build_count !== 1 ? 's' : ''} · ${p.readiness_score || 0}% ready`,
+        action: () => openViewModal(p.id, p.name),
+      });
+    } else if (p.status === 'built' || p.status === 'building') {
+      items.push({
+        icon: 'fa-hammer', color: 'text-cyan-400', bg: 'rgba(6,182,212,0.1)',
+        title: `${escHtml(p.name)} built`,
+        sub: `${p.readiness_score || 0}% ready · ${p.build_count || 0} build${p.build_count !== 1 ? 's' : ''}`,
+        action: () => openProject(p.id),
+      });
+    } else if (p.status === 'draft' && p.build_count > 0) {
+      items.push({
+        icon: 'fa-clock', color: 'text-amber-400', bg: 'rgba(251,191,36,0.1)',
+        title: `${escHtml(p.name)} — build failed`,
+        sub: `Revise and try again`,
+        action: () => openProject(p.id),
+      });
+    }
+  }
+
+  if (items.length === 0) {
+    container.innerHTML = `<div class="text-center py-6 text-slate-600 text-sm">Build your first project to see activity</div>`;
+    return;
+  }
+
+  container.innerHTML = items.map(item => `
+    <div class="glass rounded-xl p-3 flex items-center gap-3 cursor-pointer hover:bg-slate-800/30 transition-colors"
+         onclick="(${item.action.toString()})()">
+      <div class="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+           style="background: ${item.bg}">
+        <i class="fas ${item.icon} text-sm ${item.color}"></i>
+      </div>
+      <div class="flex-1 min-w-0">
+        <p class="text-sm font-semibold text-white truncate">${item.title}</p>
+        <p class="text-xs text-slate-500 truncate">${item.sub}</p>
+      </div>
+      <i class="fas fa-chevron-right text-slate-700 text-xs flex-shrink-0"></i>
+    </div>
+  `).join('');
+}
+
+// ============================================================
+// VAULT FINANCIAL CONTROL CENTER — Analytics Tab
+// ============================================================
+
+let VAULT_ACTIVE_TAB = 'overview';
+
+function setVaultTab(tab) {
+  VAULT_ACTIVE_TAB = tab;
+  document.querySelectorAll('.vault-tab-btn').forEach(b => {
+    b.classList.toggle('active-tab', b.dataset.tab === tab);
+    b.classList.toggle('text-cyan-400', b.dataset.tab === tab);
+    b.classList.toggle('border-cyan-400', b.dataset.tab === tab);
+    b.classList.toggle('text-slate-500', b.dataset.tab !== tab);
+    b.classList.toggle('border-transparent', b.dataset.tab !== tab);
+  });
+  document.querySelectorAll('.vault-tab-pane').forEach(p => {
+    p.classList.toggle('hidden', p.dataset.tab !== tab);
+  });
+
+  if (tab === 'analytics' && !STATE.vaultAnalytics) {
+    loadVaultAnalytics();
+  }
+}
+
+async function loadVaultAnalytics() {
+  const container = document.getElementById('vault-analytics-content');
+  if (!container) return;
+  container.innerHTML = '<p class="text-slate-500 text-sm text-center py-6"><i class="fas fa-spinner fa-spin mr-2"></i>Loading analytics…</p>';
+  try {
+    const { data } = await API.get('/vault/analytics?months=6');
+    if (data.success) {
+      STATE.vaultAnalytics = data.data;
+      renderVaultAnalytics(data.data);
+    }
+  } catch {
+    container.innerHTML = '<p class="text-slate-500 text-sm text-center py-4">Failed to load analytics</p>';
+  }
+}
+
+function renderVaultAnalytics(data) {
+  const container = document.getElementById('vault-analytics-content');
+  if (!container) return;
+
+  const wallet = data.wallet;
+  const trend = data.trend;
+  const byIntent = data.by_intent || [];
+  const byPeriod = data.by_period || [];
+
+  const trendColor = trend.trend_direction === 'down' ? 'text-emerald-400' : trend.trend_direction === 'up' ? 'text-red-400' : 'text-slate-400';
+  const trendIcon = trend.trend_direction === 'up' ? '↑' : trend.trend_direction === 'down' ? '↓' : '→';
+
+  const intentLabels = {
+    build: 'Build', revision: 'Revision', chat: 'Chat',
+    summary: 'Summary', ai_assist: 'AI Assist',
+    transform: 'Spec Transform', deployment: 'Deployment',
+  };
+
+  container.innerHTML = `
+    <!-- Wallet snapshot -->
+    <div class="grid grid-cols-3 gap-2 mb-4">
+      <div class="glass rounded-xl p-3 text-center">
+        <p class="text-base font-black text-amber-400">${wallet.balance.toLocaleString()}</p>
+        <p class="text-xs text-slate-500 mt-0.5">Balance</p>
+      </div>
+      <div class="glass rounded-xl p-3 text-center">
+        <p class="text-base font-black text-slate-300">${wallet.lifetime_spent.toLocaleString()}</p>
+        <p class="text-xs text-slate-500 mt-0.5">Total Spent</p>
+      </div>
+      <div class="glass rounded-xl p-3 text-center">
+        <p class="text-base font-black text-slate-300">${wallet.held.toLocaleString()}</p>
+        <p class="text-xs text-slate-500 mt-0.5">On Hold</p>
+      </div>
+    </div>
+
+    <!-- 7-day trend -->
+    <div class="glass rounded-xl p-3 mb-4 flex items-center justify-between">
+      <div>
+        <p class="text-xs text-slate-500">7-day spend</p>
+        <p class="text-base font-bold text-white">${trend.spend_last_7d} coins</p>
+      </div>
+      <span class="text-sm font-semibold ${trendColor}">${trendIcon} ${Math.abs(trend.delta_7d)} vs prior 7d</span>
+    </div>
+
+    <!-- Spend by intent -->
+    ${byIntent.length > 0 ? `
+    <div class="mb-4">
+      <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Spend by Action</p>
+      ${byIntent.map(i => {
+        const label = intentLabels[i.intent] || capitalize(i.intent);
+        const pct = wallet.lifetime_spent > 0 ? Math.round((i.coins_spent / wallet.lifetime_spent) * 100) : 0;
+        return `
+          <div class="mb-2">
+            <div class="flex justify-between text-xs mb-1">
+              <span class="text-slate-300">${label}</span>
+              <span class="text-amber-400 font-semibold">${i.coins_spent} coins (${i.ops} ops)</span>
+            </div>
+            <div class="h-1.5 bg-navy-700 rounded-full overflow-hidden">
+              <div class="progress-fill h-full rounded-full" style="width: ${pct}%"></div>
+            </div>
+          </div>`;
+      }).join('')}
+    </div>` : '<p class="text-slate-600 text-xs mb-4">No spend data yet</p>'}
+
+    <!-- Monthly history -->
+    ${byPeriod.length > 0 ? `
+    <div>
+      <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Monthly History</p>
+      <div class="space-y-1.5">
+        ${byPeriod.slice(-6).reverse().map(p => `
+          <div class="flex justify-between text-xs py-1 border-b border-slate-800/40">
+            <span class="text-slate-400">${p.period}</span>
+            <span class="text-white font-semibold">${p.coins_spent} coins · ${p.ops} ops</span>
+          </div>`).join('')}
+      </div>
+    </div>` : ''}
+  `;
+}
+
+// Enhanced openVaultModal with tabs
+async function openVaultModal() {
+  openModal('modal-vault');
+
+  try {
+    const { data } = await API.get('/vault');
+    if (data.success) {
+      renderVaultContentWithTabs(data.data);
+    }
+  } catch {
+    document.getElementById('vault-full-content').innerHTML = '<p class="text-slate-500 text-sm text-center py-4">Failed to load vault</p>';
+  }
+}
+
+function renderVaultContentWithTabs(vault) {
+  const w = vault.wallet;
+  const m = vault.membership;
+
+  document.getElementById('vault-full-content').innerHTML = `
+    <!-- Balance header -->
+    <div class="text-center py-3 border-b border-slate-800 mb-3">
+      <p class="text-4xl font-black text-amber-400">${(w?.balance || 0).toLocaleString()}</p>
+      <p class="text-slate-500 text-sm mt-1">Available Coins</p>
+      <div class="flex justify-center gap-4 mt-2 text-xs">
+        <div class="text-center">
+          <p class="font-bold text-slate-300">${(w?.lifetime_earned || 0).toLocaleString()}</p>
+          <p class="text-slate-600">Earned</p>
+        </div>
+        <div class="text-center">
+          <p class="font-bold text-slate-300">${(w?.lifetime_spent || 0).toLocaleString()}</p>
+          <p class="text-slate-600">Spent</p>
+        </div>
+        <div class="text-center">
+          <p class="font-bold text-slate-300">${(vault.usage_this_month || 0).toLocaleString()}</p>
+          <p class="text-slate-600">This Month</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab nav -->
+    <div class="flex border-b border-slate-800 mb-4 gap-1">
+      <button class="vault-tab-btn flex-1 py-2 text-xs font-semibold border-b-2 text-cyan-400 border-cyan-400 transition-colors" data-tab="overview" onclick="setVaultTab('overview')">Overview</button>
+      <button class="vault-tab-btn flex-1 py-2 text-xs font-semibold border-b-2 text-slate-500 border-transparent transition-colors" data-tab="analytics" onclick="setVaultTab('analytics')">Analytics</button>
+      <button class="vault-tab-btn flex-1 py-2 text-xs font-semibold border-b-2 text-slate-500 border-transparent transition-colors" data-tab="ledger" onclick="setVaultTab('ledger')">Ledger</button>
+    </div>
+
+    <!-- Overview tab -->
+    <div class="vault-tab-pane" data-tab="overview">
+      ${m ? `
+      <div class="flex items-center justify-between py-2 mb-3">
+        <div>
+          <p class="text-sm font-semibold text-white">${m.plan_name} Plan</p>
+          <p class="text-xs text-slate-500">${m.monthly_coins} coins/month</p>
+        </div>
+        <button onclick="openPlansModal()" class="text-xs text-cyan-400">Upgrade</button>
+      </div>` : ''}
+
+      ${vault.active_holds?.length > 0 ? `
+      <div class="mb-3">
+        <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Active Holds</p>
+        ${vault.active_holds.map(h => `
+          <div class="flex justify-between items-center py-2 border-b border-slate-800/50">
+            <span class="text-xs text-slate-400">${h.reference_type}</span>
+            <span class="text-xs font-semibold text-amber-400">-${h.amount} coins</span>
+          </div>`).join('')}
+      </div>` : ''}
+
+      <div>
+        <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Recent Transactions</p>
+        ${vault.recent_transactions?.slice(0, 8).map(t => `
+          <div class="flex justify-between items-center py-2 border-b border-slate-800/30">
+            <div>
+              <p class="text-xs text-slate-300">${escHtml(t.description || t.type)}</p>
+              <p class="text-xs text-slate-600">${formatDate(t.created_at)}</p>
+            </div>
+            <span class="text-xs font-bold ${t.amount > 0 ? 'text-emerald-400' : 'text-red-400'}">
+              ${t.amount > 0 ? '+' : ''}${t.amount}
+            </span>
+          </div>`).join('') || '<p class="text-slate-600 text-xs py-2">No transactions yet</p>'}
+      </div>
+
+      <button onclick="openBuyCoinModal()" class="btn-primary w-full py-3 rounded-xl text-sm font-semibold mt-4">
+        <i class="fas fa-plus mr-2"></i> Add Coins
+      </button>
+    </div>
+
+    <!-- Analytics tab -->
+    <div class="vault-tab-pane hidden" data-tab="analytics">
+      <div id="vault-analytics-content">
+        <p class="text-slate-500 text-sm text-center py-6">Click to load analytics</p>
+      </div>
+    </div>
+
+    <!-- Ledger tab -->
+    <div class="vault-tab-pane hidden" data-tab="ledger">
+      <div id="vault-ledger-content">
+        <p class="text-slate-500 text-sm text-center py-4">
+          <button onclick="loadVaultLedger(1)" class="text-cyan-400 hover:text-cyan-300">Load Ledger</button>
+        </p>
+      </div>
+    </div>
+  `;
+
+  VAULT_ACTIVE_TAB = 'overview';
+}
+
+async function loadVaultLedger(page = 1) {
+  const container = document.getElementById('vault-ledger-content');
+  if (!container) return;
+  container.innerHTML = '<p class="text-slate-500 text-sm text-center py-4"><i class="fas fa-spinner fa-spin mr-2"></i>Loading…</p>';
+  try {
+    const { data } = await API.get(`/vault/ledger?page=${page}`);
+    if (data.success) {
+      container.innerHTML = `
+        <div class="space-y-0">
+          ${data.data.items?.map(t => `
+            <div class="flex justify-between items-center py-2 border-b border-slate-800/30">
+              <div>
+                <p class="text-xs text-slate-300">${escHtml(t.description || t.type)}</p>
+                <p class="text-xs text-slate-600">${formatDate(t.created_at)}</p>
+              </div>
+              <span class="text-xs font-bold ${t.amount > 0 ? 'text-emerald-400' : 'text-red-400'}">
+                ${t.amount > 0 ? '+' : ''}${t.amount}
+              </span>
+            </div>`).join('') || '<p class="text-slate-600 text-xs py-2">No entries yet</p>'}
+        </div>
+        ${data.meta?.pages > 1 ? `
+        <div class="flex justify-between mt-3 text-xs">
+          ${page > 1 ? `<button onclick="loadVaultLedger(${page-1})" class="text-cyan-400">← Prev</button>` : '<span></span>'}
+          <span class="text-slate-600">Page ${page} of ${data.meta.pages}</span>
+          ${page < data.meta.pages ? `<button onclick="loadVaultLedger(${page+1})" class="text-cyan-400">Next →</button>` : '<span></span>'}
+        </div>` : ''}
+      `;
+    }
+  } catch {
+    container.innerHTML = '<p class="text-slate-500 text-sm text-center py-4">Failed to load ledger</p>';
+  }
+}
+
+// ============================================================
+// EDUCATION HUB — Interactive Learn Page
+// ============================================================
+
+let LEARN_ACTIVE_TAB = 'onboarding';
+let LEARN_DATA = { onboarding: null, faq: null, guides: null, coinEconomy: null };
+
+async function loadLearnPage() {
+  try {
+    // Load onboarding progress first (fast)
+    const { data } = await API.get('/learn/onboarding');
+    if (data.success) {
+      LEARN_DATA.onboarding = data.data;
+      renderOnboardingProgress(data.data);
+    }
+  } catch { /* non-authenticated fallback */ }
+
+  // Show tab content
+  setLearnTab(LEARN_ACTIVE_TAB);
+}
+
+function setLearnTab(tab) {
+  LEARN_ACTIVE_TAB = tab;
+  document.querySelectorAll('.learn-tab-btn').forEach(b => {
+    const active = b.dataset.tab === tab;
+    b.classList.toggle('text-cyan-400', active);
+    b.classList.toggle('border-cyan-500', active);
+    b.classList.toggle('text-slate-500', !active);
+    b.classList.toggle('border-transparent', !active);
+  });
+  document.querySelectorAll('.learn-tab-pane').forEach(p => {
+    p.classList.toggle('hidden', p.dataset.tab !== tab);
+  });
+
+  if (tab === 'guides' && !LEARN_DATA.guides) loadLearnGuides();
+  if (tab === 'coins' && !LEARN_DATA.coinEconomy) loadCoinEconomy();
+  if (tab === 'faq' && !LEARN_DATA.faq) loadLearnFaq();
+}
+
+function renderOnboardingProgress(onboarding) {
+  const container = document.getElementById('onboarding-progress-bar');
+  if (!container) return;
+  container.style.width = onboarding.percent + '%';
+  const label = document.getElementById('onboarding-progress-label');
+  if (label) label.textContent = `${onboarding.completed_count} / ${onboarding.total_steps} steps · ${onboarding.percent}%`;
+
+  const stepsContainer = document.getElementById('onboarding-steps-list');
+  if (!stepsContainer) return;
+
+  stepsContainer.innerHTML = onboarding.steps.map(step => `
+    <div class="flex items-start gap-3 p-3 rounded-xl ${step.completed ? 'opacity-60' : ''} glass mb-2 cursor-pointer hover:bg-slate-700/30 transition-colors"
+         onclick="openOnboardingStep('${step.key}')">
+      <div class="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 ${step.completed ? 'bg-emerald-500/20' : step.is_current ? 'bg-cyan-500/20' : 'bg-slate-700/50'}">
+        ${step.completed
+          ? '<i class="fas fa-check text-emerald-400 text-xs"></i>'
+          : step.is_current
+            ? `<i class="fas ${step.icon} text-cyan-400 text-xs"></i>`
+            : `<i class="fas ${step.icon} text-slate-500 text-xs"></i>`
+        }
+      </div>
+      <div class="flex-1 min-w-0">
+        <p class="text-sm font-semibold ${step.completed ? 'text-slate-400 line-through' : step.is_current ? 'text-white' : 'text-slate-300'}">${step.title}</p>
+        <p class="text-xs text-slate-500 mt-0.5">${step.description}</p>
+        <p class="text-xs text-slate-600 mt-0.5">~${step.estimate_minutes} min</p>
+      </div>
+      ${step.is_current && !step.completed ? '<span class="flex-shrink-0 text-xs font-semibold text-cyan-400 bg-cyan-400/10 px-2 py-0.5 rounded-full">Current</span>' : ''}
+    </div>
+  `).join('');
+}
+
+async function openOnboardingStep(key) {
+  // Navigate to relevant page / modal based on step
+  const routes = {
+    welcome: () => {},  // stay on learn
+    create_project: () => { navigateTo('home'); setTimeout(showNewProjectModal, 100); },
+    fill_prompt: () => navigateTo('prompt'),
+    run_build: () => navigateTo('prompt'),
+    review_output: () => navigateTo('home'),
+    top_up_coins: () => { navigateTo('account'); setTimeout(openVaultModal, 100); },
+    deploy_project: () => navigateTo('home'),
+  };
+  if (routes[key]) routes[key]();
+}
+
+async function completeOnboardingStep(key) {
+  try {
+    const { data } = await API.post('/learn/onboarding/complete', { step_key: key });
+    if (data.success) {
+      LEARN_DATA.onboarding = null; // force reload
+      const res = await API.get('/learn/onboarding');
+      if (res.data.success) {
+        LEARN_DATA.onboarding = res.data.data;
+        renderOnboardingProgress(res.data.data);
+      }
+      showToast(data.message || 'Step complete!', 'success');
+    }
+  } catch { showToast('Could not save progress', 'error'); }
+}
+
+async function loadLearnFaq() {
+  const container = document.getElementById('learn-faq-content');
+  if (!container) return;
+  try {
+    const { data } = await API.get('/learn/faq');
+    if (data.success) {
+      LEARN_DATA.faq = data.data;
+      renderFaqContent(data.data, container);
+    }
+  } catch {
+    container.innerHTML = '<p class="text-slate-500 text-sm text-center py-4">Failed to load FAQ</p>';
+  }
+}
+
+function renderFaqContent(categories, container) {
+  container.innerHTML = categories.map(cat => `
+    <div class="mb-4">
+      <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">${cat.category}</p>
+      <div class="space-y-1">
+        ${cat.items.map((item, i) => `
+          <div class="glass rounded-xl overflow-hidden">
+            <button class="w-full flex items-center justify-between p-4 text-left"
+                    onclick="toggleFaqItem('faq-${cat.category}-${i}')">
+              <span class="text-sm font-medium text-white pr-2">${item.q}</span>
+              <i class="fas fa-chevron-down text-slate-500 text-xs flex-shrink-0 transition-transform" id="faq-icon-${cat.category}-${i}"></i>
+            </button>
+            <div id="faq-${cat.category}-${i}" class="hidden px-4 pb-4">
+              <p class="text-sm text-slate-400 leading-relaxed">${item.a}</p>
+            </div>
+          </div>`).join('')}
+      </div>
+    </div>
+  `).join('');
+}
+
+function toggleFaqItem(id) {
+  const el = document.getElementById(id);
+  const icon = document.getElementById('faq-icon-' + id.replace('faq-', ''));
+  if (!el) return;
+  const open = !el.classList.contains('hidden');
+  el.classList.toggle('hidden', open);
+  if (icon) icon.style.transform = open ? '' : 'rotate(180deg)';
+}
+
+async function loadLearnGuides() {
+  const container = document.getElementById('learn-guides-content');
+  if (!container) return;
+  try {
+    const { data } = await API.get('/learn/guides');
+    if (data.success) {
+      LEARN_DATA.guides = data.data;
+      renderGuidesContent(data.data, container);
+    }
+  } catch {
+    container.innerHTML = '<p class="text-slate-500 text-sm text-center py-4">Failed to load guides</p>';
+  }
+}
+
+function renderGuidesContent(guides, container) {
+  if (!STATE.activeGuideId) {
+    // Show guide list
+    container.innerHTML = guides.map(g => `
+      <div class="glass rounded-xl p-4 mb-3 cursor-pointer hover:bg-slate-700/20 transition-colors"
+           onclick="openGuide('${g.id}')">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+               style="background: linear-gradient(135deg, rgba(6,182,212,0.2), rgba(6,182,212,0.05))">
+            <i class="fas ${g.icon} text-cyan-400 text-sm"></i>
+          </div>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm font-semibold text-white">${g.title}</p>
+            <p class="text-xs text-slate-500 mt-0.5">~${g.time_minutes} min read</p>
+          </div>
+          <i class="fas fa-chevron-right text-slate-600 text-xs"></i>
+        </div>
+      </div>
+    `).join('');
+    return;
+  }
+
+  const guide = guides.find(g => g.id === STATE.activeGuideId);
+  if (!guide) { STATE.activeGuideId = null; renderGuidesContent(guides, container); return; }
+
+  container.innerHTML = `
+    <button onclick="STATE.activeGuideId=null;renderGuidesContent(LEARN_DATA.guides, document.getElementById('learn-guides-content'))"
+            class="flex items-center gap-1 text-xs text-cyan-400 mb-4">
+      <i class="fas fa-arrow-left"></i> All Guides
+    </button>
+    <h3 class="text-base font-bold text-white mb-1">${guide.title}</h3>
+    <p class="text-xs text-slate-500 mb-4">~${guide.time_minutes} min read</p>
+    <div class="space-y-4">
+      ${guide.sections.map(s => `
+        <div class="glass rounded-xl p-4">
+          <p class="text-sm font-semibold text-white mb-2">${s.title}</p>
+          <p class="text-sm text-slate-400 leading-relaxed">${s.content}</p>
+          ${s.link ? `<a href="${s.link}" target="_blank" rel="noopener" class="inline-flex items-center gap-1 text-xs text-cyan-400 mt-2 hover:text-cyan-300"><i class="fas fa-external-link-alt text-xs"></i> Open →</a>` : ''}
+        </div>`).join('')}
+    </div>
+  `;
+}
+
+function openGuide(id) {
+  STATE.activeGuideId = id;
+  if (LEARN_DATA.guides) {
+    renderGuidesContent(LEARN_DATA.guides, document.getElementById('learn-guides-content'));
+  }
+}
+
+async function loadCoinEconomy() {
+  const container = document.getElementById('learn-coins-content');
+  if (!container) return;
+  try {
+    const { data } = await API.get('/learn/coin-economy');
+    if (data.success) {
+      LEARN_DATA.coinEconomy = data.data;
+      renderCoinEconomy(data.data, container);
+    }
+  } catch {
+    container.innerHTML = '<p class="text-slate-500 text-sm text-center py-4">Failed to load coin guide</p>';
+  }
+}
+
+function renderCoinEconomy(eco, container) {
+  container.innerHTML = `
+    <p class="text-sm text-slate-400 leading-relaxed mb-4">${eco.overview}</p>
+
+    <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Action Costs</p>
+    <div class="space-y-1.5 mb-5">
+      ${eco.actions.map(a => `
+        <div class="flex items-center justify-between py-2 border-b border-slate-800/40">
+          <div>
+            <p class="text-xs font-medium text-slate-300">${a.action}</p>
+            <p class="text-xs text-slate-600">${a.description}</p>
+          </div>
+          <span class="text-xs font-bold text-amber-400 ml-3 whitespace-nowrap">${a.cost} coins</span>
+        </div>`).join('')}
+    </div>
+
+    <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Coin Packages</p>
+    <div class="grid grid-cols-2 gap-2 mb-5">
+      ${eco.packages.map(pkg => `
+        <div class="glass rounded-xl p-3 text-center ${pkg.badge ? 'border border-cyan-500/30' : ''}">
+          ${pkg.badge ? `<span class="text-xs font-semibold text-cyan-400 mb-1 block">${pkg.badge}</span>` : '<span class="text-xs text-transparent mb-1 block">·</span>'}
+          <p class="text-lg font-black text-amber-400">${pkg.coins}</p>
+          <p class="text-xs text-slate-500">coins</p>
+          <p class="text-xs font-semibold text-white mt-1">$${pkg.price_usd}</p>
+          <p class="text-xs text-slate-600">${pkg.label}</p>
+        </div>`).join('')}
+    </div>
+
+    <button onclick="navigateTo('account');setTimeout(openVaultModal,100)" class="btn-primary w-full py-3 rounded-xl text-sm font-semibold">
+      <i class="fas fa-coins mr-2"></i> Buy Coins
+    </button>
+  `;
+}
+
+// ============================================================
+// SPEC TRANSFORMER — UI integration in Test & View Modal
+// ============================================================
+
+async function runSpecTransform(projectId) {
+  const btn = document.getElementById('spec-transform-btn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Transforming…'; }
+
+  try {
+    const { data } = await API.post(`/projects/${projectId}/transform`);
+    if (data.success) {
+      showToast(`Spec transformed! ${data.data.coins_used} coins used.`, 'success');
+      renderSpecTransformResult(data.data);
+    } else {
+      showToast(data.error || 'Transformation failed', 'error');
+    }
+  } catch (err) {
+    showToast(err.response?.data?.error || 'Transformation failed', 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-wand-magic-sparkles mr-2"></i>Transform Spec'; }
+  }
+}
+
+async function loadSpecTransform(projectId) {
+  try {
+    const { data } = await API.get(`/projects/${projectId}/transform`);
+    if (data.success) {
+      renderSpecTransformResult(data.data);
+    }
+  } catch { /* no breakdown yet — show prompt */ }
+}
+
+function renderSpecTransformResult(breakdown) {
+  const container = document.getElementById('spec-transform-content');
+  if (!container) return;
+
+  const features = Array.isArray(breakdown.feature_map) ? breakdown.feature_map : [];
+  const screens = Array.isArray(breakdown.screen_map) ? breakdown.screen_map : [];
+  const tables = Array.isArray(breakdown.data_model) ? breakdown.data_model : [];
+  const apis = Array.isArray(breakdown.api_contracts) ? breakdown.api_contracts : [];
+  const envVars = Array.isArray(breakdown.env_vars) ? breakdown.env_vars : [];
+  const risks = Array.isArray(breakdown.risk_flags) ? breakdown.risk_flags : [];
+
+  container.innerHTML = `
+    <div class="space-y-4">
+      ${breakdown.arch_summary ? `
+      <div class="glass rounded-xl p-4">
+        <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Architecture Summary</p>
+        <p class="text-sm text-slate-400 leading-relaxed">${escHtml(String(breakdown.arch_summary))}</p>
+      </div>` : ''}
+
+      ${features.length > 0 ? `
+      <div class="glass rounded-xl p-4">
+        <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Feature Map (${features.length})</p>
+        <div class="space-y-1.5">
+          ${features.slice(0, 8).map(f => `
+            <div class="flex items-start gap-2">
+              <span class="w-1.5 h-1.5 rounded-full bg-cyan-400 mt-1.5 flex-shrink-0"></span>
+              <div>
+                <p class="text-xs font-medium text-slate-300">${escHtml(f.name || f)}</p>
+                ${f.description ? `<p class="text-xs text-slate-600">${escHtml(f.description)}</p>` : ''}
+              </div>
+            </div>`).join('')}
+          ${features.length > 8 ? `<p class="text-xs text-slate-600">+${features.length - 8} more features</p>` : ''}
+        </div>
+      </div>` : ''}
+
+      ${screens.length > 0 ? `
+      <div class="glass rounded-xl p-4">
+        <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Screens (${screens.length})</p>
+        <div class="flex flex-wrap gap-1.5">
+          ${screens.slice(0, 10).map(s => `
+            <span class="text-xs px-2 py-1 rounded-lg bg-slate-800 text-slate-300 font-medium">${escHtml(s.name || s)}</span>`).join('')}
+          ${screens.length > 10 ? `<span class="text-xs px-2 py-1 rounded-lg bg-slate-800 text-slate-500">+${screens.length - 10}</span>` : ''}
+        </div>
+      </div>` : ''}
+
+      ${tables.length > 0 ? `
+      <div class="glass rounded-xl p-4">
+        <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Data Model (${tables.length} tables)</p>
+        <div class="flex flex-wrap gap-1.5">
+          ${tables.map(t => `<span class="text-xs px-2 py-1 rounded-lg bg-slate-800 text-amber-400 font-mono">${escHtml(t.table || t.name || t)}</span>`).join('')}
+        </div>
+      </div>` : ''}
+
+      ${apis.length > 0 ? `
+      <div class="glass rounded-xl p-4">
+        <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">API Contracts (${apis.length})</p>
+        <div class="space-y-1">
+          ${apis.slice(0, 6).map(a => `
+            <div class="flex items-center gap-2 font-mono text-xs">
+              <span class="px-1.5 py-0.5 rounded font-bold ${a.method === 'GET' ? 'bg-emerald-500/20 text-emerald-400' : a.method === 'POST' ? 'bg-cyan-500/20 text-cyan-400' : a.method === 'DELETE' ? 'bg-red-500/20 text-red-400' : 'bg-amber-500/20 text-amber-400'}">${a.method || 'GET'}</span>
+              <span class="text-slate-400">${escHtml(a.path || '')}</span>
+            </div>`).join('')}
+          ${apis.length > 6 ? `<p class="text-xs text-slate-600">+${apis.length - 6} more endpoints</p>` : ''}
+        </div>
+      </div>` : ''}
+
+      ${envVars.length > 0 ? `
+      <div class="glass rounded-xl p-4">
+        <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Environment Variables (${envVars.length})</p>
+        <div class="space-y-1">
+          ${envVars.map(e => `
+            <div class="flex items-center justify-between text-xs">
+              <span class="font-mono text-cyan-400">${escHtml(e.name || e)}</span>
+              ${e.required ? '<span class="text-red-400 text-xs">required</span>' : '<span class="text-slate-600 text-xs">optional</span>'}
+            </div>`).join('')}
+        </div>
+      </div>` : ''}
+
+      ${risks.length > 0 ? `
+      <div class="glass rounded-xl p-4">
+        <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Risk Flags</p>
+        <div class="space-y-1.5">
+          ${risks.map(r => `
+            <div class="flex items-start gap-2">
+              <span class="text-xs font-bold mt-0.5 ${r.level === 'high' ? 'text-red-400' : r.level === 'medium' ? 'text-amber-400' : 'text-slate-500'}">[${(r.level || 'low').toUpperCase()}]</span>
+              <p class="text-xs text-slate-400">${escHtml(r.description || r)}</p>
+            </div>`).join('')}
+        </div>
+      </div>` : ''}
+
+      <div class="glass rounded-xl p-3 flex items-center justify-between">
+        <p class="text-xs text-slate-500">Readiness Score</p>
+        <div class="flex items-center gap-2">
+          <div class="w-24 h-1.5 bg-navy-700 rounded-full overflow-hidden">
+            <div class="progress-fill h-full rounded-full" style="width: ${breakdown.readiness_score || 0}%"></div>
+          </div>
+          <span class="text-xs font-bold text-white">${breakdown.readiness_score || 0}%</span>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// Learn page init + vault refresh hooks are called from the original navigateTo
+// by patching it with a safe post-navigation hook stored in STATE

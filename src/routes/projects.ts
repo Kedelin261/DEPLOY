@@ -4,6 +4,7 @@ import { Hono } from 'hono';
 import { authMiddleware, generateId } from '../middleware/auth';
 import { CoinService } from '../services/coin.service';
 import { AIService } from '../services/ai.service';
+import { rateLimitMiddleware } from '../middleware/rateLimit';
 import type { Bindings, Variables } from '../types';
 
 const projects = new Hono<{ Bindings: Bindings; Variables: Variables }>();
@@ -282,7 +283,7 @@ projects.get('/:id/preview', authMiddleware(), async (c) => {
 });
 
 // POST /api/projects/:id/build
-projects.post('/:id/build', authMiddleware(), async (c) => {
+projects.post('/:id/build', authMiddleware(), rateLimitMiddleware('build_request'), async (c) => {
   const user = c.get('user')!;
   const projectId = c.req.param('id');
   const { model_id, type = 'build', revision_notes } = await c.req.json();
@@ -666,7 +667,7 @@ function getProgressStep(status: string, poll: number): number {
 }
 
 // POST /api/projects/:id/summarize - Generate build summary
-projects.post('/:id/summarize', authMiddleware(), async (c) => {
+projects.post('/:id/summarize', authMiddleware(), rateLimitMiddleware('summarize'), async (c) => {
   const user = c.get('user')!;
   const projectId = c.req.param('id');
 
@@ -717,7 +718,7 @@ projects.post('/:id/summarize', authMiddleware(), async (c) => {
 });
 
 // POST /api/projects/:id/chat - AI chat about the build
-projects.post('/:id/chat', authMiddleware(), async (c) => {
+projects.post('/:id/chat', authMiddleware(), rateLimitMiddleware('chat'), async (c) => {
   const user = c.get('user')!;
   const projectId = c.req.param('id');
   const { message, history } = await c.req.json();
@@ -853,6 +854,213 @@ projects.post('/:id/revise', authMiddleware(), async (c) => {
     data: { job_id: jobId, coins_held: coinCost, status: 'completed' },
     message: `Revision applied! ${coinCost} coins used.`
   }, 200);
+});
+
+// ── POST /api/projects/:id/transform ──────────────────────────────────────────
+// Build Specification Transformer — Phase 2 feature.
+// Reads the latest generated spec from R2/DB, calls the AI with intent
+// 'generate_spec', and saves a structured spec_breakdown row to D1.
+// Returns feature_map, screen_map, data_model, api_contracts, arch_summary,
+// deployment_reqs, env_vars, risk_flags, and readiness_score.
+// Cost: same as a build (uses the project's active model).
+projects.post('/:id/transform', authMiddleware(), rateLimitMiddleware('build_request'), async (c) => {
+  const user = c.get('user')!;
+  const projectId = c.req.param('id');
+
+  // Validate project ownership
+  const project = await c.env.DB.prepare(
+    `SELECT p.*, m.display_name AS model_name, m.model_id AS model_slug,
+            m.base_coin_cost, m.coin_cost_multiplier
+     FROM projects p
+     LEFT JOIN ai_models m ON m.id = p.active_model_id
+     WHERE p.id = ? AND p.user_id = ?`
+  ).bind(projectId, user.id).first<{
+    id: string; name: string; status: string; active_model_id: string;
+    model_slug: string; base_coin_cost: number; coin_cost_multiplier: number;
+  }>();
+
+  if (!project) return c.json({ success: false, error: 'Project not found' }, 404);
+
+  // Must have a completed build with generated spec
+  const latestJob = await c.env.DB.prepare(
+    `SELECT j.id AS job_id, s.id AS spec_id, s.product_summary, s.spec_json_key
+     FROM build_jobs j
+     LEFT JOIN generated_specs s ON s.job_id = j.id
+     WHERE j.project_id = ? AND j.status = 'completed'
+     ORDER BY j.completed_at DESC LIMIT 1`
+  ).bind(projectId).first<{
+    job_id: string; spec_id: string; product_summary: string; spec_json_key: string;
+  }>();
+
+  if (!latestJob) {
+    return c.json({ success: false, error: 'No completed build found. Run a build first.' }, 400);
+  }
+
+  // Calculate coin cost
+  const baseCost = project.base_coin_cost ?? 2;
+  const multiplier = project.coin_cost_multiplier ?? 1;
+  const coinCost = Math.ceil(baseCost * multiplier);
+
+  const coinService = new CoinService(c.env.DB);
+  const wallet = await c.env.DB.prepare(
+    'SELECT balance FROM coin_wallets WHERE user_id = ?'
+  ).bind(user.id).first<{ balance: number }>();
+
+  if ((wallet?.balance ?? 0) < coinCost) {
+    return c.json({
+      success: false,
+      error: `Insufficient coins. Spec transformation costs ${coinCost} coins. Your balance: ${wallet?.balance ?? 0}.`,
+      data: { required: coinCost, balance: wallet?.balance ?? 0 }
+    }, 402);
+  }
+
+  // Fetch the spec content from R2 or DB summary
+  let specContent = latestJob.product_summary || '';
+  if (latestJob.spec_json_key && c.env.DEPLOY_R2) {
+    try {
+      const r2Obj = await c.env.DEPLOY_R2.get(latestJob.spec_json_key);
+      if (r2Obj) {
+        const raw = await r2Obj.text();
+        specContent = raw.slice(0, 8000); // Limit context window
+      }
+    } catch { /* use DB summary as fallback */ }
+  }
+
+  // Fetch prompt fields for richer context
+  const session = await c.env.DB.prepare(
+    `SELECT ps.id FROM prompt_sessions ps WHERE ps.project_id = ? ORDER BY ps.updated_at DESC LIMIT 1`
+  ).bind(projectId).first<{ id: string }>();
+
+  let promptFields: Record<string, string> = {};
+  if (session?.id) {
+    const fields = await c.env.DB.prepare(
+      'SELECT field_key, field_value FROM prompt_fields WHERE session_id = ?'
+    ).bind(session.id).all<{ field_key: string; field_value: string }>();
+    for (const f of fields.results) {
+      promptFields[f.field_key] = f.field_value;
+    }
+  }
+
+  // Call AI
+  const aiService = new AIService(c.env, c.env.DB);
+  const aiResult = await aiService.processIntent({
+    intent: 'generate_spec',
+    userId: user.id,
+    projectId,
+    sessionId: session?.id,
+    modelId: project.active_model_id,
+    context: {
+      app_name: promptFields.app_name || project.name,
+      existing_spec_summary: specContent,
+      prompt_fields: promptFields,
+      transform_request: 'Generate a complete structured breakdown with feature_map, screen_map, data_model, api_contracts, arch_summary, deployment_reqs, env_vars, risk_flags, and readiness_score.',
+    },
+  });
+
+  if (!aiResult.success) {
+    return c.json({ success: false, error: aiResult.error || 'Transformation failed.' }, 500);
+  }
+
+  // Debit coins
+  await coinService.debit(user.id, coinCost, 'spend', `Spec transformation: ${project.name}`, projectId, 'transform');
+
+  // Parse structured output
+  let structured = aiResult.structured || {};
+  if (!structured.feature_map && aiResult.output) {
+    try { structured = JSON.parse(aiResult.output); } catch { /* partial parse ok */ }
+  }
+
+  const breakdownId = generateId('sb');
+
+  // Save to spec_breakdowns
+  await c.env.DB.prepare(
+    `INSERT INTO spec_breakdowns
+       (id, job_id, project_id, user_id, feature_map, screen_map, data_model,
+        api_contracts, arch_summary, deployment_reqs, env_vars, risk_flags, readiness_score)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).bind(
+    breakdownId,
+    latestJob.job_id,
+    projectId,
+    user.id,
+    JSON.stringify(structured.feature_map ?? []),
+    JSON.stringify(structured.screen_map ?? []),
+    JSON.stringify(structured.data_model ?? []),
+    JSON.stringify(structured.api_contracts ?? []),
+    structured.arch_summary as string ?? aiResult.output?.slice(0, 2000) ?? '',
+    JSON.stringify(structured.deployment_reqs ?? []),
+    JSON.stringify(structured.env_vars ?? []),
+    JSON.stringify(structured.risk_flags ?? []),
+    (structured.readiness_score as number) ?? 75,
+  ).run();
+
+  // Create notification
+  await c.env.DB.prepare(
+    `INSERT INTO notifications (id, user_id, type, title, message, metadata)
+     VALUES (?, ?, 'transform_complete', 'Spec Transformation Complete', ?, ?)`
+  ).bind(
+    generateId('notif'), user.id,
+    `Spec breakdown ready for ${project.name}.`,
+    JSON.stringify({ project_id: projectId, breakdown_id: breakdownId })
+  ).run().catch(() => {/* non-fatal */});
+
+  return c.json({
+    success: true,
+    data: {
+      breakdown_id: breakdownId,
+      feature_map: structured.feature_map ?? [],
+      screen_map: structured.screen_map ?? [],
+      data_model: structured.data_model ?? [],
+      api_contracts: structured.api_contracts ?? [],
+      arch_summary: structured.arch_summary ?? aiResult.output?.slice(0, 2000) ?? '',
+      deployment_reqs: structured.deployment_reqs ?? [],
+      env_vars: structured.env_vars ?? [],
+      risk_flags: structured.risk_flags ?? [],
+      readiness_score: structured.readiness_score ?? 75,
+      coins_used: coinCost,
+    },
+    message: `Specification transformed! ${coinCost} coins used.`,
+  });
+});
+
+// ── GET /api/projects/:id/transform ────────────────────────────────────────────
+// Retrieve the latest saved spec breakdown for a project.
+projects.get('/:id/transform', authMiddleware(), async (c) => {
+  const user = c.get('user')!;
+  const projectId = c.req.param('id');
+
+  const breakdown = await c.env.DB.prepare(
+    `SELECT * FROM spec_breakdowns WHERE project_id = ? AND user_id = ?
+     ORDER BY created_at DESC LIMIT 1`
+  ).bind(projectId, user.id).first<Record<string, unknown>>();
+
+  if (!breakdown) {
+    return c.json({ success: false, error: 'No spec breakdown found. Run a transformation first.' }, 404);
+  }
+
+  // Parse JSON fields
+  const parse = (v: unknown) => {
+    if (typeof v === 'string') { try { return JSON.parse(v); } catch { return v; } }
+    return v;
+  };
+
+  return c.json({
+    success: true,
+    data: {
+      id: breakdown.id,
+      job_id: breakdown.job_id,
+      feature_map: parse(breakdown.feature_map),
+      screen_map: parse(breakdown.screen_map),
+      data_model: parse(breakdown.data_model),
+      api_contracts: parse(breakdown.api_contracts),
+      arch_summary: breakdown.arch_summary,
+      deployment_reqs: parse(breakdown.deployment_reqs),
+      env_vars: parse(breakdown.env_vars),
+      risk_flags: parse(breakdown.risk_flags),
+      readiness_score: breakdown.readiness_score,
+      created_at: breakdown.created_at,
+    },
+  });
 });
 
 export default projects;

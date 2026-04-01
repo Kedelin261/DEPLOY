@@ -3,6 +3,7 @@
 import { Hono } from 'hono';
 import { authMiddleware, generateId } from '../middleware/auth';
 import { AIService } from '../services/ai.service';
+import { rateLimitMiddleware } from '../middleware/rateLimit';
 import type { Bindings, Variables } from '../types';
 
 const prompt = new Hono<{ Bindings: Bindings; Variables: Variables }>();
@@ -567,7 +568,7 @@ prompt.put('/:project_id/bulk', authMiddleware(), async (c) => {
 });
 
 // ── POST /api/prompt/:project_id/ai-assist ────────────────────────────────────
-prompt.post('/:project_id/ai-assist', authMiddleware(), async (c) => {
+prompt.post('/:project_id/ai-assist', authMiddleware(), rateLimitMiddleware('ai_assist'), async (c) => {
   const user = c.get('user')!;
   const projectId = c.req.param('project_id');
   const { section_key, field_key, model_id } = await c.req.json();
