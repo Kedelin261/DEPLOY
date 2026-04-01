@@ -451,9 +451,14 @@ async function this_processBuildJob(
       await coinService.releaseHold(holdId, true);
 
       await env.DB.batch([
+        // Mark all previous outputs for this project as not current
         env.DB.prepare(
-          `INSERT INTO generated_outputs (id, job_id, project_id, version, type, r2_key, file_name, content_type)
-           VALUES (?, ?, ?, 1, ?, ?, ?, ?)`
+          `UPDATE generated_outputs SET is_current = 0 WHERE project_id = ?`
+        ).bind(projectId),
+
+        env.DB.prepare(
+          `INSERT INTO generated_outputs (id, job_id, project_id, version, type, r2_key, file_name, content_type, is_current)
+           VALUES (?, ?, ?, 1, ?, ?, ?, ?, 1)`
         ).bind(outputId, jobId, projectId, type, r2Key, 'spec.json', 'application/json'),
 
         env.DB.prepare(
@@ -986,10 +991,10 @@ projects.post('/:id/transform', authMiddleware(), rateLimitMiddleware('build_req
   let promptFields: Record<string, string> = {};
   if (session?.id) {
     const fields = await c.env.DB.prepare(
-      'SELECT field_key, field_value FROM prompt_fields WHERE session_id = ?'
-    ).bind(session.id).all<{ field_key: string; field_value: string }>();
+      'SELECT field_key, value FROM prompt_fields WHERE session_id = ?'
+    ).bind(session.id).all<{ field_key: string; value: string }>();
     for (const f of fields.results) {
-      promptFields[f.field_key] = f.field_value;
+      promptFields[f.field_key] = f.value;
     }
   }
 

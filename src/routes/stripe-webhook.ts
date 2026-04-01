@@ -178,8 +178,24 @@ async function handleEvent(env: Bindings, event: { type: string; data: { object:
       }
 
       await env.DB.prepare(
-        `UPDATE user_billing SET stripe_subscription_id = NULL, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?`
+        `UPDATE user_billing SET stripe_subscription_id = NULL, subscription_status = 'cancelled', updated_at = CURRENT_TIMESTAMP WHERE user_id = ?`
       ).bind(billing.user_id).run().catch(() => {});
+
+      // Audit log
+      await env.DB.prepare(
+        `INSERT INTO audit_logs (id, user_id, action, resource_type, resource_id, new_value)
+         VALUES (?, ?, 'subscription_cancelled', 'subscription', ?, ?)`
+      ).bind(
+        generateId('log'), billing.user_id,
+        sub.id as string,
+        JSON.stringify({ customer_id: customerId, plan: 'free' })
+      ).run().catch(() => {});
+
+      // Notification
+      await env.DB.prepare(
+        `INSERT INTO notifications (id, user_id, type, title, message)
+         VALUES (?, ?, 'subscription_cancelled', 'Subscription Cancelled', 'Your subscription has been cancelled. Your account has been downgraded to the Free plan.')`
+      ).bind(generateId('notif'), billing.user_id).run().catch(() => {});
 
       console.log(`[Webhook] Subscription cancelled for user ${billing.user_id} — downgraded to free`);
       break;
@@ -206,6 +222,12 @@ async function handleEvent(env: Bindings, event: { type: string; data: { object:
         'Subscription payment failed',
         invoice.id as string
       ).run().catch(() => {});
+
+      // Notification to the user
+      await env.DB.prepare(
+        `INSERT INTO notifications (id, user_id, type, title, message)
+         VALUES (?, ?, 'payment_failed', 'Payment Failed', 'Your subscription payment failed. Please update your payment method to keep your account active.')`
+      ).bind(generateId('notif'), billing.user_id).run().catch(() => {});
 
       console.log(`[Webhook] ⚠️ Payment failed for user ${billing.user_id}`);
       break;

@@ -108,6 +108,7 @@ auth.post('/login', rateLimitMiddleware('auth_login'), async (c) => {
     ).bind(email.toLowerCase()).first<{
       id: string; email: string; password_hash: string; name: string;
       role: string; plan_slug: string; coin_balance: number;
+      two_factor_enabled: number;
     }>();
 
     if (!user) {
@@ -119,11 +120,27 @@ auth.post('/login', rateLimitMiddleware('auth_login'), async (c) => {
       return c.json({ success: false, error: 'Invalid email or password' }, 401);
     }
 
+    const jwtSecret = c.env.JWT_SECRET;
+    if (!jwtSecret) return c.json({ success: false, error: 'Server configuration error' }, 500);
+
+    // ── 2FA Challenge ─────────────────────────────────────────────────────────
+    if (user.two_factor_enabled) {
+      const tempToken = crypto.randomUUID().replace(/-/g, '');
+      await c.env.DEPLOY_KV.put(
+        `2fa_challenge:${tempToken}`,
+        JSON.stringify({ userId: user.id, jwtSecret }),
+        { expirationTtl: 300 }  // 5-minute window
+      );
+      return c.json({
+        success: true,
+        data: { requires_2fa: true, temp_token: tempToken },
+        message: '2FA verification required.'
+      });
+    }
+
     // Update last login
     await c.env.DB.prepare('UPDATE users SET last_login_at = CURRENT_TIMESTAMP WHERE id = ?').bind(user.id).run();
 
-    const jwtSecret = c.env.JWT_SECRET;
-    if (!jwtSecret) return c.json({ success: false, error: 'Server configuration error' }, 500);
     const token = await signJWT({ sub: user.id, email: user.email, role: user.role }, jwtSecret);
 
     return c.json({
@@ -366,6 +383,9 @@ auth.post('/2fa/challenge', rateLimitMiddleware('auth_login'), async (c) => {
 
   // Clean up challenge
   await c.env.DEPLOY_KV.delete(`2fa_challenge:${temp_token}`);
+
+  // Update last login
+  await c.env.DB.prepare('UPDATE users SET last_login_at = CURRENT_TIMESTAMP WHERE id = ?').bind(userId).run().catch(() => {});
 
   const token = await signJWT({ sub: dbUser.id, email: dbUser.email, role: dbUser.role }, jwtSecret);
 

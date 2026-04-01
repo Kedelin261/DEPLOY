@@ -5395,21 +5395,29 @@ async function loadHomeCommandCenter() {
 
     const d = res.data.data;
 
-    // ── Wallet / coins ──────────────────────────────────────────────────────
+    // ── Plan / wallet sync ──────────────────────────────────────────────────
     if (d.wallet) {
       const bal = d.wallet.balance || 0;
       const spent30 = d.coin_burn_30d?.spent_30d || 0;
       const earned30 = d.coin_burn_30d?.earned_30d || 0;
+      const planSlug = d.wallet.plan_slug || (d.plan && d.plan.slug) || 'free';
+      const planName = d.wallet.plan_name || (d.plan && d.plan.name) || 'Free';
 
       // Sync coin balance into STATE so header stays accurate
       if (STATE.user) {
         STATE.user.coin_balance = bal;
+        STATE.user.plan = planSlug;
         const hc = document.getElementById('header-coins');
         if (hc) hc.textContent = bal.toLocaleString();
         const sc = document.getElementById('stat-coins');
         if (sc) sc.textContent = bal.toLocaleString();
         const vb = document.getElementById('vault-balance');
         if (vb) vb.textContent = bal.toLocaleString();
+        // Update plan badges in header
+        const hp = document.getElementById('home-plan');
+        if (hp) hp.textContent = planName;
+        const planBadge = document.getElementById('plan-badge');
+        if (planBadge) planBadge.textContent = planName;
       }
 
       // Coin trend label

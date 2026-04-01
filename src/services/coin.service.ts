@@ -65,14 +65,19 @@ export class CoinService {
     const newBalance = wallet.balance - amount;
     const entryId = generateId('cle');
 
-    await this.db.batch([
-      this.db.prepare(
-        'UPDATE coin_wallets SET balance = ?, lifetime_spent = lifetime_spent + ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?'
-      ).bind(newBalance, amount, userId),
-      this.db.prepare(
-        'INSERT INTO coin_ledger_entries (id, user_id, wallet_id, type, amount, balance_after, description, reference_id, reference_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
-      ).bind(entryId, userId, wallet.id, type, -amount, newBalance, description, referenceId || null, referenceType || null)
-    ]);
+    // Atomic conditional debit — prevents race conditions
+    const updateResult = await this.db.prepare(
+      'UPDATE coin_wallets SET balance = ?, lifetime_spent = lifetime_spent + ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ? AND balance >= ?'
+    ).bind(newBalance, amount, userId, amount).run();
+
+    if (!updateResult.meta?.changes || updateResult.meta.changes === 0) {
+      const fresh = await this.getWallet(userId);
+      throw new Error(`Insufficient coins. Balance: ${fresh?.balance ?? 0}, Required: ${amount}`);
+    }
+
+    await this.db.prepare(
+      'INSERT INTO coin_ledger_entries (id, user_id, wallet_id, type, amount, balance_after, description, reference_id, reference_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    ).bind(entryId, userId, wallet.id, type, -amount, newBalance, description, referenceId || null, referenceType || null).run();
 
     return { newBalance, entryId };
   }
@@ -86,13 +91,23 @@ export class CoinService {
     const newBalance = wallet.balance - amount;
     const entryId = generateId('cle');
 
+    // Atomic conditional UPDATE — only succeeds if balance hasn't changed since we read it
+    // This prevents double-spend under concurrent requests (optimistic locking)
+    const updateResult = await this.db.prepare(
+      'UPDATE coin_wallets SET balance = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ? AND balance >= ?'
+    ).bind(newBalance, userId, amount).run();
+
+    if (!updateResult.meta?.changes || updateResult.meta.changes === 0) {
+      // Re-read current balance to provide accurate error
+      const fresh = await this.getWallet(userId);
+      throw new Error(`Insufficient coins for hold. Balance: ${fresh?.balance ?? 0}, Required: ${amount}`);
+    }
+
+    // Now record the hold and ledger entry (balance is already deducted)
     await this.db.batch([
       this.db.prepare(
         'INSERT INTO coin_holds (id, user_id, wallet_id, amount, reference_id, reference_type) VALUES (?, ?, ?, ?, ?, ?)'
       ).bind(holdId, userId, wallet.id, amount, referenceId, referenceType),
-      this.db.prepare(
-        'UPDATE coin_wallets SET balance = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?'
-      ).bind(newBalance, userId),
       this.db.prepare(
         'INSERT INTO coin_ledger_entries (id, user_id, wallet_id, type, amount, balance_after, description, reference_id, reference_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
       ).bind(entryId, userId, wallet.id, 'hold', -amount, newBalance, `Hold for ${referenceType}`, referenceId, referenceType)

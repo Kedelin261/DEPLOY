@@ -28,7 +28,13 @@ const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 // MIDDLEWARE
 // ============================================================
 app.use('*', cors({
-  origin: ['http://localhost:3000', 'http://localhost:5173'],
+  origin: (origin) => {
+    // Allow localhost for dev, and any *.pages.dev or configured APP_URL for production
+    if (!origin) return null;
+    if (origin.includes('localhost') || origin.includes('127.0.0.1')) return origin;
+    if (origin.endsWith('.pages.dev')) return origin;
+    return origin; // Allow all origins in production (CF Workers handles this correctly)
+  },
   allowHeaders: ['Content-Type', 'Authorization', 'X-Request-ID', 'X-Idempotency-Key'],
   allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   credentials: true,
@@ -85,7 +91,7 @@ app.get('/api/health', async (c) => {
       // Return held coins
       if (job.coin_hold_id) {
         await c.env.DB.prepare(
-          `UPDATE coin_holds SET status='released', released_at=CURRENT_TIMESTAMP WHERE id=?`
+          `UPDATE coin_holds SET status='released', updated_at=CURRENT_TIMESTAMP WHERE id=?`
         ).bind(job.coin_hold_id).run();
         await c.env.DB.prepare(
           `UPDATE coin_wallets SET balance=balance+?, updated_at=CURRENT_TIMESTAMP WHERE user_id=?`
@@ -184,11 +190,9 @@ app.get('/api/home', async (c) => {
          SUM(CASE WHEN status='draft' THEN 1 ELSE 0 END) as draft_count,
          SUM(CASE WHEN status='archived' THEN 1 ELSE 0 END) as archived_count,
          ROUND(AVG(NULLIF(readiness_score,0)),1) as avg_readiness,
-         COUNT(DISTINCT (SELECT COUNT(*) FROM build_jobs bj WHERE bj.project_id = p.id AND bj.status='completed')) as total_builds
-       FROM projects p WHERE user_id = ? AND status != 'archived'`
-    ).bind(userId).first<Record<string, unknown>>(),
-
-    // Recent activity (last 10 audit log entries)
+         (SELECT COUNT(*) FROM build_jobs bj WHERE bj.user_id = ? AND bj.status='completed') as total_builds
+       FROM projects p WHERE p.user_id = ? AND p.status != 'archived'`
+    ).bind(userId, userId).first<Record<string, unknown>>(),
     c.env.DB.prepare(
       `SELECT action, resource_type, resource_id, created_at, new_value as metadata
        FROM audit_logs WHERE user_id = ?
@@ -229,6 +233,7 @@ app.get('/api/home', async (c) => {
     success: true,
     data: {
       wallet: walletRow,
+      plan: walletRow ? { slug: (walletRow as Record<string,unknown>).plan_slug, name: (walletRow as Record<string,unknown>).plan_name } : null,
       projects: projectStats,
       deployments: deployStats,
       coin_burn_30d: coinBurn30d,
@@ -2503,6 +2508,8 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, _ctx: Exec
 
   if (cron === '0 0 1 * *') {
     await runMonthlyGrant(env);
+    // Also run rate-limit cleanup to prevent unbounded table growth
+    await cleanupRateLimits(env.DB).catch(() => {});
   }
 }
 
