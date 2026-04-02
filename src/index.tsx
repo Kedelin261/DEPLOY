@@ -2510,6 +2510,12 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, _ctx: Exec
     await runMonthlyGrant(env);
     // Also run rate-limit cleanup to prevent unbounded table growth
     await cleanupRateLimits(env.DB).catch(() => {});
+    // Enforce grace period expirations — downgrade users whose grace period has ended
+    await enforceGracePeriodExpirations(env).catch(() => {});
+  }
+  // Grace period check also runs daily at 02:00 UTC to catch mid-month expirations
+  if (cron === '0 2 * * *') {
+    await enforceGracePeriodExpirations(env).catch(() => {});
   }
 }
 
@@ -2539,6 +2545,7 @@ async function runMonthlyGrant(env: Bindings) {
     for (const member of dueMembers.results) {
       try {
         const entryId = `cle_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+        const auditId = `log_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
         await env.DB.batch([
           // Credit coins
           env.DB.prepare(
@@ -2564,6 +2571,15 @@ async function runMonthlyGrant(env: Bindings) {
             member.user_id,
             `Your monthly ${member.monthly_coins} coins have been added to your vault.`
           ),
+
+          // Audit log
+          env.DB.prepare(
+            `INSERT INTO audit_logs (id, user_id, action, resource_type, resource_id, new_value)
+             VALUES (?, ?, 'monthly_coin_grant', 'coin_wallet', ?, ?)`
+          ).bind(
+            auditId, member.user_id, member.wallet_id,
+            JSON.stringify({ coins_granted: member.monthly_coins, plan: member.plan_slug, next_grant_at: nextGrantAt })
+          ),
         ]);
         granted++;
       } catch (memberErr) {
@@ -2574,5 +2590,77 @@ async function runMonthlyGrant(env: Bindings) {
     console.log(`[Cron] Monthly grant complete — granted ${granted} users their coins.`);
   } catch (err) {
     console.error('[Cron] Monthly grant fatal error:', err);
+  }
+}
+
+/** Enforce subscription cancellation grace periods — downgrade users whose 3-day grace has expired */
+async function enforceGracePeriodExpirations(env: Bindings) {
+  try {
+    const now = new Date().toISOString();
+    console.log('[Cron] Checking grace period expirations...');
+
+    // Find all users whose grace period has expired but haven't been downgraded yet
+    const expiredUsers = await env.DB.prepare(
+      `SELECT ub.user_id, u.email, u.name, p.name as current_plan_name
+       FROM user_billing ub
+       JOIN users u ON u.id = ub.user_id
+       JOIN memberships m ON m.user_id = ub.user_id AND m.status = 'active'
+       JOIN plans p ON p.id = m.plan_id
+       WHERE ub.subscription_status = 'cancelled'
+         AND ub.grace_expires_at IS NOT NULL
+         AND ub.grace_expires_at <= ?
+         AND p.slug != 'free'`
+    ).bind(now).all<{ user_id: string; email: string; name: string; current_plan_name: string }>();
+
+    const freePlan = await env.DB.prepare(
+      'SELECT id FROM plans WHERE slug = ?'
+    ).bind('free').first<{ id: string }>().catch(() => null);
+
+    if (!freePlan) { console.error('[Cron] Free plan not found'); return; }
+
+    let downgraded = 0;
+    for (const user of expiredUsers.results) {
+      try {
+        // Downgrade to free
+        await env.DB.prepare(
+          `UPDATE memberships SET plan_id = ?, status = 'active', updated_at = CURRENT_TIMESTAMP WHERE user_id = ?`
+        ).bind(freePlan.id, user.user_id).run();
+
+        await env.DB.prepare(
+          `UPDATE user_billing SET stripe_subscription_id = NULL, grace_expires_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?`
+        ).bind(user.user_id).run();
+
+        // Audit log
+        await env.DB.prepare(
+          `INSERT INTO audit_logs (id, user_id, action, resource_type, resource_id, new_value)
+           VALUES (?, ?, 'grace_period_expired', 'membership', ?, ?)`
+        ).bind(
+          `log_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+          user.user_id, user.user_id,
+          JSON.stringify({ downgraded_from: user.current_plan_name, downgraded_to: 'free', enforced_at: now })
+        ).run();
+
+        // Notification
+        await env.DB.prepare(
+          `INSERT INTO notifications (id, user_id, type, title, message)
+           VALUES (?, ?, 'plan_downgraded', 'Account Downgraded', 'Your grace period has ended. Your account has been moved to the Free plan.')`
+        ).bind(
+          `notif_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`,
+          user.user_id
+        ).run();
+
+        // Clean up KV grace period entry
+        await env.DEPLOY_KV.delete(`grace_period:${user.user_id}`).catch(() => {});
+
+        downgraded++;
+        console.log(`[Cron] Grace period expired — downgraded user ${user.user_id} from ${user.current_plan_name} to free`);
+      } catch (userErr) {
+        console.error(`[Cron] Failed to enforce grace period for ${user.user_id}:`, userErr);
+      }
+    }
+
+    console.log(`[Cron] Grace period enforcement complete — ${downgraded} users downgraded.`);
+  } catch (err) {
+    console.error('[Cron] Grace period enforcement fatal error:', err);
   }
 }

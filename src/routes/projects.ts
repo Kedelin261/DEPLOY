@@ -337,36 +337,42 @@ projects.post('/:id/build', authMiddleware(), rateLimitMiddleware('build_request
     }, 402);
   }
 
-  const jobId = generateId('job');
+  // ── RULE: X-Idempotency-Key is REQUIRED on build to prevent double-spend ──
   const idempotencyKey = c.req.header('X-Idempotency-Key');
-
-  // Idempotency: if this key was already used, return the cached result
-  if (idempotencyKey) {
-    const existing = await c.env.DB.prepare(
-      `SELECT id, status, coins_held, error_message FROM build_jobs WHERE prompt_snapshot LIKE ? LIMIT 1`
-    ).bind(`%"idempotency_key":"${idempotencyKey}"%`).first<{ id: string; status: string; coins_held: number; error_message: string }>();
-    if (existing) {
-      return c.json({
-        success: existing.status !== 'failed',
-        data: { job_id: existing.id, coins_held: existing.coins_held, status: existing.status },
-        message: existing.status === 'failed' ? (existing.error_message || 'Build failed') : 'Build already processed.'
-      }, 200);
-    }
+  if (!idempotencyKey) {
+    return c.json({
+      success: false,
+      error: 'X-Idempotency-Key header is required to prevent duplicate builds.',
+      hint: 'Generate a UUID per build attempt: crypto.randomUUID()'
+    }, 400);
   }
 
+  // Idempotency check: if this key was already used return the cached result
+  const existing = await c.env.DB.prepare(
+    `SELECT id, status, coins_held, error_message FROM build_jobs WHERE prompt_snapshot LIKE ? LIMIT 1`
+  ).bind(`%"idempotency_key":"${idempotencyKey}"%`).first<{ id: string; status: string; coins_held: number; error_message: string }>();
+  if (existing) {
+    return c.json({
+      success: existing.status !== 'failed',
+      data: { job_id: existing.id, coins_held: existing.coins_held, status: existing.status },
+      message: existing.status === 'failed' ? (existing.error_message || 'Build failed') : 'Duplicate request — build already queued or completed.'
+    }, 200);
+  }
+
+  const jobId = generateId('job');
   const coinService = new CoinService(c.env.DB);
 
   // Hold coins
   const holdId = await coinService.holdCoins(user.id, coinCost, jobId, type);
 
-  // Create build job — embed idempotency key in snapshot so we can look it up
+  // Create build job — embed idempotency key in snapshot for lookup
   await c.env.DB.prepare(
     `INSERT INTO build_jobs (id, user_id, project_id, session_id, model_id, type, status, coins_held, coin_hold_id, prompt_snapshot)
      VALUES (?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?)`
   ).bind(
     jobId, user.id, projectId, session.id, selectedModelId, type,
     coinCost, holdId,
-    JSON.stringify({ revision_notes: revision_notes || null, fields: session.fields_json, idempotency_key: idempotencyKey || null })
+    JSON.stringify({ revision_notes: revision_notes || null, fields: session.fields_json, idempotency_key: idempotencyKey })
   ).run();
 
   // Update project status
@@ -374,35 +380,20 @@ projects.post('/:id/build', authMiddleware(), rateLimitMiddleware('build_request
     `UPDATE projects SET status = 'building', updated_at = CURRENT_TIMESTAMP WHERE id = ?`
   ).bind(projectId).run();
 
-  // Process build synchronously within the request lifecycle.
-  // Cloudflare Workers kills void background tasks after the response is sent,
-  // so we MUST await the AI call before returning to the client.
-  // The frontend polls /jobs for status updates while showing the preview.
-  try {
-    await this_processBuildJob(c.env, jobId, user.id, projectId, session.id, selectedModelId, type, holdId, session.fields_json);
-  } catch (bgErr) {
-    console.error('Build processor error:', bgErr);
-    // Already handled inside this_processBuildJob — just log here
-  }
-
-  // Re-read final job status to return accurate info
-  const finalJob = await c.env.DB.prepare(
-    'SELECT status, error_message FROM build_jobs WHERE id = ?'
-  ).bind(jobId).first<{ status: string; error_message: string }>();
-
-  if (finalJob?.status === 'failed') {
-    return c.json({
-      success: false,
-      error: finalJob.error_message || 'Build failed. Coins returned.',
-      data: { job_id: jobId }
-    }, 500);
-  }
+  // ── ASYNC BUILD via ctx.waitUntil ──────────────────────────────────────────
+  // Return 202 immediately so the client can poll /jobs for status.
+  // ctx.waitUntil() keeps the Worker alive to finish the AI call after response.
+  const ctx = c.executionCtx;
+  ctx.waitUntil(
+    this_processBuildJob(c.env, jobId, user.id, projectId, session.id, selectedModelId, type, holdId, session.fields_json)
+      .catch((bgErr: unknown) => console.error('[Build] Background processor error:', bgErr))
+  );
 
   return c.json({
     success: true,
-    data: { job_id: jobId, coins_held: coinCost, status: finalJob?.status || 'completed' },
-    message: `Build complete! ${coinCost} coins used.`
-  }, 200);
+    data: { job_id: jobId, coins_held: coinCost, status: 'queued' },
+    message: `Build queued. Poll GET /api/projects/${projectId}/jobs for status updates.`
+  }, 202);
 });
 
 // Background build processor
@@ -883,34 +874,21 @@ projects.post('/:id/revise', authMiddleware(), async (c) => {
     'SELECT product_summary FROM generated_specs WHERE project_id = ? ORDER BY created_at DESC LIMIT 1'
   ).bind(projectId).first<{ product_summary: string }>();
 
-  // Process revision synchronously (same reason as build — background tasks get killed)
-  try {
-    await this_processBuildJob(
+  // ── ASYNC REVISION via ctx.waitUntil ──────────────────────────────────────
+  const ctx = c.executionCtx;
+  ctx.waitUntil(
+    this_processBuildJob(
       c.env, jobId, user.id, projectId,
       session?.id || 'none', selectedModelId, 'revision', holdId,
       JSON.stringify({ revision_notes, build_summary: latestSpec?.product_summary || '' })
-    );
-  } catch (err) {
-    console.error('Revision processor error:', err);
-  }
-
-  const finalJob = await c.env.DB.prepare(
-    'SELECT status, error_message FROM build_jobs WHERE id = ?'
-  ).bind(jobId).first<{ status: string; error_message: string }>();
-
-  if (finalJob?.status === 'failed') {
-    return c.json({
-      success: false,
-      error: finalJob.error_message || 'Revision failed. Coins returned.',
-      data: { job_id: jobId }
-    }, 500);
-  }
+    ).catch((err: unknown) => console.error('[Revision] Background processor error:', err))
+  );
 
   return c.json({
     success: true,
-    data: { job_id: jobId, coins_held: coinCost, status: 'completed' },
-    message: `Revision applied! ${coinCost} coins used.`
-  }, 200);
+    data: { job_id: jobId, coins_held: coinCost, status: 'queued' },
+    message: `Revision queued. Poll GET /api/projects/${projectId}/jobs for status updates.`
+  }, 202);
 });
 
 // ── POST /api/projects/:id/transform ──────────────────────────────────────────
@@ -1116,6 +1094,81 @@ projects.get('/:id/transform', authMiddleware(), async (c) => {
       readiness_score: breakdown.readiness_score,
       created_at: breakdown.created_at,
     },
+  });
+});
+
+// ── POST /api/projects/:id/versions/:jobId/revert ────────────────────────────
+// Revert a project to a previous build version by promoting that version's
+// generated_output as is_current=1 and updating the project readiness_score.
+// No coins charged — this is a non-destructive metadata operation.
+projects.post('/:id/versions/:jobId/revert', authMiddleware(), async (c) => {
+  const user = c.get('user')!;
+  const projectId = c.req.param('id');
+  const targetJobId = c.req.param('jobId');
+
+  // Verify project ownership
+  const project = await c.env.DB.prepare(
+    'SELECT id FROM projects WHERE id = ? AND user_id = ?'
+  ).bind(projectId, user.id).first<{ id: string }>();
+  if (!project) return c.json({ success: false, error: 'Project not found' }, 404);
+
+  // Verify the target job exists, belongs to this project, and is completed
+  const targetJob = await c.env.DB.prepare(
+    `SELECT bj.id, bj.status, go.id as output_id, gs.readiness_score
+     FROM build_jobs bj
+     LEFT JOIN generated_outputs go ON go.build_job_id = bj.id AND go.project_id = bj.project_id
+     LEFT JOIN generated_specs gs ON gs.project_id = bj.project_id AND gs.build_job_id = bj.id
+     WHERE bj.id = ? AND bj.project_id = ? AND bj.user_id = ?`
+  ).bind(targetJobId, projectId, user.id).first<{
+    id: string; status: string; output_id: string | null; readiness_score: number | null;
+  }>();
+
+  if (!targetJob) return c.json({ success: false, error: 'Build version not found' }, 404);
+  if (targetJob.status !== 'completed') {
+    return c.json({ success: false, error: 'Can only revert to a completed build version' }, 400);
+  }
+  if (!targetJob.output_id) {
+    return c.json({ success: false, error: 'No generated output found for this version' }, 404);
+  }
+
+  // Demote all current outputs for this project
+  await c.env.DB.prepare(
+    `UPDATE generated_outputs SET is_current = 0, updated_at = CURRENT_TIMESTAMP WHERE project_id = ?`
+  ).bind(projectId).run();
+
+  // Promote the target version's output as current
+  await c.env.DB.prepare(
+    `UPDATE generated_outputs SET is_current = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
+  ).bind(targetJob.output_id).run();
+
+  // Update project readiness_score and status
+  const revertedScore = targetJob.readiness_score ?? 75;
+  await c.env.DB.prepare(
+    `UPDATE projects SET readiness_score = ?, status = 'draft', updated_at = CURRENT_TIMESTAMP WHERE id = ?`
+  ).bind(revertedScore, projectId).run();
+
+  // Insert project_versions record for the revert action
+  const versionId = generateId('ver');
+  await c.env.DB.prepare(
+    `INSERT INTO project_versions (id, project_id, version_number, change_summary, created_by, build_job_id)
+     VALUES (?, ?, (SELECT COALESCE(MAX(version_number),0)+1 FROM project_versions WHERE project_id = ?), ?, ?, ?)`
+  ).bind(versionId, projectId, projectId, `Reverted to build ${targetJobId}`, user.id, targetJobId).run();
+
+  // Audit log
+  await c.env.DB.prepare(
+    `INSERT INTO audit_logs (id, user_id, action, resource_type, resource_id, new_value)
+     VALUES (?, ?, 'version_reverted', 'project', ?, ?)`
+  ).bind(generateId('log'), user.id, projectId, JSON.stringify({ reverted_to_job: targetJobId })).run();
+
+  return c.json({
+    success: true,
+    data: {
+      project_id: projectId,
+      reverted_to_job: targetJobId,
+      output_id: targetJob.output_id,
+      readiness_score: revertedScore,
+    },
+    message: `Project reverted to build version ${targetJobId}.`
   });
 });
 

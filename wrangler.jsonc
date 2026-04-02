@@ -47,8 +47,8 @@
     "CLOUDFLARE_ACCOUNT_ID": "b7d0c7ba6b4de011cc51c878e26c70c2"
   },
 
-  // Cron triggers — runs on 1st of every month at 00:00 UTC
+  // Cron triggers — monthly coin grant + daily grace period enforcement
   "triggers": {
-    "crons": ["0 0 1 * *"]
+    "crons": ["0 0 1 * *", "0 2 * * *"]
   }
 }

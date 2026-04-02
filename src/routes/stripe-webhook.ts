@@ -154,7 +154,7 @@ async function handleEvent(env: Bindings, event: { type: string; data: { object:
       break;
     }
 
-    // ── Subscription cancelled
+    // ── Subscription cancelled (with 3-day grace period)
     case 'customer.subscription.deleted': {
       const sub = event.data.object;
       const customerId = sub.customer as string;
@@ -166,20 +166,31 @@ async function handleEvent(env: Bindings, event: { type: string; data: { object:
 
       if (!billing) break;
 
-      // Downgrade membership to free plan
-      const freePlan = await env.DB.prepare(
-        'SELECT id FROM plans WHERE slug = ?'
-      ).bind('free').first<{ id: string }>().catch(() => null);
+      // Fetch user details for email
+      const userRow = await env.DB.prepare(
+        'SELECT email, name FROM users WHERE id = ?'
+      ).bind(billing.user_id).first<{ email: string; name: string }>().catch(() => null);
 
-      if (freePlan) {
-        await env.DB.prepare(
-          `UPDATE memberships SET plan_id = ?, status = 'active', updated_at = CURRENT_TIMESTAMP WHERE user_id = ?`
-        ).bind(freePlan.id, billing.user_id).run().catch(() => {});
-      }
+      // Fetch current plan name before downgrade
+      const currentPlan = await env.DB.prepare(
+        `SELECT p.name, p.slug FROM plans p JOIN memberships m ON m.plan_id = p.id WHERE m.user_id = ?`
+      ).bind(billing.user_id).first<{ name: string; slug: string }>().catch(() => null);
+
+      // ── GRACE PERIOD: Schedule downgrade 3 days from now ─────────────────
+      // Mark subscription as cancelled but do NOT downgrade immediately.
+      // The cron handler will complete the downgrade after grace_expires_at.
+      const graceExpiresAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
 
       await env.DB.prepare(
-        `UPDATE user_billing SET stripe_subscription_id = NULL, subscription_status = 'cancelled', updated_at = CURRENT_TIMESTAMP WHERE user_id = ?`
-      ).bind(billing.user_id).run().catch(() => {});
+        `UPDATE user_billing SET subscription_status = 'cancelled', grace_expires_at = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?`
+      ).bind(graceExpiresAt, billing.user_id).run().catch(() => {});
+
+      // Also store grace period in KV for fast cron lookups
+      await env.DEPLOY_KV.put(
+        `grace_period:${billing.user_id}`,
+        JSON.stringify({ user_id: billing.user_id, expires_at: graceExpiresAt }),
+        { expirationTtl: 4 * 24 * 60 * 60 } // 4 days TTL
+      ).catch(() => {});
 
       // Audit log
       await env.DB.prepare(
@@ -188,16 +199,29 @@ async function handleEvent(env: Bindings, event: { type: string; data: { object:
       ).bind(
         generateId('log'), billing.user_id,
         sub.id as string,
-        JSON.stringify({ customer_id: customerId, plan: 'free' })
+        JSON.stringify({ customer_id: customerId, plan: 'free', grace_expires_at: graceExpiresAt })
       ).run().catch(() => {});
 
       // Notification
       await env.DB.prepare(
         `INSERT INTO notifications (id, user_id, type, title, message)
-         VALUES (?, ?, 'subscription_cancelled', 'Subscription Cancelled', 'Your subscription has been cancelled. Your account has been downgraded to the Free plan.')`
+         VALUES (?, ?, 'subscription_cancelled', 'Subscription Cancelled', 'Your subscription has been cancelled. You have a 3-day grace period before your account is downgraded to the Free plan.')`
       ).bind(generateId('notif'), billing.user_id).run().catch(() => {});
 
-      console.log(`[Webhook] Subscription cancelled for user ${billing.user_id} — downgraded to free`);
+      // Subscription change email
+      if (userRow) {
+        const resend = new ResendService(env);
+        resend.sendSubscriptionChange({
+          to: userRow.email,
+          name: userRow.name,
+          changeType: 'cancelled',
+          fromPlan: currentPlan?.name || currentPlan?.slug || 'Pro',
+          toPlan: 'Free',
+          effectiveDate: new Date(graceExpiresAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
+        }).catch(() => {});
+      }
+
+      console.log(`[Webhook] Subscription cancelled for user ${billing.user_id} — 3-day grace period until ${graceExpiresAt}`);
       break;
     }
 

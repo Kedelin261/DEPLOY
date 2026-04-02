@@ -403,9 +403,65 @@ export class ResendService {
       text: `Low coin balance alert!\nYou have ${opts.balance} coins remaining.\n\nTop up: ${appUrl}`,
     });
   }
-}
 
-// ─── Utility ──────────────────────────────────────────────────────────────────
+  /** Subscription plan change — upgrade, downgrade, or cancellation */
+  async sendSubscriptionChange(opts: {
+    to: string;
+    name: string;
+    changeType: 'upgraded' | 'downgraded' | 'cancelled';
+    fromPlan: string;
+    toPlan: string;
+    effectiveDate?: string;
+  }): Promise<void> {
+    const appUrl = this.env.APP_URL || 'https://deploy-app.pages.dev';
+    const emoji = opts.changeType === 'upgraded' ? '🚀' : opts.changeType === 'downgraded' ? '📉' : '😢';
+    const colour = opts.changeType === 'upgraded' ? '#10b981' : opts.changeType === 'downgraded' ? '#f59e0b' : '#ef4444';
+    const subject = opts.changeType === 'upgraded'
+      ? `🚀 Welcome to ${opts.toPlan} — you've upgraded!`
+      : opts.changeType === 'downgraded'
+      ? `📉 Your plan has changed to ${opts.toPlan}`
+      : `Your DEPLOY subscription has been cancelled`;
+    const effectiveNote = opts.effectiveDate
+      ? `<p style="color:#94a3b8;font-size:14px">Effective: ${opts.effectiveDate}</p>`
+      : '';
+    await this.send({
+      to: opts.to,
+      subject,
+      html: `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background:#0f172a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
+  <div style="max-width:600px;margin:0 auto;padding:40px 20px">
+    <div style="text-align:center;margin-bottom:32px">
+      <div style="font-size:32px;font-weight:900;background:linear-gradient(135deg,#6366f1,#8b5cf6,#06b6d4);-webkit-background-clip:text;-webkit-text-fill-color:transparent">DEPLOY</div>
+    </div>
+    <div style="background:#1e293b;border:1px solid ${colour};border-radius:16px;padding:32px">
+      <div style="text-align:center;margin-bottom:24px">
+        <div style="font-size:48px">${emoji}</div>
+        <h2 style="color:#f8fafc;font-size:22px;font-weight:700;margin:12px 0 4px">Subscription ${opts.changeType}</h2>
+        <p style="color:#94a3b8;font-size:15px;margin:0">Hi ${escapeHtml(opts.name)}</p>
+      </div>
+      <div style="background:#0f172a;border-radius:12px;padding:20px;margin-bottom:24px;text-align:center">
+        <div style="color:#94a3b8;font-size:13px;margin-bottom:8px">Plan change</div>
+        <div style="display:flex;align-items:center;justify-content:center;gap:12px;font-size:18px;font-weight:700">
+          <span style="color:#64748b;text-transform:capitalize">${escapeHtml(opts.fromPlan)}</span>
+          <span style="color:#6366f1">→</span>
+          <span style="color:${colour};text-transform:capitalize">${escapeHtml(opts.toPlan)}</span>
+        </div>
+        ${effectiveNote}
+      </div>
+      ${opts.changeType === 'cancelled' ? `<p style="color:#94a3b8;font-size:14px;text-align:center">Your account stays active until the end of your current billing period. After that, you'll be moved to the Free plan.</p>` : ''}
+      ${opts.changeType !== 'cancelled' ? `<div style="text-align:center"><a href="${appUrl}/vault" style="display:inline-block;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;text-decoration:none;padding:14px 32px;border-radius:10px;font-weight:600;font-size:15px">View Your Plan</a></div>` : ''}
+    </div>
+    <p style="text-align:center;color:#475569;font-size:12px;margin-top:24px">DEPLOY Platform · <a href="${appUrl}" style="color:#6366f1;text-decoration:none">deployapp.io</a></p>
+  </div>
+</body>
+</html>`,
+      text: `Hi ${opts.name}, your DEPLOY subscription has been ${opts.changeType} from ${opts.fromPlan} to ${opts.toPlan}.${opts.effectiveDate ? ' Effective: ' + opts.effectiveDate : ''}`,
+    });
+  }
+}
 function escapeHtml(str: string): string {
   return str
     .replace(/&/g, '&amp;')

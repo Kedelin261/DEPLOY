@@ -112,6 +112,14 @@ deployments.post('/', authMiddleware(), async (c) => {
     ).catch(() => {});
   }
 
+  // Audit log — deployment requested
+  await c.env.DB.prepare(
+    `INSERT INTO audit_logs (id, user_id, action, resource_type, resource_id, new_value)
+     VALUES (?, ?, 'deployment_requested', 'deployment', ?, ?)`
+  ).bind(generateId('log'), user.id, deployId,
+    JSON.stringify({ project_id, type, cloudflare_project: cfProjectName, coins_spent: DEPLOY_COST })
+  ).run().catch(() => {});
+
   // Trigger real deployment via CF Pages API (falls back gracefully if token not set)
   void triggerDeployment(c.env, deployId, cfProjectName, project_id, user.id);
 
@@ -175,6 +183,14 @@ async function triggerDeployment(env: Bindings, deployId: string, cfProjectName:
        health_status = 'healthy', updated_at = CURRENT_TIMESTAMP WHERE id = ?`
     ).bind(deployUrl, deployId).run();
 
+    // Audit log — deployment live
+    await env.DB.prepare(
+      `INSERT INTO audit_logs (id, user_id, action, resource_type, resource_id, new_value)
+       VALUES (?, ?, 'deployment_live', 'deployment', ?, ?)`
+    ).bind(generateId('log'), userId, deployId,
+      JSON.stringify({ deployment_url: deployUrl, cloudflare_project: cfProjectName })
+    ).run().catch(() => {});
+
     // Insert notification
     await env.DB.prepare(
       `INSERT INTO notifications (id, user_id, type, title, message, action_url)
@@ -207,6 +223,13 @@ async function triggerDeployment(env: Bindings, deployId: string, cfProjectName:
     await env.DB.prepare(
       `UPDATE deployments SET status = 'failed', updated_at = CURRENT_TIMESTAMP WHERE id = ?`
     ).bind(deployId).run().catch(() => {});
+    // Audit log — deployment failed
+    await env.DB.prepare(
+      `INSERT INTO audit_logs (id, user_id, action, resource_type, resource_id, new_value)
+       VALUES (?, ?, 'deployment_failed', 'deployment', ?, ?)`
+    ).bind(generateId('log'), userId, deployId,
+      JSON.stringify({ error: String(err).slice(0, 500) })
+    ).run().catch(() => {});
   }
 }
 
@@ -234,6 +257,14 @@ deployments.post('/:id/rollback', authMiddleware(), async (c) => {
   await c.env.DB.prepare(
     `UPDATE deployments SET status = 'rolled_back', rolled_back_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?`
   ).bind(deployId, user.id).run();
+
+  // Audit log
+  await c.env.DB.prepare(
+    `INSERT INTO audit_logs (id, user_id, action, resource_type, resource_id, new_value)
+     VALUES (?, ?, 'deployment_rolled_back', 'deployment', ?, ?)`
+  ).bind(generateId('log'), user.id, deployId,
+    JSON.stringify({ status: 'rolled_back' })
+  ).run().catch(() => {});
 
   return c.json({ success: true, message: 'Deployment rolled back' });
 });
@@ -281,6 +312,14 @@ deployments.post('/:id/domain', authMiddleware(), async (c) => {
     `UPDATE deployments SET domain = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
   ).bind(domain.trim(), deployId).run();
 
+  // Audit log
+  await c.env.DB.prepare(
+    `INSERT INTO audit_logs (id, user_id, action, resource_type, resource_id, new_value)
+     VALUES (?, ?, 'domain_attached', 'deployment', ?, ?)`
+  ).bind(generateId('log'), user.id, deployId,
+    JSON.stringify({ domain: domain.trim(), status: domainStatus })
+  ).run().catch(() => {});
+
   return c.json({
     success: true,
     data: { domain: domain.trim(), status: domainStatus },
@@ -310,6 +349,14 @@ deployments.delete('/:id/domain', authMiddleware(), async (c) => {
   await c.env.DB.prepare(
     `UPDATE deployments SET domain = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
   ).bind(deployId).run();
+
+  // Audit log
+  await c.env.DB.prepare(
+    `INSERT INTO audit_logs (id, user_id, action, resource_type, resource_id, new_value)
+     VALUES (?, ?, 'domain_removed', 'deployment', ?, ?)`
+  ).bind(generateId('log'), user.id, deployId,
+    JSON.stringify({ domain: deployment.domain })
+  ).run().catch(() => {});
 
   return c.json({ success: true, message: 'Custom domain removed' });
 });
